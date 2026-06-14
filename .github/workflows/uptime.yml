@@ -1,0 +1,15 @@
+name: Pilot uptime check
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ready:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check API readiness
+        run: curl --fail --show-error --silent --max-time 20 "${{ secrets.LEGALBAHI_API_HEALTH_URL }}/health/ready"
+      - name: Check hosted web app
+        run: curl --fail --show-error --silent --max-time 20 "${{ secrets.LEGALBAHI_WEB_URL }}" | grep --fixed-strings "LegalBahi"

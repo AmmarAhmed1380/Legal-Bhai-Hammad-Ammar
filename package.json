@@ -1,0 +1,45 @@
+{
+  "name": "legalbahi",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm --workspace @wakeel/api run dev",
+    "dev:web": "npm --workspace @wakeel/web run dev",
+    "dev:mobile": "npm --workspace @wakeel/mobile run dev",
+    "lint": "node scripts/lint-repo.mjs",
+    "typecheck": "npm run typecheck:api && npm run typecheck:mobile",
+    "test": "npm run test:api && npm run test:mobile:flows && npm run test:deployment",
+    "test:web": "npm run test:web:e2e",
+    "build": "npm run build:web",
+    "test:api": "npm --workspace @wakeel/api run test",
+    "test:web:e2e": "playwright test",
+    "typecheck:api": "npm --workspace @wakeel/api run typecheck",
+    "build:web": "npm --workspace @wakeel/web run build",
+    "migrate": "npm --workspace @wakeel/api run migrate",
+    "smoke:production": "npm --workspace @wakeel/api run smoke:production",
+    "test:mobile:flows": "node scripts/verify-mobile-flows.mjs",
+    "test:deployment": "node scripts/verify-deployment-assets.mjs",
+    "typecheck:mobile": "npm --workspace @wakeel/mobile exec tsc -- --noEmit",
+    "verify": "npm run test:api && npm run typecheck:api && npm run build:web && npm run test:web:e2e && npm run typecheck:mobile && npm run test:mobile:flows && npm run test:deployment",
+    "brother:test": "node scripts/start-brother-test.mjs",
+    "brother:test:mobile": "node scripts/start-brother-test.mjs --mobile",
+    "brother:test:reset": "node scripts/reset-brother-test.mjs",
+    "reset:demo": "npm --workspace @wakeel/api run reset:demo"
+  },
+  "overrides": {
+    "postcss": "8.5.15",
+    "uuid": "11.1.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "tsx": "^4.22.4",
+    "typescript": "latest",
+    "yaml": "^2.9.0"
+  }
+}

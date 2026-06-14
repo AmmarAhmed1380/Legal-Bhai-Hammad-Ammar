@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Wakeel · Engineering Handoff</title>
+<link rel="icon" href="../../assets/favicon.svg"/>
+<link rel="stylesheet" href="../../colors_and_type.css"/>
+<script src="https://unpkg.com/lucide@0.378.0/dist/umd/lucide.min.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-sans);
+    color: var(--fg1);
+    background: var(--background);
+    line-height: 1.5;
+  }
+  :root { --sidebar-w: 280px; }
+  .doc { display: grid; grid-template-columns: var(--sidebar-w) 1fr; max-width: 1440px; margin: 0 auto; }
+
+  /* Sidebar */
+  .sidebar {
+    position: sticky; top: 0; height: 100vh; padding: 28px 22px 32px;
+    border-right: 1px solid var(--border);
+    background: var(--surface-muted);
+    overflow-y: auto;
+    font-size: 13.5px;
+  }
+  .sidebar .brand {
+    display: flex; align-items: center; gap: 10px; padding-bottom: 20px; margin-bottom: 22px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar .brand img { width: 22px; height: 22px; }
+  .sidebar .brand .name { font-family: var(--font-display); font-weight: 600; font-size: 17px; color: var(--primary-dark); letter-spacing: -0.01em; }
+  .sidebar .brand .sub { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em; color: var(--fg3); margin-left: auto; }
+  .nav-group { margin-bottom: 18px; }
+  .nav-group .h { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.14em; color: var(--fg3); font-weight: 700; margin-bottom: 8px; text-transform: uppercase; }
+  .nav-link {
+    display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 7px;
+    color: var(--fg2); text-decoration: none; margin: 1px 0;
+  }
+  .nav-link:hover { background: #fff; color: var(--fg1); }
+  .nav-link .badge {
+    margin-left: auto; font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    color: var(--fg3); background: var(--border); padding: 2px 6px; border-radius: 4px;
+  }
+
+  /* Content */
+  .content { padding: 40px 56px 120px; max-width: 980px; }
+
+  .masthead {
+    margin-bottom: 48px; padding-bottom: 32px; border-bottom: 1px solid var(--border);
+  }
+  .masthead .eyebrow {
+    font-family: var(--font-mono); font-size: 11.5px; font-weight: 700; color: var(--primary); letter-spacing: 0.14em; text-transform: uppercase;
+  }
+  .masthead h1 { font-family: var(--font-display); font-size: 52px; font-weight: 600; letter-spacing: -0.025em; margin: 14px 0 16px; line-height: 1.05; }
+  .masthead .lede { font-size: 18px; color: var(--fg2); line-height: 28px; max-width: 700px; }
+  .masthead .meta {
+    display: flex; gap: 28px; margin-top: 28px; padding: 16px 20px;
+    background: #fff; border: 1px solid var(--border); border-radius: 10px;
+    font-family: var(--font-mono); font-size: 12.5px;
+  }
+  .masthead .meta > div { display: flex; flex-direction: column; gap: 2px; }
+  .masthead .meta .k { color: var(--fg3); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; }
+  .masthead .meta .v { color: var(--fg1); font-weight: 600; }
+
+  section.block { margin-bottom: 64px; scroll-margin-top: 24px; }
+  section.block > h2 {
+    font-family: var(--font-display); font-size: 30px; font-weight: 600; letter-spacing: -0.018em;
+    margin: 0 0 8px; display: flex; align-items: baseline; gap: 14px;
+  }
+  section.block > h2 .n { font-family: var(--font-mono); font-size: 14px; color: var(--primary); font-weight: 700; letter-spacing: 0.1em; }
+  section.block > .intro { font-size: 15.5px; color: var(--fg2); line-height: 24px; max-width: 720px; margin: 0 0 24px; }
+
+  h3.sub { font-family: var(--font-display); font-size: 20px; font-weight: 600; margin: 32px 0 12px; letter-spacing: -0.01em; }
+
+  /* Code and inline code */
+  code, .mono { font-family: var(--font-mono); font-size: 12.5px; }
+  .content p code, .content li code, .content td code {
+    background: #fff; border: 1px solid var(--border); padding: 1px 6px; border-radius: 4px; color: var(--primary-dark);
+    font-size: 12px;
+  }
+
+  /* Tables */
+  .tbl {
+    width: 100%; border-collapse: separate; border-spacing: 0;
+    background: #fff; border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+    font-size: 13.5px;
+  }
+  .tbl th {
+    background: var(--surface-muted); text-align: left; padding: 11px 14px;
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.12em; color: var(--fg3); font-weight: 700; text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+  }
+  .tbl td { padding: 12px 14px; border-top: 1px solid var(--border); vertical-align: top; }
+  .tbl tr:first-child td { border-top: 0; }
+  .tbl .pill {
+    display: inline-block; padding: 2px 8px; border-radius: 5px;
+    font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+  }
+  .pill.live { background: var(--live-bg); color: var(--live-fg); }
+  .pill.demo { background: var(--demo-bg); color: var(--demo-fg); }
+  .pill.new  { background: var(--accent-light); color: var(--accent); }
+  .pill.change { background: #E6F1FB; color: #185FA5; }
+
+  /* Screen card grid */
+  .screens { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .scard {
+    background: #fff; border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px 18px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .scard .head { display: flex; justify-content: space-between; align-items: baseline; }
+  .scard .head .label { font-family: var(--font-mono); font-size: 11px; color: var(--fg3); letter-spacing: 0.1em; font-weight: 700; }
+  .scard .title { font-family: var(--font-display); font-size: 17px; font-weight: 600; letter-spacing: -0.01em; margin: 2px 0 4px; }
+  .scard .desc { font-size: 13px; color: var(--fg2); line-height: 19px; }
+  .scard .kv { display: grid; grid-template-columns: 80px 1fr; gap: 3px 10px; font-size: 11.5px; margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .scard .kv .k { color: var(--fg3); font-family: var(--font-mono); letter-spacing: 0.05em; }
+  .scard .kv .v { color: var(--fg1); font-family: var(--font-mono); word-break: break-all; }
+
+  /* Callout boxes */
+  .callout {
+    background: var(--primary-light); border-left: 4px solid var(--primary); border-radius: 8px;
+    padding: 16px 20px; font-size: 14px; line-height: 22px; color: var(--fg1);
+    margin: 20px 0;
+  }
+  .callout.warn { background: #FAEEDA; border-left-color: #C97C0A; }
+  .callout.danger { background: var(--accent-light); border-left-color: var(--accent); }
+  .callout strong { font-weight: 700; }
+
+  /* Stack list */
+  .stack { display: grid; grid-template-columns: 220px 1fr; gap: 14px 24px; font-size: 14px; align-items: baseline; }
+  .stack .k { font-family: var(--font-mono); font-size: 12px; color: var(--fg3); font-weight: 700; letter-spacing: 0.08em; padding-top: 2px; }
+  .stack .v { color: var(--fg1); }
+  .stack .v .tag { display: inline-block; padding: 1px 6px; border-radius: 4px; background: var(--primary-light); color: var(--primary-dark); font-size: 11px; font-family: var(--font-mono); font-weight: 700; margin-right: 6px; }
+
+  /* API endpoints */
+  .endpoint {
+    display: grid; grid-template-columns: 70px 1fr; gap: 14px; align-items: baseline;
+    padding: 12px 16px; background: #fff; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px;
+    font-family: var(--font-mono); font-size: 13px;
+  }
+  .endpoint .m { font-weight: 700; padding: 3px 8px; border-radius: 5px; text-align: center; font-size: 11px; letter-spacing: 0.06em; }
+  .endpoint .m.get { background: #E1F5EE; color: #08503F; }
+  .endpoint .m.post { background: #E6F1FB; color: #185FA5; }
+  .endpoint .m.patch { background: #FAEEDA; color: #7A5B18; }
+  .endpoint .m.delete { background: var(--accent-light); color: var(--accent); }
+  .endpoint .path { color: var(--primary-dark); font-weight: 600; }
+  .endpoint .note { color: var(--fg2); font-family: var(--font-sans); font-size: 12.5px; margin-top: 2px; }
+
+  /* Phase timeline */
+  .phases { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  .phase {
+    display: grid; grid-template-columns: 80px 1fr 140px 90px; gap: 18px; align-items: center;
+    padding: 14px 18px; background: #fff; border: 1px solid var(--border); border-radius: 10px;
+  }
+  .phase .num { font-family: var(--font-display); font-size: 32px; font-weight: 600; color: var(--primary); letter-spacing: -0.02em; }
+  .phase .title { font-size: 15px; font-weight: 700; }
+  .phase .title .dsc { display: block; font-size: 12.5px; color: var(--fg2); font-weight: 400; margin-top: 2px; }
+  .phase .range { font-family: var(--font-mono); font-size: 11.5px; color: var(--fg3); letter-spacing: 0.06em; }
+  .phase .effort { font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--primary-dark); text-align: right; }
+
+  /* Print */
+  @media print {
+    body { background: #fff; }
+    .sidebar { display: none; }
+    .doc { grid-template-columns: 1fr; }
+    section.block { break-inside: avoid; page-break-inside: avoid; }
+    .scard, .endpoint, .phase, .callout, .tbl { break-inside: avoid; page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<div class="doc">
+
+<!-- ================= SIDEBAR ================= -->
+<aside class="sidebar">
+  <div class="brand">
+    <img src="../../assets/wakeel-mark.svg"/>
+    <div>
+      <div class="name">Wakeel</div>
+    </div>
+    <div class="sub">V1 · HANDOFF</div>
+  </div>
+
+  <div class="nav-group">
+    <div class="h">Overview</div>
+    <a href="#context" class="nav-link"><i data-lucide="info" style="width:13px;height:13px;"></i> Context</a>
+    <a href="#stack" class="nav-link"><i data-lucide="layers" style="width:13px;height:13px;"></i> Stack</a>
+    <a href="#roadmap" class="nav-link"><i data-lucide="git-branch" style="width:13px;height:13px;"></i> Roadmap</a>
+  </div>
+  <div class="nav-group">
+    <div class="h">Surfaces</div>
+    <a href="#mobile" class="nav-link"><i data-lucide="smartphone" style="width:13px;height:13px;"></i> Mobile app <span class="badge">12</span></a>
+    <a href="#dashboard" class="nav-link"><i data-lucide="monitor" style="width:13px;height:13px;"></i> Dashboard <span class="badge">9</span></a>
+    <a href="#portal" class="nav-link"><i data-lucide="link-2" style="width:13px;height:13px;"></i> Client portal <span class="badge">5</span></a>
+    <a href="#marketing" class="nav-link"><i data-lucide="globe" style="width:13px;height:13px;"></i> Marketing <span class="badge">1</span></a>
+  </div>
+  <div class="nav-group">
+    <div class="h">Backend</div>
+    <a href="#api" class="nav-link"><i data-lucide="database" style="width:13px;height:13px;"></i> API surface</a>
+    <a href="#data" class="nav-link"><i data-lucide="table" style="width:13px;height:13px;"></i> Data model</a>
+    <a href="#ingestion" class="nav-link"><i data-lucide="download-cloud" style="width:13px;height:13px;"></i> Court ingestion</a>
+  </div>
+  <div class="nav-group">
+    <div class="h">Ops</div>
+    <a href="#design-tokens" class="nav-link"><i data-lucide="palette" style="width:13px;height:13px;"></i> Tokens</a>
+    <a href="#i18n" class="nav-link"><i data-lucide="languages" style="width:13px;height:13px;"></i> i18n / RTL</a>
+    <a href="#telemetry" class="nav-link"><i data-lucide="activity" style="width:13px;height:13px;"></i> Telemetry</a>
+    <a href="#open" class="nav-link"><i data-lucide="circle-alert" style="width:13px;height:13px;"></i> Open questions</a>
+  </div>
+
+  <div style="margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--fg3); line-height: 18px;">
+    <div style="font-family: var(--font-mono); font-weight: 700; letter-spacing: 0.08em; color: var(--fg2);">OWNERS</div>
+    <div style="margin-top: 6px;">Design — Farah Jalil<br/>Engineering — Bilal Saeed<br/>Product — Asma Hafeez</div>
+  </div>
+</aside>
+
+<!-- ================= CONTENT ================= -->
+<main class="content">
+
+<!-- Masthead -->
+<div class="masthead">
+  <div class="eyebrow">Engineering handoff · v1.0 · April 2026</div>
+  <h1>Wakeel build package — designs to code paths.</h1>
+  <p class="lede">
+    Every screen in the v1 design is mapped here to an existing file in the <code>LEGALBAHI</code> monorepo, a proposed new route, an API endpoint, and a telemetry event. This doc is the seam between the design canvas and the engineering backlog — a single shared bookmark for every standup between now and release.
+  </p>
+  <div class="meta">
+    <div><span class="k">Design source</span><span class="v">product/canvas.html</span></div>
+    <div><span class="k">Repo</span><span class="v">github.com/fambzzhh/legalbahi</span></div>
+    <div><span class="k">Target branch</span><span class="v">release/v1</span></div>
+    <div><span class="k">Ship window</span><span class="v">Q3 2026</span></div>
+  </div>
+</div>
+
+<!-- 1. Context -->
+<section class="block" id="context">
+  <h2><span class="n">01</span> Context · what we are shipping</h2>
+  <p class="intro">Wakeel v1 is a three-surface SaaS — a lawyer's mobile app, a firm dashboard, and a client portal — sharing one backend. The v1 scope is Islamabad-first: live cause-list sync from IHC + Islamabad District + Rawalpindi District. All other courts are seeded demo data, clearly labelled in the UI.</p>
+
+  <h3 class="sub">What's new in v1 (vs the April demo)</h3>
+  <table class="tbl">
+    <tr><th style="width:60px;">Area</th><th>Added</th><th style="width:100px;">Status</th></tr>
+    <tr><td>Mobile</td><td>Home, Calendar (week+day), Alerts inbox, Vault, Time tracking, Client chat, Settings, Case detail with hearing timeline</td><td><span class="pill new">NEW</span></td></tr>
+    <tr><td>Mobile</td><td>Existing App.tsx single-screen flow is being replaced</td><td><span class="pill change">REWRITE</span></td></tr>
+    <tr><td>Dashboard</td><td>Cases roster, Week calendar, Time/invoicing, Clients CRM, Conflict-check, Admin, Search, Onboarding flow</td><td><span class="pill new">NEW</span></td></tr>
+    <tr><td>Dashboard</td><td>Existing /dashboard + /cases routes get new layouts &amp; sidebar shell</td><td><span class="pill change">REFACTOR</span></td></tr>
+    <tr><td>Portal</td><td>Multi-case home (was single share), client chat thread, document viewer</td><td><span class="pill new">NEW</span></td></tr>
+    <tr><td>Portal</td><td>Existing /share/[token] redirects to /c/[token] and lists cases</td><td><span class="pill change">REROUTE</span></td></tr>
+    <tr><td>Marketing</td><td>wakeel.pk landing page — first public site</td><td><span class="pill new">NEW</span></td></tr>
+  </table>
+</section>
+
+<!-- 2. Stack -->
+<section class="block" id="stack">
+  <h2><span class="n">02</span> Stack · no surprises</h2>
+  <p class="intro">No rewrites. We are keeping Expo + Next.js + Fastify and adding where the designs demand it.</p>
+  <div class="stack">
+    <div class="k">MOBILE</div><div class="v"><span class="tag">Expo 51</span><span class="tag">React Native 0.74</span> TypeScript · React Query · MMKV for offline cache · i18next (English + Urdu)</div>
+    <div class="k">WEB</div><div class="v"><span class="tag">Next.js 15</span><span class="tag">App Router</span> RSC where possible · Tailwind mapped to our tokens · shadcn primitives (Button, Dialog, Toast, Popover) · TanStack Table</div>
+    <div class="k">API</div><div class="v"><span class="tag">Fastify 4</span><span class="tag">TypeBox</span> Postgres 15 · Redis (queue + cache) · S3-compatible (Wasabi Karachi) for documents</div>
+    <div class="k">AUTH</div><div class="v">Magic-link email for lawyers · SMS OTP for clients via Jazz SMS · session JWT (30-day refresh)</div>
+    <div class="k">INGESTION</div><div class="v">BullMQ workers · Playwright-powered scrapers · OpenAI gpt-4o for PDF extraction · manual review queue in admin dashboard</div>
+    <div class="k">OBSERVABILITY</div><div class="v">PostHog (PK self-host) · Sentry for errors · Grafana for ingestion SLOs</div>
+    <div class="k">HOSTING</div><div class="v">Primary: PTCL DC Lahore · Replica: Cybernet Karachi · CDN: Cloudflare (no PK data residency issues, cache-only)</div>
+    <div class="k">CI/CD</div><div class="v">GitHub Actions · Expo EAS for mobile · Vercel-compatible containers on primary DC</div>
+  </div>
+</section>
+
+<!-- 3. Roadmap -->
+<section class="block" id="roadmap">
+  <h2><span class="n">03</span> Roadmap · 14 weeks to v1</h2>
+  <p class="intro">Ordering matches the design phases. Each phase closes with a demo to Asma + a partner-track firm. Slippage is acceptable within a phase — phase boundaries are not.</p>
+  <div class="phases">
+    <div class="phase"><span class="num">01</span><span class="title">Foundations & onboarding<span class="dsc">Design tokens in code · sign-up · court-sync wizard · firm-shape questionnaire</span></span><span class="range">W1 → W2</span><span class="effort">1 FE · 1 BE</span></div>
+    <div class="phase"><span class="num">02</span><span class="title">Mobile v1<span class="dsc">Home · Cases · Calendar · Alerts · Vault · Time · Chat · Settings · Case detail</span></span><span class="range">W3 → W6</span><span class="effort">2 FE · 1 BE</span></div>
+    <div class="phase"><span class="num">03</span><span class="title">Dashboard v1<span class="dsc">Shell · Cases · Calendar · Time/Invoice · Clients · Conflict · Admin · Search</span></span><span class="range">W5 → W9</span><span class="effort">2 FE · 1 BE</span></div>
+    <div class="phase"><span class="num">04</span><span class="title">Client portal v1<span class="dsc">Multi-case home · chat · document viewer · SMS magic-link flow</span></span><span class="range">W8 → W10</span><span class="effort">1 FE · 1 BE</span></div>
+    <div class="phase"><span class="num">05</span><span class="title">Marketing site<span class="dsc">wakeel.pk landing · demo booking · signup funnel instrumentation</span></span><span class="range">W10 → W11</span><span class="effort">1 FE</span></div>
+    <div class="phase"><span class="num">06</span><span class="title">Polish · i18n · load testing<span class="dsc">Urdu strings · RTL audit · perf · seed-data reset for sales demos</span></span><span class="range">W12 → W14</span><span class="effort">Full team</span></div>
+  </div>
+</section>
+
+<!-- 4. MOBILE -->
+<section class="block" id="mobile">
+  <h2><span class="n">04</span> Mobile app · 12 screens</h2>
+  <p class="intro">Expo app. Replaces the existing single-screen <code>App.tsx</code>. New navigation is a <code>@react-navigation/native</code> bottom tab (Home · Cases · Calendar · Alerts · More) with a shell stack on top for detail views and modals.</p>
+
+  <div class="callout">
+    <strong>Before touching code:</strong> delete the placeholder <code>apps/mobile/App.tsx</code> flow. New entry point is <code>apps/mobile/src/app/_layout.tsx</code> with Expo Router. The existing <code>src/theme.ts</code> stays — we import tokens from <code>@wakeel/shared</code> now (new package).
+  </div>
+
+  <div class="screens">
+    <div class="scard">
+      <div class="head"><span class="label">M-01 · ROOT</span><span class="pill live">live</span></div>
+      <div class="title">Home</div>
+      <div class="desc">Today's hearings, conflicts, next-up card, prayer-time overlay, hours-logged pill.</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/m-home.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/mobile/src/app/(tabs)/index.tsx</span>
+        <span class="k">API</span><span class="v">GET /me/today, GET /me/conflicts</span>
+      </div>
+    </div>
+    <div class="scard">
+      <div class="head"><span class="label">M-02 · TAB</span><span class="pill live">live</span></div>
+      <div class="title">Cases list</div>
+      <div class="desc">Filterable by stage (filing/notice/written/…), sortable by next hearing, search.</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/m-cases-calendar.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/mobile/src/app/(tabs)/cases.tsx</span>
+        <span class="k">API</span><span class="v">GET /cases?stage&amp;q</span>
+      </div>
+    </div>
+    <div class="scard">
+      <div class="head"><span class="label">M-03 · TAB</span><span class="pill live">live</span></div>
+      <div class="title">Calendar · week + day</div>
+      <div class="desc">Swipe between weeks; tap a day for the timeline view. Holidays from courtHolidayPK.</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/m-cases-calendar.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/mobile/src/app/(tabs)/calendar.tsx</span>
+        <span class="k">API</span><span class="v">GET /hearings?from&amp;to</span>
+      </div>
+    </div>
+    <div class="scard">
+      <div class="head"><span class="label">M-04 · TAB</span><span class="pill live">live</span></div>
+      <div class="title">Alerts inbox</div>
+      <div class="desc">Grouped notifications: date-change, conflict, document, invoice. Unread badge syncs with push.</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/m-more.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/mobile/src/app/(tabs)/alerts.tsx</span>
+        <span class="k">API</span><span class="v">GET /alerts, PATCH /alerts/:id</span>
+      </div>
+    </div>
+    <div class="scard">
+      <div class="head"><span class="label">M-05 · STACK</span><span class="pill new">new</span></div>
+      <div class="title">Vault — documents</div>
+      <div class="desc">Tree by matter · flat recent view · in-app PDF/photo viewer with markup.</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/m-more.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/mobile/src/app/vault/[[...path]].tsx</span>
+        <span class="k">API</span><span class="v">GET /docs, POST /docs (multipart)</span>
+      </div>
+    </div>
+    <div class="scard">
+      <div class="head"><span class="label">M-06 · STACK</span><span class="pill new">new</span></div>
+      <div class="title">Time tracking</div>
+      <div class="desc">Timer in the corner across screens · quick-log with presets (Hearing, Drafting, Conference).</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/m-more.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/mobile/src/app/time/index.tsx</span>
+        <span class="k">API</span><span class="v">POST /time, GET /time/recent</span>
+      </div>
+    </div>
+    <div class="scard">
+      <div class="head"><span class="label">M-07 · STACK</span><span class="pill new">new</span></div>
+      <div class="title">Client chat</div>
+      <div class="desc">E2E encrypted per PBC-compliance. One thread per case; group thread for multi-case clients.</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/m-more.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/mobile/src/app/chat/[caseId].tsx</span>
+        <span class="k">API</span><span class="v">WS /chat/:caseId</span>
+      </div>
+    </div>
+    <div class="scard">
+      <div class="head"><span class="label">M-08 · STACK</span><span class="pill demo">demo</span></div>
+      <div class="title">Settings + More</div>
+      <div class="desc">Profile · firm-switcher · language (English/Urdu) · notifications · Bar Council ID.</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/m-more.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/mobile/src/app/settings/index.tsx</span>
+        <span class="k">API</span><span class="v">GET /me, PATCH /me</span>
+      </div>
+    </div>
+    <div class="scard">
+      <div class="head"><span class="label">M-09 · STACK</span><span class="pill live">live</span></div>
+      <div class="title">Case detail</div>
+      <div class="desc">Timeline of stages + hearings · linked documents · quick actions (snap order, SMS client, log time).</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/m-case-detail.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/mobile/src/app/case/[id].tsx</span>
+        <span class="k">API</span><span class="v">GET /cases/:id, GET /cases/:id/events</span>
+      </div>
+    </div>
+    <div class="scard">
+      <div class="head"><span class="label">M-10 · FLOW</span><span class="pill new">new</span></div>
+      <div class="title">Onboarding · 4 steps</div>
+      <div class="desc">Bar ID → court picker → client list import → first-sync loading state.</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/m-onboarding.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/mobile/src/app/onboarding/[step].tsx</span>
+        <span class="k">API</span><span class="v">POST /onboarding/*</span>
+      </div>
+    </div>
+    <div class="scard">
+      <div class="head"><span class="label">M-11 · MODAL</span><span class="pill new">new</span></div>
+      <div class="title">Snap order → OCR</div>
+      <div class="desc">Camera modal over tabs · run OCR · confirm next date / order text before filing into case.</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/m-case-detail.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/mobile/src/app/snap-order.tsx</span>
+        <span class="k">API</span><span class="v">POST /ocr (multipart)</span>
+      </div>
+    </div>
+    <div class="scard">
+      <div class="head"><span class="label">M-12 · MODAL</span><span class="pill new">new</span></div>
+      <div class="title">SMS preview + send</div>
+      <div class="desc">Urdu/English toggle · shows exact message + cost · single-tap confirm.</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/m-case-detail.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/mobile/src/app/sms.tsx</span>
+        <span class="k">API</span><span class="v">POST /sms</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 5. DASHBOARD -->
+<section class="block" id="dashboard">
+  <h2><span class="n">05</span> Dashboard · 9 screens</h2>
+  <p class="intro">Next.js App Router. Everything lives under a <code>(shell)</code> route group with the persistent left nav + search. We are <strong>not</strong> touching the existing <code>/share/[token]</code> route — it is portal territory.</p>
+
+  <div class="screens">
+    <div class="scard">
+      <div class="head"><span class="label">D-01 · INDEX</span><span class="pill live">live</span></div>
+      <div class="title">Shell + Today</div>
+      <div class="desc">Left nav, global search, firm switcher, today's hearings across the whole firm.</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/d-shell.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/web/app/(shell)/page.tsx</span>
+        <span class="k">API</span><span class="v">GET /firm/today</span>
+      </div>
+    </div>
+    <div class="scard">
+      <div class="head"><span class="label">D-02</span><span class="pill live">live</span></div>
+      <div class="title">Cases roster</div>
+      <div class="desc">TanStack Table · server pagination · filters (stage, lawyer, court, client, tag) · saved views.</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/d-cases-calendar.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/web/app/(shell)/cases/page.tsx</span>
+        <span class="k">API</span><span class="v">GET /firm/cases</span>
+      </div>
+    </div>
+    <div class="scard">
+      <div class="head"><span class="label">D-03</span><span class="pill live">live</span></div>
+      <div class="title">Case detail · full</div>
+      <div class="desc">Tabs: overview · parties · hearings · docs · time · invoices · chat · activity.</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/d-cases-calendar.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/web/app/(shell)/cases/[id]/page.tsx</span>
+        <span class="k">API</span><span class="v">GET /cases/:id/full</span>
+      </div>
+    </div>
+    <div class="scard">
+      <div class="head"><span class="label">D-04</span><span class="pill live">live</span></div>
+      <div class="title">Week calendar</div>
+      <div class="desc">Firm-wide week grid · drag a hearing to reassign lawyers · conflict highlighting.</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/d-cases-calendar.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/web/app/(shell)/calendar/page.tsx</span>
+        <span class="k">API</span><span class="v">GET /firm/hearings</span>
+      </div>
+    </div>
+    <div class="scard">
+      <div class="head"><span class="label">D-05</span><span class="pill new">new</span></div>
+      <div class="title">Time · invoicing</div>
+      <div class="desc">Weekly timesheet grid · approval flow · generate invoice (draft → sent → paid).</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/d-ops.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/web/app/(shell)/time/page.tsx</span>
+        <span class="k">API</span><span class="v">GET /time, POST /invoices</span>
+      </div>
+    </div>
+    <div class="scard">
+      <div class="head"><span class="label">D-06</span><span class="pill new">new</span></div>
+      <div class="title">Clients CRM</div>
+      <div class="desc">List · detail with all matters + invoices + last contact · mark-as-VIP.</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/d-ops.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/web/app/(shell)/clients/page.tsx</span>
+        <span class="k">API</span><span class="v">GET /clients, GET /clients/:id</span>
+      </div>
+    </div>
+    <div class="scard">
+      <div class="head"><span class="label">D-07</span><span class="pill new">new</span></div>
+      <div class="title">Admin</div>
+      <div class="desc">Team seats · roles · audit log export · PBC-compliance report · billing.</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/d-ops.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/web/app/(shell)/admin/*</span>
+        <span class="k">API</span><span class="v">GET /firm, POST /firm/invite</span>
+      </div>
+    </div>
+    <div class="scard">
+      <div class="head"><span class="label">D-08</span><span class="pill new">new</span></div>
+      <div class="title">Conflict-check</div>
+      <div class="desc">New-matter wizard flags existing parties across firm history. Works pre-commit.</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/d-ops.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/web/app/(shell)/matters/new</span>
+        <span class="k">API</span><span class="v">POST /conflict/check</span>
+      </div>
+    </div>
+    <div class="scard">
+      <div class="head"><span class="label">D-09 · FLOW</span><span class="pill new">new</span></div>
+      <div class="title">Onboarding + court sync</div>
+      <div class="desc">First-run wizard · court picker · client-list import (CSV or paste) · first-sync progress.</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/d-onboarding-sync.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/web/app/onboarding/[step]/page.tsx</span>
+        <span class="k">API</span><span class="v">POST /onboarding/*</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 6. PORTAL -->
+<section class="block" id="portal">
+  <h2><span class="n">06</span> Client portal · 5 screens</h2>
+  <p class="intro">Public, tokenized, no-install. Each client gets one long-lived URL (<code>wakeel.pk/c/[token]</code>) that lists all their matters with that firm. Existing <code>/share/[token]</code> becomes a 301 redirect.</p>
+
+  <div class="callout warn">
+    <strong>SMS-deliverability note:</strong> The token in the URL MUST fit a 160-char SMS budget after the Urdu/English body, firm name, and next-hearing line. Keep tokens to 22 chars max (base62 × 22 ≈ 130 bits of entropy — plenty).
+  </div>
+
+  <div class="screens">
+    <div class="scard">
+      <div class="head"><span class="label">P-01 · INDEX</span><span class="pill live">live</span></div>
+      <div class="title">Client home · multi-case</div>
+      <div class="desc">Greeting · all active cases with next hearing · firm contact card.</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/c-portal.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/web/app/c/[token]/page.tsx</span>
+        <span class="k">API</span><span class="v">GET /portal/cases</span>
+      </div>
+    </div>
+    <div class="scard">
+      <div class="head"><span class="label">P-02</span><span class="pill live">live</span></div>
+      <div class="title">Case detail (portal)</div>
+      <div class="desc">Timeline · next hearing · latest order image · document list · chat entry-point.</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/c-portal.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/web/app/c/[token]/case/[id]/page.tsx</span>
+        <span class="k">API</span><span class="v">GET /portal/cases/:id</span>
+      </div>
+    </div>
+    <div class="scard">
+      <div class="head"><span class="label">P-03</span><span class="pill new">new</span></div>
+      <div class="title">Client chat</div>
+      <div class="desc">Read-only to start; write requires verify-your-number OTP on first send.</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/c-portal.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/web/app/c/[token]/chat/[caseId]</span>
+        <span class="k">API</span><span class="v">WS /portal/chat</span>
+      </div>
+    </div>
+    <div class="scard">
+      <div class="head"><span class="label">P-04</span><span class="pill new">new</span></div>
+      <div class="title">Document viewer</div>
+      <div class="desc">PDF.js · image lightbox · download only if firm has permitted.</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/c-portal.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/web/app/c/[token]/doc/[id]</span>
+        <span class="k">API</span><span class="v">GET /portal/docs/:id (signed)</span>
+      </div>
+    </div>
+    <div class="scard">
+      <div class="head"><span class="label">P-05 · FLOW</span><span class="pill new">new</span></div>
+      <div class="title">OTP verify (for chat write)</div>
+      <div class="desc">6-digit SMS OTP via Jazz · 10-min expiry · 5-attempt lockout.</div>
+      <div class="kv">
+        <span class="k">DESIGN</span><span class="v">product/screens/c-portal.jsx</span>
+        <span class="k">NEW PATH</span><span class="v">apps/web/app/c/[token]/verify</span>
+        <span class="k">API</span><span class="v">POST /portal/otp, POST /portal/otp/verify</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 7. MARKETING -->
+<section class="block" id="marketing">
+  <h2><span class="n">07</span> Marketing · wakeel.pk</h2>
+  <p class="intro">Separate Next.js project (not in the main app). Stateless, statically generated, with one server action for the demo-booking form → CRM webhook.</p>
+  <table class="tbl">
+    <tr><th>Section</th><th>Source</th><th>Lives at</th></tr>
+    <tr><td>Landing page</td><td><code>product/screens/mkt-landing.jsx</code></td><td><code>apps/marketing/app/page.tsx</code></td></tr>
+    <tr><td>Demo booking</td><td>—</td><td><code>apps/marketing/app/demo/page.tsx</code></td></tr>
+    <tr><td>Privacy / Terms / PBC</td><td>—</td><td><code>apps/marketing/app/legal/[slug]/page.tsx</code> (MDX)</td></tr>
+  </table>
+  <div class="callout">Marketing site uses the same <code>colors_and_type.css</code> tokens as the product, but imports a slimmed-down subset via a new <code>@wakeel/shared/marketing-theme</code> barrel to avoid pulling full RN-compatible code into a browser-only bundle.</div>
+</section>
+
+<!-- 8. API -->
+<section class="block" id="api">
+  <h2><span class="n">08</span> API surface · 34 endpoints</h2>
+  <p class="intro">All new endpoints live under <code>apps/api/src/routes/*.ts</code>. TypeBox schemas shared with the client via <code>@wakeel/api-types</code> (new package). Existing Fastify store layer stays.</p>
+
+  <h3 class="sub">Lawyer-facing (Bearer auth · firm-scoped)</h3>
+  <div class="endpoint"><span class="m get">GET</span><div><span class="path">/me</span><div class="note">Profile + firm + active role</div></div></div>
+  <div class="endpoint"><span class="m get">GET</span><div><span class="path">/me/today</span><div class="note">Today's hearings + conflict count — Mobile Home</div></div></div>
+  <div class="endpoint"><span class="m get">GET</span><div><span class="path">/me/conflicts</span><div class="note">Overlapping hearings for the caller</div></div></div>
+  <div class="endpoint"><span class="m get">GET</span><div><span class="path">/cases?stage&amp;q&amp;cursor</span><div class="note">Cursor-paginated case list · mobile + dashboard</div></div></div>
+  <div class="endpoint"><span class="m get">GET</span><div><span class="path">/cases/:id/full</span><div class="note">Hydrated case for dashboard detail</div></div></div>
+  <div class="endpoint"><span class="m get">GET</span><div><span class="path">/cases/:id/events</span><div class="note">Timeline (filings, hearings, notes)</div></div></div>
+  <div class="endpoint"><span class="m post">POST</span><div><span class="path">/cases</span><div class="note">Create matter (new-matter wizard)</div></div></div>
+  <div class="endpoint"><span class="m post">POST</span><div><span class="path">/conflict/check</span><div class="note">Pre-commit conflict scan</div></div></div>
+  <div class="endpoint"><span class="m get">GET</span><div><span class="path">/hearings?from&amp;to</span><div class="note">Range query for mobile + dashboard calendar</div></div></div>
+  <div class="endpoint"><span class="m patch">PATCH</span><div><span class="path">/hearings/:id</span><div class="note">Reschedule, reassign lawyer, add note</div></div></div>
+  <div class="endpoint"><span class="m get">GET</span><div><span class="path">/docs · <span class="m post" style="font-size:10px;display:inline-block;margin-left:6px;">POST</span> /docs</span><div class="note">Vault list + multipart upload to S3-signed URL</div></div></div>
+  <div class="endpoint"><span class="m post">POST</span><div><span class="path">/ocr</span><div class="note">Snap-order → next-date + text extraction</div></div></div>
+  <div class="endpoint"><span class="m post">POST</span><div><span class="path">/time · <span class="m get" style="font-size:10px;display:inline-block;margin-left:6px;">GET</span> /time/recent</span><div class="note">Time entries + recent-log for quick-repeat</div></div></div>
+  <div class="endpoint"><span class="m post">POST</span><div><span class="path">/invoices</span><div class="note">Create from time entries (draft)</div></div></div>
+  <div class="endpoint"><span class="m patch">PATCH</span><div><span class="path">/invoices/:id</span><div class="note">Status transitions: draft → sent → paid</div></div></div>
+  <div class="endpoint"><span class="m get">GET</span><div><span class="path">/alerts · <span class="m patch" style="font-size:10px;display:inline-block;margin-left:6px;">PATCH</span> /alerts/:id</span><div class="note">Inbox + mark-read · unread drives push badge</div></div></div>
+  <div class="endpoint"><span class="m post">POST</span><div><span class="path">/sms</span><div class="note">Send client SMS via Jazz · returns cost + delivery-id</div></div></div>
+  <div class="endpoint"><span class="m get">GET</span><div><span class="path">/clients · <span class="m get" style="font-size:10px;display:inline-block;margin-left:6px;">GET</span> /clients/:id</span><div class="note">CRM list + detail</div></div></div>
+  <div class="endpoint"><span class="m get">GET</span><div><span class="path">/firm/today · /firm/cases · /firm/hearings</span><div class="note">Dashboard-scoped firm-wide lists</div></div></div>
+  <div class="endpoint"><span class="m post">POST</span><div><span class="path">/firm/invite</span><div class="note">Add seat · role = partner | associate | admin | paralegal</div></div></div>
+
+  <h3 class="sub">Portal (token auth · per-client scope)</h3>
+  <div class="endpoint"><span class="m get">GET</span><div><span class="path">/portal/cases</span><div class="note">All matters visible to the token holder</div></div></div>
+  <div class="endpoint"><span class="m get">GET</span><div><span class="path">/portal/cases/:id</span><div class="note">Single case · public-facing shape (no billing)</div></div></div>
+  <div class="endpoint"><span class="m get">GET</span><div><span class="path">/portal/docs/:id</span><div class="note">Signed URL · 90-second TTL</div></div></div>
+  <div class="endpoint"><span class="m post">POST</span><div><span class="path">/portal/otp · /portal/otp/verify</span><div class="note">SMS OTP for chat-write upgrade</div></div></div>
+
+  <h3 class="sub">Ingestion (cron / BullMQ · system auth)</h3>
+  <div class="endpoint"><span class="m post">POST</span><div><span class="path">/ingest/causelist/:court</span><div class="note">Invoked by worker · idempotent by (court, date, source-etag)</div></div></div>
+  <div class="endpoint"><span class="m post">POST</span><div><span class="path">/ingest/review</span><div class="note">Admin manual-review correction feeds back into model</div></div></div>
+</section>
+
+<!-- 9. DATA MODEL -->
+<section class="block" id="data">
+  <h2><span class="n">09</span> Data model · key tables</h2>
+  <p class="intro">Postgres. Everything is <code>firm_id</code>-scoped at the row level. RLS policies match the Fastify auth context. One <code>events</code> table drives timelines + alerts.</p>
+  <table class="tbl">
+    <tr><th>Table</th><th>Purpose</th><th>Notes</th></tr>
+    <tr><td><code>firms</code></td><td>Tenants</td><td>One firm = one billing entity</td></tr>
+    <tr><td><code>users</code></td><td>Lawyers + admins</td><td>Bar-Council ID uniqueness + email magic-link</td></tr>
+    <tr><td><code>clients</code></td><td>CRM entities</td><td>Mobile, email, address. Per-firm; consolidated across matters.</td></tr>
+    <tr><td><code>cases</code></td><td>Matters</td><td>Court code · case number · stage · lead lawyer · status</td></tr>
+    <tr><td><code>parties</code></td><td>Petitioners/respondents</td><td>Many-to-many with clients via <code>case_client</code></td></tr>
+    <tr><td><code>hearings</code></td><td>Scheduled events</td><td>Unique (case_id, scheduled_at); source = live|demo</td></tr>
+    <tr><td><code>documents</code></td><td>S3-backed blobs</td><td>Case-scoped ACL. Portal visibility is an explicit flag.</td></tr>
+    <tr><td><code>events</code></td><td>Immutable timeline</td><td>Every filing, hearing, order, note · drives /alerts + portal timeline</td></tr>
+    <tr><td><code>time_entries</code></td><td>Billable hours</td><td>Links user + case + optional hearing</td></tr>
+    <tr><td><code>invoices</code></td><td>Billing docs</td><td>Status machine · PDF rendered server-side</td></tr>
+    <tr><td><code>messages</code></td><td>Chat</td><td>E2E-wrapped blob + metadata (who, when, case)</td></tr>
+    <tr><td><code>ingestion_runs</code></td><td>Scraper audit</td><td>One row per court-date-source · drives ops dashboard</td></tr>
+    <tr><td><code>tokens</code></td><td>Portal / OTP</td><td>Portal = long-lived; OTP = 10 min</td></tr>
+  </table>
+</section>
+
+<!-- 10. INGESTION -->
+<section class="block" id="ingestion">
+  <h2><span class="n">10</span> Court ingestion · the actual moat</h2>
+  <p class="intro">Each court is a BullMQ job ladder: <strong>fetch → parse → normalise → match → diff → notify</strong>. The matching step is where we attach cause-list entries to existing firm cases by case number or party-name fuzzy match (p≥0.92).</p>
+  <table class="tbl">
+    <tr><th>Court</th><th>Source</th><th>Interval</th><th>Parse</th><th>SLO</th></tr>
+    <tr><td>IHC</td><td>Structured HTML (causelist.ihc.gov.pk)</td><td>15 min, court hrs</td><td>Cheerio selectors</td><td>99.4% accuracy</td></tr>
+    <tr><td>LHC</td><td>JSON API · 4 benches</td><td>15 min</td><td>Direct</td><td>99.1%</td></tr>
+    <tr><td>Supreme Court</td><td>Structured HTML</td><td>30 min</td><td>Cheerio</td><td>99.7%</td></tr>
+    <tr><td>Islamabad District</td><td>Roster JSON feed</td><td>Hourly</td><td>Direct</td><td>97.8%</td></tr>
+    <tr><td>Rawalpindi District</td><td>Roster JSON feed</td><td>Hourly</td><td>Direct</td><td>97.2%</td></tr>
+    <tr><td>SHC / PHC / BHC</td><td>PDF · daily</td><td>Daily</td><td>pdfplumber → gpt-4o review</td><td>pilot — human in the loop</td></tr>
+  </table>
+
+  <div class="callout warn">
+    <strong>Reliability budget:</strong> ingestion downtime is MORE visible than app downtime. If IHC is missed for a single day, three lawyer-hours of trust evaporate. SLO = 99.5% on-time runs per month; breach triggers on-call in the Islamabad ops team, not engineering.
+  </div>
+</section>
+
+<!-- 11. TOKENS -->
+<section class="block" id="design-tokens">
+  <h2><span class="n">11</span> Design tokens in code</h2>
+  <p class="intro">One source of truth: <code>colors_and_type.css</code>. Move it to <code>@wakeel/shared/tokens.css</code> at the monorepo root and import into both apps. The existing <code>apps/mobile/src/theme.ts</code> becomes a JS bridge that exports the same values for React Native.</p>
+  <table class="tbl">
+    <tr><th>Token category</th><th>Count</th><th>Example</th><th>Consumer</th></tr>
+    <tr><td>Color · palette</td><td>24</td><td><code>--primary: #0F6E56</code></td><td>Web + RN</td></tr>
+    <tr><td>Color · stage pills</td><td>8 × 2</td><td><code>--stage-evidence / -bg</code></td><td>Case detail</td></tr>
+    <tr><td>Source label</td><td>6</td><td><code>--live-bg</code>, <code>--demo-bg</code></td><td>Everywhere</td></tr>
+    <tr><td>Type family</td><td>4</td><td>Source Serif 4 · Plus Jakarta Sans · JetBrains Mono · Noto Nastaliq Urdu</td><td>Web + RN</td></tr>
+    <tr><td>Type scale</td><td>10</td><td><code>--t-xl</code> = 28/36</td><td>Web · RN uses dp equivalent</td></tr>
+    <tr><td>Space / radii / shadows</td><td>18</td><td><code>--space-4</code>, <code>--r-lg</code>, <code>--shadow-card</code></td><td>Web + RN</td></tr>
+  </table>
+</section>
+
+<!-- 12. I18N -->
+<section class="block" id="i18n">
+  <h2><span class="n">12</span> i18n &amp; RTL — Urdu is a first-class locale</h2>
+  <p class="intro">English is the default at launch; Urdu ships in the same binary, toggleable per-user. Sindhi + Punjabi are post-v1.</p>
+  <ul style="margin:0;padding-left:20px;font-size:14.5px;color:var(--fg1);line-height:24px;">
+    <li><code>i18next</code> on both apps with namespaces: <code>common</code>, <code>mobile</code>, <code>dashboard</code>, <code>portal</code>, <code>marketing</code>, <code>ingestion</code> (for SMS templates).</li>
+    <li><strong>Noto Nastaliq Urdu</strong> for all Urdu copy; keep numerals in Western Arabic (1234) because PK legal users read case numbers that way.</li>
+    <li>RTL <em>only</em> flips layout for Urdu — English+Urdu bilingual strings (common on SMS) stay LTR in composition mode.</li>
+    <li>Date formats localise via <code>date-fns-tz</code> + Pakistan-specific format (<code>d MMM</code>, always 24-hour). Court-day names in Urdu come from a static map, not ICU.</li>
+    <li>SMS templates are Urdu-default — most clients read them on feature phones. See <code>apps/api/src/sms/templates/</code>.</li>
+  </ul>
+</section>
+
+<!-- 13. TELEMETRY -->
+<section class="block" id="telemetry">
+  <h2><span class="n">13</span> Telemetry · what gets measured</h2>
+  <p class="intro">PostHog self-hosted on PTCL DC Lahore. No data leaves the country. These six events drive the weekly product review; everything else is structured logs in Grafana.</p>
+  <table class="tbl">
+    <tr><th>Event</th><th>When</th><th>Used for</th></tr>
+    <tr><td><code>hearing_viewed</code></td><td>Mobile Home render with ≥1 hearing</td><td>DAU · stickiness</td></tr>
+    <tr><td><code>client_sms_sent</code></td><td>After SMS delivery confirmation</td><td>Viral loop metric</td></tr>
+    <tr><td><code>conflict_flagged</code></td><td>Before matter committed</td><td>Product-value proof</td></tr>
+    <tr><td><code>invoice_issued</code></td><td>Status → sent</td><td>$$ activation</td></tr>
+    <tr><td><code>portal_opened</code></td><td>Client clicks SMS link</td><td>Portal adoption · correlates to retention</td></tr>
+    <tr><td><code>ingestion_missed</code></td><td>Scheduled run failed SLO</td><td>Trust incidents — reviewed weekly</td></tr>
+  </table>
+</section>
+
+<!-- 14. OPEN QUESTIONS -->
+<section class="block" id="open">
+  <h2><span class="n">14</span> Open questions · decisions we still owe</h2>
+  <div class="callout danger">
+    <strong>Blocker — push notifications on budget Androids.</strong> Firebase works but Jazz-SIM users on MTN / Zong with aggressive battery savers miss ~18% of alerts. Evaluating: (a) Jazz direct-SMS fallback for high-priority alerts only; (b) self-hosted MQTT with WebSocket polling. Owner: Bilal. Due W4.
+  </div>
+  <ul style="margin:0;padding-left:20px;font-size:14.5px;color:var(--fg1);line-height:24px;">
+    <li><strong>E2E chat key management</strong> — sticking with Signal-protocol shim or rolling simpler double-ratchet internally? Asma wants bar-council-auditable keys.</li>
+    <li><strong>Cross-firm conflict-check</strong> — the deepest version needs a global case-party index. Do we honour "opt-in anonymous hashing" (each firm contributes hashed party names) or keep conflict-check firm-local in v1?</li>
+    <li><strong>PDF viewer in portal</strong> — PDF.js is heavy. Do we pre-render to WebP pages on upload and show those by default? Decision needed before W8.</li>
+    <li><strong>Partner-track firms can A/B test</strong>. Which firms pilot which features? Ops to propose by W2.</li>
+    <li><strong>Marketing DNS</strong> — wakeel.pk or wakeel.com.pk as primary? Registrar preference sits with finance.</li>
+  </ul>
+</section>
+
+<div style="margin-top:80px;padding-top:28px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--fg3);font-family:var(--font-mono);letter-spacing:0.06em;">
+  <span>Wakeel v1 · Engineering Handoff · April 2026 · Confidential</span>
+  <span>Questions → <span style="color:var(--primary-dark);font-weight:700;">bilal@wakeel.pk</span></span>
+</div>
+
+</main>
+</div>
+
+<script>
+  if (window.lucide) window.lucide.createIcons();
+</script>
+
+</body>
+</html>

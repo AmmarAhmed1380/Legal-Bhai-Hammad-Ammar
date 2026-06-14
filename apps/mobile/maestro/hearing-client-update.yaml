@@ -1,0 +1,25 @@
+appId: pk.legalbahi.app
+---
+- launchApp:
+    clearState: true
+- tapOn: "Phone"
+- eraseText
+- inputText: ${STAFF_PHONE}
+- tapOn: "Request OTP"
+- tapOn: "OTP code"
+- inputText: ${STAFF_OTP}
+- tapOn: "Verify OTP and sign in"
+- tapOn: "Matters"
+- tapOn: ${MATTER_CASE_NUMBER}
+- tapOn: "Hearing notes"
+- eraseText
+- inputText: ${HEARING_NOTES}
+- tapOn: "Next date (YYYY-MM-DD)"
+- inputText: ${NEXT_DATE}
+- tapOn: "Save hearing update"
+- assertVisible: "Hearing saved"
+- tapOn: "Reply to client"
+- eraseText
+- inputText: ${CLIENT_UPDATE}
+- tapOn: "Send update"
+- assertVisible: ${CLIENT_UPDATE}

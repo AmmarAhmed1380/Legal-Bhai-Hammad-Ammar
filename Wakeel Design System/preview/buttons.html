@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  html,body{margin:0;background:var(--surface);}
+  body{padding:20px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;}
+  button{border:0;border-radius:10px;padding:12px 20px;font-weight:700;font-family:var(--font-sans);cursor:pointer;font-size:14px;transition:transform 200ms var(--ease-out), background 200ms var(--ease-out);}
+  button:active{transform:scale(0.98);}
+  .primary{background:var(--primary);color:#fff;}
+  .primary:hover{background:var(--primary-dark);}
+  .secondary{background:#fff;color:var(--primary);border:1px solid rgba(15,110,86,0.25);}
+  .secondary:hover{border-color:rgba(15,110,86,0.5);}
+  .danger{background:var(--accent-light);color:var(--accent);border:1px solid rgba(216,90,48,0.25);}
+  .ghost{background:transparent;color:var(--primary);padding:12px 14px;}
+  .tab{display:inline-flex;padding:10px 14px;border-radius:9999px;background:#fff;border:1px solid var(--border);font-size:13px;font-weight:600;color:var(--fg1);}
+  .tab.active{background:var(--primary);color:#fff;border-color:var(--primary);}
+  .disabled{opacity:0.5;pointer-events:none;}
+</style>
+</head>
+<body>
+<button class="primary">Enter Dashboard</button>
+<button class="secondary">Sync IHC</button>
+<button class="danger">Reset demo</button>
+<button class="primary disabled">Signing in…</button>
+<span class="tab active">home</span>
+<span class="tab">cases</span>
+<span class="tab">calendar</span>
+</body>
+</html>

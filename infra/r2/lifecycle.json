@@ -1,0 +1,13 @@
+{
+  "rules": [
+    {
+      "id": "delete-postgres-backups-after-30-days",
+      "enabled": true,
+      "prefix": "postgres/",
+      "expiration": {
+        "days": 30
+      }
+    }
+  ]
+}
+

@@ -1,0 +1,252 @@
+[
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Capital Sentence Reference. 2/2025<br />Blasphemy Act <br />-",
+    "expected": "CAPITAL SENTENCE REFERENCE 2/2025"
+  },
+  {
+    "snapshot": "ihc-2026-04-21-regular.html",
+    "rawCaseCellHtml": "Civil Miscellaneous Appeals. 57/2025<br /> <br />CM 1/2025 (Exemption),<br>",
+    "expected": "CIVIL MISCELLANEOUS APPEALS 57/2025"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Civil Original Suit. 4/2025<br />Recovery <br />CM 1/2025 (Stay),<br>CM 1085/2025 (Miscellaneous),<br>CM 1112/2025 (Petition For Leave To Appear and Defend The Suit),<br>CM 1111/2025 (Petition For Leave To Appear and Defend The Suit),<br>",
+    "expected": "CIVIL ORIGINAL SUIT 4/2025"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Civil Revision. 112/2026<br />Against Interim Order <br />CM 1/2026 (Exemption),<br>CM 2/2026 (Stay),<br>",
+    "expected": "CIVIL REVISION 112/2026"
+  },
+  {
+    "snapshot": "ihc-2026-04-22-regular.html",
+    "rawCaseCellHtml": "CM Independent. 505/2025<br />Civil <br />CM 1/2025 (Stay),<br>CM 2/2025 (Condonation of delay),<br>CM 821/2025 (Additional Documents),<br>",
+    "expected": "CM INDEPENDENT 505/2025"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Companies Original. 10/2024<br />Winding Up Petition <br />CM 1174/2024 (Impleadment),<br>CM 1349/2024 (Stay),<br>CM 591/2025 (Stay),<br>CM 592/2025 (Exemption),<br>",
+    "expected": "COMPANIES ORIGINAL 10/2024"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Criminal Appeal. 230/2025<br />Against Convct. PPC Upto 7 years<br />-",
+    "expected": "CRIMINAL APPEAL 230/2025"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Criminal Miscellaneous. 228/2026<br />Bail Cancellation<br />-",
+    "expected": "CRIMINAL MISCELLANEOUS 228/2026"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Criminal Original. 127/2025<br />Writ <br />CM 6/2025 (Additional Documents),<br>, CM 7/2025 (Exemption),<br>, CM 14/2025 (Exemption),<br>, CM 15/2025 (Correction OR Rectification of order),<br>, CM 26/2026 (Impleadment),<br>, CM 27/2026 (Exemption),<br>, CM 24/2026 (Exemption),<br>, CM 23/2026 (Correction OR Rectification of order),<br>, CM 19/2026 (Miscellaneous),<br>, CM 20/2026 (Exemption),<br>, CM 13/2025 (Miscellaneous),<br>, CM 21/2026 (Miscellaneous),<br>",
+    "expected": "CRIMINAL ORIGINAL 127/2025"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Criminal Revision. 44/2026<br />Against Interim Order <br />-",
+    "expected": "CRIMINAL REVISION 44/2026"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Custom Reference. 6/2024<br /> <br />CM 1/2024 (Exemption),<br>CM 2/2024 (Stay),<br>",
+    "expected": "CUSTOM REFERENCE 6/2024"
+  },
+  {
+    "snapshot": "ihc-2026-04-21-regular.html",
+    "rawCaseCellHtml": "Enforcement Petition. 1/2026<br /> <br />-",
+    "expected": "ENFORCEMENT PETITION 1/2026"
+  },
+  {
+    "snapshot": "ihc-2026-04-22-regular.html",
+    "rawCaseCellHtml": "Execution Petition. 3/2025<br />Civil Original <br />-",
+    "expected": "EXECUTION PETITION 3/2025"
+  },
+  {
+    "snapshot": "ihc-2026-04-21-regular.html",
+    "rawCaseCellHtml": "Federal Excise and Reference Application. 12/2015<br /> <br />-",
+    "expected": "FEDERAL EXCISE AND REFERENCE APPLICATION 12/2015"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "First Appeal Against Order. 4/2026<br />Against Order <br />CM 1/2026 (Stay),<br>",
+    "expected": "FIRST APPEAL AGAINST ORDER 4/2026"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Income Tax Reference. 150/2023<br /> <br />CM 1/2023 (Stay),<br>",
+    "expected": "INCOME TAX REFERENCE 150/2023"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Institution Number. 5653/2026<br />Objection <br />-",
+    "expected": "INSTITUTION NUMBER 5653/2026"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Intra Court Appeal. 457/2022<br />Writ <br />-",
+    "expected": "INTRA COURT APPEAL 457/2022"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Jail Appeal. 350/2024<br />Against Conviction (PP) Death Sentence<br />CM 499/2024 (Miscellaneous),<br>",
+    "expected": "JAIL APPEAL 350/2024"
+  },
+  {
+    "snapshot": "ihc-2026-04-21-regular.html",
+    "rawCaseCellHtml": "Jail Revision. 207/2024<br /> <br />-",
+    "expected": "JAIL REVISION 207/2024"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Murder Reference. 19/2024<br /> <br />-",
+    "expected": "MURDER REFERENCE 19/2024"
+  },
+  {
+    "snapshot": "ihc-2026-04-22-regular.html",
+    "rawCaseCellHtml": "Objection Case. 16693/2022<br />Writ <br />-",
+    "expected": "OBJECTION CASE 16693/2022"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Office Objection. 13310/2024<br /> <br />-",
+    "expected": "OFFICE OBJECTION 13310/2024"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Petition for Special Leave to Appeal. 2/2026<br />Other <br />CM 1/2026 (Exemption),<br>OBJ 3/2026 (Office Objection),<br>",
+    "expected": "PETITION FOR SPECIAL LEAVE TO APPEAL 2/2026"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Regular First Appeal. 20/2021<br />Against Judgement & Decree <br />CM 1/2021 (Stay),<br>",
+    "expected": "REGULAR FIRST APPEAL 20/2021"
+  },
+  {
+    "snapshot": "ihc-2026-04-22-regular.html",
+    "rawCaseCellHtml": "Review Application. 23/2021<br />Writ <br />CM 1/2021 (Exemption),<br>",
+    "expected": "REVIEW APPLICATION 23/2021"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "CM 6/2026 (Restoration),<br>CM 7/2026 (Condonation of delay),<br><br />in<br />Sales Tax Reference. 9/2016<br /> ",
+    "expected": "SALES TAX REFERENCE 9/2016"
+  },
+  {
+    "snapshot": "ihc-2026-04-22-regular.html",
+    "rawCaseCellHtml": "SECP Appeal. 11/2025<br />Other <br />OBJ 1/2025 (Office Objection),<br>CM 2/2025 (Stay),<br>",
+    "expected": "SECP APPEAL 11/2025"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Writ Petition. 2076/2019<br />Tax & Banking Tax<br />CM 1/2019 (Stay),<br>",
+    "expected": "WRIT PETITION 2076/2019"
+  },
+  {
+    "snapshot": "ihc-2026-04-22-regular.html",
+    "rawCaseCellHtml": "Capital Sentence Reference. 1/2021<br />A.T.A <br />CM 76/2021 (Miscellaneous),<br>, CM 77/2021 (Exemption),<br>",
+    "expected": "CAPITAL SENTENCE REFERENCE 1/2021"
+  },
+  {
+    "snapshot": "ihc-2026-04-21-regular.html",
+    "rawCaseCellHtml": "Civil Miscellaneous Appeals. 72/2025<br /> <br />CM 1/2025 (Stay),<br>",
+    "expected": "CIVIL MISCELLANEOUS APPEALS 72/2025"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Civil Original Suit. 11/2025<br />Recovery <br />CM 1/2025 (Exemption),<br>",
+    "expected": "CIVIL ORIGINAL SUIT 11/2025"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Civil Revision. 155/2026<br />Against Interim Order <br />CM 1/2026 (Suspension of Order),<br>",
+    "expected": "CIVIL REVISION 155/2026"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Companies Original. 2/2025<br />Winding Up Petition <br />CM 1015/2025 (Miscellaneous),<br>CM 1017/2025 (Miscellaneous),<br>CM 1018/2025 (Exemption),<br>CM 1019/2025 (Miscellaneous),<br>CM 1020/2025 (Exemption),<br>CM 1021/2025 (Miscellaneous),<br>CM 1022/2025 (Exemption),<br>CM 1023/2025 (Miscellaneous),<br>CM 1024/2025 (Exemption),<br>CM 1016/2025 (Exemption),<br>CM 13/2025 (Miscellaneous),<br>CM 14/2025 (Exemption),<br>CM 15/2025 (Stay),<br>CM 16/2025 (Miscellaneous),<br>CM 17/2025 (Exemption),<br>CM 19/2025 (Miscellaneous),<br>CM 20/2025 (Exemption),<br>CM 21/2025 (Miscellaneous),<br>CM 22/2025 (Exemption),<br>CM 23/2025 (Miscellaneous),<br>CM 24/2025 (Exemption),<br>OBJ 1/2025 (Office Objection),<br>CM 26/2025 (Miscellaneous),<br>CM 27/2025 (Stay),<br>CM 29/2026 (Impleadment),<br>CM 30/2026 (Exemption),<br>OBJ 2/2026 (Office Objection),<br>",
+    "expected": "COMPANIES ORIGINAL 2/2025"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Criminal Appeal. 42/2025<br />Acquittal Other<br />-",
+    "expected": "CRIMINAL APPEAL 42/2025"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Criminal Miscellaneous. 521/2026<br />Bail After Arrest<br />-",
+    "expected": "CRIMINAL MISCELLANEOUS 521/2026"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Criminal Original. 27/2025<br />Writ <br />-",
+    "expected": "CRIMINAL ORIGINAL 27/2025"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Criminal Revision. 182/2025<br />Enhance. of Sentc. <br />CM 1/2025 (Exemption),<br>",
+    "expected": "CRIMINAL REVISION 182/2025"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Custom Reference. 7/2024<br /> <br />CM 1/2024 (Exemption),<br>CM 2/2024 (Stay),<br>",
+    "expected": "CUSTOM REFERENCE 7/2024"
+  },
+  {
+    "snapshot": "ihc-2026-04-21-regular.html",
+    "rawCaseCellHtml": "Federal Excise and Reference Application. 16/2015<br /> <br />-",
+    "expected": "FEDERAL EXCISE AND REFERENCE APPLICATION 16/2015"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "First Appeal Against Order. 108/2023<br />Against Order <br />CM 1/2023 (Stay),<br>",
+    "expected": "FIRST APPEAL AGAINST ORDER 108/2023"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Income Tax Reference. 9/2025<br /> <br />CM 2/2025 (Stay),<br>",
+    "expected": "INCOME TAX REFERENCE 9/2025"
+  },
+  {
+    "snapshot": "ihc-2026-04-21-regular.html",
+    "rawCaseCellHtml": "Institution Number. 14/2026<br />Objection <br />CM 1/2026 (Miscellaneous),<br>",
+    "expected": "INSTITUTION NUMBER 14/2026"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Intra Court Appeal. 14/2024<br />Writ <br />CM 3/2026 (Impleadment),<br>CM 4/2026 (Exemption),<br>OBJ 1/2026 (Office Objection),<br>OBJ 2/2026 (Office Objection),<br>OBJ 3/2026 (Office Objection),<br>OBJ 4/2026 (Office Objection),<br>",
+    "expected": "INTRA COURT APPEAL 14/2024"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Jail Appeal. 347/2024<br />Against Conviction (PP) Death Sentence<br />-",
+    "expected": "JAIL APPEAL 347/2024"
+  },
+  {
+    "snapshot": "ihc-2026-04-22-regular.html",
+    "rawCaseCellHtml": "Jail Revision. 1/2026<br /> <br />-",
+    "expected": "JAIL REVISION 1/2026"
+  },
+  {
+    "snapshot": "ihc-2026-04-22-regular.html",
+    "rawCaseCellHtml": "Objection Case. 10470/2023<br />Writ <br />-",
+    "expected": "OBJECTION CASE 10470/2023"
+  },
+  {
+    "snapshot": "ihc-2026-04-22-regular.html",
+    "rawCaseCellHtml": "Office Objection. 10290/2024<br /> <br />-",
+    "expected": "OFFICE OBJECTION 10290/2024"
+  },
+  {
+    "snapshot": "ihc-2026-04-20-regular.html",
+    "rawCaseCellHtml": "Regular First Appeal. 19/2021<br />Against Judgement & Decree <br />CM 1/2021 (Stay),<br>",
+    "expected": "REGULAR FIRST APPEAL 19/2021"
+  },
+  {
+    "snapshot": "ihc-2026-04-22-regular.html",
+    "rawCaseCellHtml": "Review Application. 24/2021<br />Writ <br />CM 1/2021 (Exemption),<br>",
+    "expected": "REVIEW APPLICATION 24/2021"
+  }
+]

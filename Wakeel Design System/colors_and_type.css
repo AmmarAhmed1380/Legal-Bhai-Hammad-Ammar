@@ -1,0 +1,211 @@
+/* ============================================================
+   Wakeel Design System — Colors & Typography
+   Palette B "Daftar" (Teal + Off-white) — recommended default.
+   Source of truth: Wakeel_Design_System.pdf (v1.1, Apr 2026)
+   Cross-referenced with apps/web/app/globals.css and
+   apps/mobile/src/theme.ts in the LEGALBAHI monorepo.
+   ============================================================ */
+
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Nastaliq+Urdu:wght@400;500;600&display=swap");
+
+:root {
+  /* ---------- Palette B · Daftar (default / light) ---------- */
+  --primary:        #0F6E56;  /* slate teal — brand, buttons, active tab */
+  --primary-dark:   #08503F;  /* pressed states, focus rings */
+  --primary-light:  #E1F5EE;  /* badge fills, selected state, stat-card bg */
+
+  --background:     #F8F7F3;  /* app canvas, off-white */
+  --background-grad-end: #F3EFE5; /* warm-sand bottom of canvas gradient */
+  --surface:        #FFFFFF;  /* cards, inputs */
+  --surface-muted:  #FBFAF7;  /* inline info panels, hint blocks */
+
+  --accent:         #D85A30;  /* conflicts, urgent alerts, coral */
+  --accent-light:   #FAECE7;  /* alert backgrounds */
+  --warning:        #D97706;  /* amber — evidence/warnings */
+  --success:        #0F6E56;  /* alias to primary */
+  --danger:         #D85A30;  /* alias to accent */
+
+  --fg1:            #2C2C2A;  /* text-primary, body + headings */
+  --fg2:            #5F5E5A;  /* text-secondary, metadata */
+  --fg3:            #B4B2A9;  /* text-tertiary, timestamps */
+  --fg-on-primary:  #FFFFFF;
+  --border:         #E8E6E1;  /* dividers, card borders */
+  --border-soft:    rgba(232, 230, 225, 0.6);
+
+  /* Source-labelling — critical to Wakeel's "live vs demo" honesty */
+  --live-bg:    var(--primary-light);
+  --live-fg:    var(--primary-dark);
+  --demo-bg:    #F4EEE0;
+  --demo-fg:    #7A5B18;
+  --conflict-bg: var(--accent-light);
+  --conflict-fg: var(--accent);
+
+  /* ---------- Case stage semantic colors (pill text) ---------- */
+  --stage-filing:     #525252;  /* neutral — just filed */
+  --stage-notice:     #085041;  /* green — progress */
+  --stage-written:    #185FA5;  /* blue — information */
+  --stage-issues:     #3C3489;  /* purple — analytical */
+  --stage-evidence:   #854F0B;  /* amber — active, attention */
+  --stage-arguments:  #185FA5;  /* blue — final arguments */
+  --stage-reserved:   #525252;  /* neutral — awaiting judgment */
+  --stage-decided:    #085041;  /* green — complete */
+
+  --stage-filing-bg:     #ECECEC;
+  --stage-notice-bg:     #E1F5EE;
+  --stage-written-bg:    #E6F1FB;
+  --stage-issues-bg:     #EEEDFE;
+  --stage-evidence-bg:   #FAEEDA;
+  --stage-arguments-bg:  #E6F1FB;
+  --stage-reserved-bg:   #ECECEC;
+  --stage-decided-bg:    #E1F5EE;
+
+  /* ---------- Elevation / radius / spacing ---------- */
+  --radius-sm:   6px;   /* pills, small badges */
+  --radius-md:   10px;  /* buttons, inputs */
+  --radius-lg:   14px;  /* cards, modals */
+  --radius-xl:   18px;  /* panels in web shell */
+  --radius-full: 9999px;
+
+  --shadow-card:   0 10px 30px rgba(15, 110, 86, 0.05);
+  --shadow-modal:  0 22px 60px rgba(44, 44, 42, 0.16);
+  --shadow-sunken: inset 0 1px 2px rgba(44, 44, 42, 0.04);
+
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+
+  /* ---------- Typography: families ---------- */
+  --font-sans:    "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Source Serif 4", "Source Serif Pro", Georgia, serif;
+  --font-mono:    "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+  --font-urdu:    "Noto Nastaliq Urdu", serif;
+
+  /* ---------- Type scale (mobile-first, 390px) ---------- */
+  --h1-size: 26px;  --h1-lh: 32px;  --h1-weight: 600;
+  --h2-size: 22px;  --h2-lh: 28px;  --h2-weight: 600;
+  --h3-size: 18px;  --h3-lh: 24px;  --h3-weight: 600;
+
+  --body-size: 15px;         --body-lh: 22px;
+  --body-weight: 400;
+  --body-emphasis-weight: 600;
+
+  --caption-size: 13px;      --caption-lh: 18px;
+  --caption-weight: 400;
+  --caption-emphasis-weight: 600;
+
+  --small-size: 11px;        --small-lh: 14px;   --small-weight: 500;
+  --micro-size: 10px;        --micro-lh: 13px;   --micro-weight: 600;
+
+  --eyebrow-tracking: 0.12em;
+  --micro-tracking:   0.08em;
+
+  /* ---------- Motion ---------- */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;   /* all UI transitions per spec */
+  --dur-max:  300ms;
+}
+
+/* ============================================================
+   Dark mode: Palette C — Midnight (optional toggle)
+   ============================================================ */
+[data-theme="midnight"] {
+  --primary:       #4A8DFF;
+  --primary-dark:  #2563EB;
+  --primary-light: rgba(74, 141, 255, 0.14);
+
+  --background:    #0E1116;
+  --background-grad-end: #0E1116;
+  --surface:       #1A1F28;
+  --surface-muted: #2A2F3A;
+
+  --accent:        #F09595;
+  --accent-light:  rgba(240, 149, 149, 0.14);
+
+  --fg1:           #E8E6E1;
+  --fg2:           #888780;
+  --fg3:           #626268;
+  --border:        #2A2F3A;
+
+  --demo-bg: rgba(244, 238, 224, 0.08);
+  --demo-fg: #D9C185;
+}
+
+/* ============================================================
+   Semantic element styles — apply these to real markup
+   ============================================================ */
+html, body {
+  margin: 0;
+  background: linear-gradient(180deg, var(--background) 0%, var(--background-grad-end) 100%);
+  color: var(--fg1);
+  font-family: var(--font-sans);
+  font-size: var(--body-size);
+  line-height: var(--body-lh);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, .h1 {
+  font-family: var(--font-sans);
+  font-size: var(--h1-size); line-height: var(--h1-lh); font-weight: var(--h1-weight);
+  margin: 0; letter-spacing: -0.01em;
+}
+h2, .h2 {
+  font-size: var(--h2-size); line-height: var(--h2-lh); font-weight: var(--h2-weight);
+  margin: 0; letter-spacing: -0.005em;
+}
+h3, .h3 {
+  font-size: var(--h3-size); line-height: var(--h3-lh); font-weight: var(--h3-weight);
+  margin: 0;
+}
+
+p, .body {
+  font-size: var(--body-size); line-height: var(--body-lh); font-weight: var(--body-weight);
+  color: var(--fg1); margin: 0;
+}
+.body-emphasis { font-weight: var(--body-emphasis-weight); }
+.caption {
+  font-size: var(--caption-size); line-height: var(--caption-lh);
+  font-weight: var(--caption-weight); color: var(--fg2);
+}
+.caption-emphasis { font-weight: var(--caption-emphasis-weight); color: var(--fg1); }
+.small {
+  font-size: var(--small-size); line-height: var(--small-lh); font-weight: var(--small-weight);
+  color: var(--fg3);
+}
+.micro, .eyebrow {
+  font-size: var(--micro-size); line-height: var(--micro-lh);
+  font-weight: var(--micro-weight);
+  text-transform: uppercase;
+  letter-spacing: var(--eyebrow-tracking);
+  color: var(--primary);
+}
+.muted { color: var(--fg2); }
+
+/* Case numbers should read as data: monospace, tracked. */
+.case-number, code.case-number {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.display {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+/* Urdu — required for client SMS previews. Right-to-left + Nastaliq. */
+.urdu, [lang="ur"] {
+  font-family: var(--font-urdu);
+  direction: rtl;
+  line-height: 2.1;   /* Nastaliq needs breathing room */
+}
+
+a { color: var(--primary); text-decoration: none; }
+a:hover { color: var(--primary-dark); }

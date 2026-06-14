@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 80" fill="none">
+  
+  <g stroke="#0F6E56" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="36" y1="20" x2="36" y2="58"></line>
+    <line x1="24" y1="58" x2="48" y2="58"></line>
+    <line x1="18" y1="28" x2="54" y2="28"></line>
+    
+    <path d="M18 28 L12 40 L24 40 Z" fill="#E1F5EE"></path>
+    
+    <path d="M54 28 L48 40 L60 40 Z" fill="#E1F5EE"></path>
+    
+    <circle cx="36" cy="20" r="2.4" fill="#0F6E56"></circle>
+  </g>
+  
+  <text x="80" y="50" font-family="&#39;Source Serif 4&#39;, &#39;Source Serif Pro&#39;, Georgia, serif" font-size="34" font-weight="600" fill="#2C2C2A" letter-spacing="-0.5">
+    Wakeel
+  </text>
+</svg>

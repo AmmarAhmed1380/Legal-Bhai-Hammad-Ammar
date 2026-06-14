@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="../colors_and_type.css"/>
+<style>
+  html,body{margin:0;background:var(--surface);}
+  body{padding:22px;display:flex;flex-direction:column;gap:12px;}
+  .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:var(--radius-sm);font-size:11px;font-weight:600;letter-spacing:0.02em;}
+  .lbl{font-size:11px;color:var(--fg3);text-transform:uppercase;letter-spacing:0.08em;font-weight:600;margin-bottom:2px;}
+</style>
+</head>
+<body>
+<div><div class="lbl">Stage pills — light tint bg + darker-shade text</div>
+<div class="row">
+  <span class="pill" style="background:#ECECEC;color:#525252">filing</span>
+  <span class="pill" style="background:#E1F5EE;color:#085041">notice</span>
+  <span class="pill" style="background:#E6F1FB;color:#185FA5">written_statement</span>
+  <span class="pill" style="background:#EEEDFE;color:#3C3489">issues</span>
+  <span class="pill" style="background:#FAEEDA;color:#854F0B">evidence</span>
+  <span class="pill" style="background:#E6F1FB;color:#185FA5">arguments</span>
+  <span class="pill" style="background:#ECECEC;color:#525252">reserved</span>
+  <span class="pill" style="background:#E1F5EE;color:#085041">decided</span>
+</div>
+</div>
+<div><div class="lbl">Source &amp; conflict badges</div>
+<div class="row">
+  <span class="pill" style="background:#E1F5EE;color:#08503F">IHC Live</span>
+  <span class="pill" style="background:#F4EEE0;color:#7A5B18">District Demo</span>
+  <span class="pill" style="background:#FAECE7;color:#D85A30">Conflict</span>
+</div>
+</div>
+</body>
+</html>

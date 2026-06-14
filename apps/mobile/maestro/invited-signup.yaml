@@ -1,0 +1,23 @@
+appId: pk.legalbahi.app
+---
+- launchApp:
+    clearState: true
+- tapOn: "Invited lawyer? Create workspace"
+- tapOn: "Phone"
+- eraseText
+- inputText: ${STAFF_PHONE}
+- tapOn: "Your name"
+- inputText: ${STAFF_NAME}
+- tapOn: "Email"
+- inputText: ${STAFF_EMAIL}
+- tapOn: "Practice name"
+- inputText: ${FIRM_NAME}
+- tapOn: "City"
+- eraseText
+- inputText: "Islamabad"
+- tapOn: "Request OTP"
+- tapOn: "OTP code"
+- inputText: ${STAFF_OTP}
+- tapOn: "Verify OTP and sign in"
+- assertVisible: "LegalBahi"
+- assertVisible: ${FIRM_NAME}
