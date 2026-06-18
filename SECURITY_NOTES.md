@@ -2,6 +2,15 @@
 
 Date: 2026-06-13
 
+## Staging validation security status
+
+- No staging secret file was available, so `.env.staging` was not created and no placeholder secrets were written.
+- `.gitignore` excludes `.env.*` except `.env.example`; a future `.env.staging` will remain untracked by default.
+- `npm run lint` passed and confirmed repository hygiene for unignored files.
+- `npm run verify` passed local security-sensitive coverage, including cross-firm authorization, portal scoping, document authorization, production config validation, OTP/provider adapter tests, and Playwright client-portal flow.
+- `npm run smoke:production` failed closed before network activity because required staging/production variables were absent. This is the intended behavior for missing secrets/config.
+- Real Twilio, Resend, R2, Sentry, PostgreSQL, and hosted API/web validation remains blocked until staging credentials and test-only smoke data are provided.
+
 ## Fixed / verified controls
 
 - Production config validation exists and fails closed for missing required secrets, placeholder hosts, weak secrets, shared R2 buckets, invalid Twilio sender, invalid Resend sender, disabled sync, and unsafe proxy settings.

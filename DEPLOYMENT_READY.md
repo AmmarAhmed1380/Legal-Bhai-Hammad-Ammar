@@ -2,6 +2,39 @@
 
 Date: 2026-06-13
 
+## Staging validation status
+
+The local readiness gate was rerun on 2026-06-13 local shell date:
+
+```bash
+npm ci
+npx playwright install chromium
+npm run lint
+npm run verify
+npm audit --omit=dev --json
+```
+
+All five local commands passed. Mobile Android export also passed with a placeholder HTTPS API URL to prove the local export path:
+
+```bash
+EXPO_PUBLIC_API_URL=https://staging-api.example.invalid EXPO_PUBLIC_ENABLE_DEMO_SURFACES=false npm --workspace @wakeel/mobile exec expo export -- --platform android --output-dir /tmp/legalbahi-mobile-export
+```
+
+Real staging validation is still blocked because no staging env file path or exported staging variables were available. `.env.staging` was not created with placeholders, and no secrets were printed. The existing `npm run smoke:production` command fails closed before network activity when those variables are missing.
+
+Required staging inputs before the external smoke can be completed:
+
+- Absolute path to the staging env file outside the repo.
+- `TEST_DATABASE_URL`.
+- Staging `DATABASE_URL`, `PUBLIC_API_URL`, `PUBLIC_WEB_URL`, `EXPO_PUBLIC_API_URL`, `JWT_SECRET`, `CORS_ORIGINS`, `PILOT_ADMIN_SECRET`, `TRUST_PROXY_LOOPBACK=true`, `IHC_SYNC_ENABLED=true`, and `IHC_SYNC_INTERVAL_MINUTES`.
+- Twilio: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_SMS_FROM`.
+- Resend: `RESEND_API_KEY`, `RESEND_FROM_EMAIL`.
+- R2: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_DOCUMENT_BUCKET`, `R2_BACKUP_BUCKET`, backup credentials, and `BACKUP_AGE_RECIPIENT`.
+- Sentry: `SENTRY_DSN`.
+- Smoke data: `SMOKE_SMS_TO`, `SMOKE_EMAIL_TO`, `SMOKE_STAFF_PHONE`, `SMOKE_PORTAL_TOKEN`, and manual OTP codes when prompted.
+
+Court-source note: IHC has a live fetch path when enabled. Rawalpindi District/lower courts and LHC Rawalpindi Bench are currently fixture-backed sources, so live validation for those two courts requires a new live adapter or manual import validation.
+
 ## Local readiness
 
 From a clean checkout:
