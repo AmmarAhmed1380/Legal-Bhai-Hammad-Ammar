@@ -636,10 +636,10 @@ export class ProductStore {
       ) VALUES (?, ?, 1, ?, ?, 1, ?)
     `);
     for (const template of [
-      ["lawyer_next_day_agenda", "email", "LegalBahi: tomorrow's court agenda", "Your next-day agenda:\n{{payload}}"],
-      ["lawyer_next_day_agenda", "sms", "", "LegalBahi next-day agenda:\n{{payload}}"],
-      ["client_hearing_reminder", "sms", "", "LegalBahi hearing reminder. Your hearing is scheduled in approximately 24 hours.\n{{payload}}"],
-      ["post_hearing_update", "sms", "", "LegalBahi matter update. Your lawyer posted a hearing update.\n{{payload}}"],
+      ["lawyer_next_day_agenda", "email", "Legal Bhai: tomorrow's court agenda", "Your next-day agenda:\n{{payload}}"],
+      ["lawyer_next_day_agenda", "sms", "", "Legal Bhai next-day agenda:\n{{payload}}"],
+      ["client_hearing_reminder", "sms", "", "Legal Bhai hearing reminder. Your hearing is scheduled in approximately 24 hours.\n{{payload}}"],
+      ["post_hearing_update", "sms", "", "Legal Bhai matter update. Your lawyer posted a hearing update.\n{{payload}}"],
     ] as const) {
       insertTemplate.run(...template, createdAt);
     }

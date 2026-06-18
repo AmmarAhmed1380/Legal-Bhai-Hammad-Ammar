@@ -259,7 +259,7 @@ test("PostgreSQL pilot runtime migrates and isolates workspaces", { skip: !testD
       channel: "sms",
       version: 1,
       subjectTemplate: "",
-      bodyTemplate: "LegalBahi hearing reminder. Your hearing is scheduled in approximately 24 hours.\n{{payload}}",
+      bodyTemplate: "Legal Bhai hearing reminder. Your hearing is scheduled in approximately 24 hours.\n{{payload}}",
       enabled: true,
     });
     assert.equal(await store.schedulePilotNotifications(new Date()), 0);

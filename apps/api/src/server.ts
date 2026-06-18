@@ -10,7 +10,7 @@ const host = process.env.HOST ?? (isProduction() ? "127.0.0.1" : "0.0.0.0");
 app
   .listen({ port, host })
   .then(() => {
-    console.log(`LegalBahi API listening on http://${host}:${port}`);
+    console.log(`Legal Bhai API listening on http://${host}:${port}`);
   })
   .catch((error) => {
     console.error(error);

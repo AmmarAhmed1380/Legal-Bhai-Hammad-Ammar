@@ -1,4 +1,4 @@
-# LegalBahi Pilot Completion Audit
+# Legal Bhai Pilot Completion Audit
 
 Audit date: June 13, 2026
 
@@ -59,7 +59,7 @@ The repository foundation is substantially implemented, but the controlled pilot
 
 | Requirement | Status | Evidence or remaining work |
 | --- | --- | --- |
-| LegalBahi Android identity, secure sessions, production API, pilot flows | Repository-proven | Package `pk.legalbahi.app`, LegalBahi assets, SecureStore, production fail-closed API config, typecheck, flow validation, and Android export pass. |
+| Legal Bhai Android identity, secure sessions, production API, pilot flows | Repository-proven | Package `pk.legalbahi.app`, Legal Bhai assets, SecureStore, production fail-closed API config, typecheck, flow validation, and Android export pass. |
 | Expo/EAS internal Android build installed against hosted API | External launch gate | EAS is not logged in in this environment; no installed internal APK has been tested. |
 | Windows VPS PostgreSQL/API/worker/web/Caddy deployment | Repository-proven + external launch gate | Deployment scripts and host verifier pass repository checks. The current VPS is shared and has not been modified or accepted for production. |
 | Permanent domain and HTTPS | External launch gate | Caddy still contains placeholder domains; permanent DNS/HTTPS are not configured. |

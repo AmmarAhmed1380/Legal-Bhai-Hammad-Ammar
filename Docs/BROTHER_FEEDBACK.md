@@ -1,4 +1,4 @@
-# LegalBahi Tester Feedback
+# Legal Bhai Tester Feedback
 
 Tester name:
 

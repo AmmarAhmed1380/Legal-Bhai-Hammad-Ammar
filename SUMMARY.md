@@ -1,4 +1,4 @@
-# LegalBahi Pilot Completion Summary
+# Legal Bhai Pilot Completion Summary
 
 Date: 2026-06-13
 

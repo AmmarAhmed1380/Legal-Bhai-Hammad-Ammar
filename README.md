@@ -1,6 +1,6 @@
-# LegalBahi
+# Legal Bhai
 
-LegalBahi is an invite-only controlled-pilot legal practice app for solo lawyers in Islamabad and Rawalpindi.
+Legal Bhai is an invite-only controlled-pilot legal practice app for solo lawyers in Islamabad and Rawalpindi.
 
 ## Local development
 
@@ -29,7 +29,7 @@ TEST_DATABASE_URL=postgresql://... npm run test:api
 
 Production operators use `npm run smoke:production` through `infra/windows/run-production-smoke.ps1`.
 
-## Let a tester try LegalBahi
+## Let a tester try Legal Bhai
 
 For a safe fake-data test on the same Wi-Fi:
 
@@ -53,7 +53,7 @@ See [Brother Testing Guide](Docs/BROTHER_TESTING.md) for accounts, the feature c
 - Hearing notes and private order/document uploads
 - One-matter client portal protected by OTP
 - Database-backed email/SMS reminder worker
-- LegalBahi web app and Android internal build
+- Legal Bhai web app and Android internal build
 
 The original demo API is available only when `ENABLE_DEMO_SURFACES=true`. Production validation rejects demo surfaces and seed data.
 

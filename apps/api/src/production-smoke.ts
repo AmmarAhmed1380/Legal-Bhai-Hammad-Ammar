@@ -70,7 +70,7 @@ async function checkPublicSurfaces(apiBaseUrl: string, webBaseUrl: string): Prom
   }
   const webResponse = await fetch(webBaseUrl);
   const webBody = await webResponse.text();
-  if (!webResponse.ok || !webBody.includes("LegalBahi")) {
+  if (!webResponse.ok || !webBody.includes("Legal Bhai")) {
     throw new Error(`Web app smoke check failed with status ${webResponse.status}`);
   }
   await requestJson(`${apiBaseUrl}/auth/demo/verify`, { method: "POST", body: JSON.stringify({}) }, 404);
@@ -79,7 +79,7 @@ async function checkPublicSurfaces(apiBaseUrl: string, webBaseUrl: string): Prom
 }
 
 async function checkR2(): Promise<void> {
-  const marker = Buffer.from(`LegalBahi R2 smoke ${new Date().toISOString()}`);
+  const marker = Buffer.from(`Legal Bhai R2 smoke ${new Date().toISOString()}`);
   const storage = createPrivateObjectStorage();
   const storageKey = await storage.put({ fileName: "production-smoke.txt", bytes: marker, contentType: "text/plain" });
   if (!storageKey.startsWith("r2:")) {
@@ -116,11 +116,11 @@ async function checkProviders(): Promise<void> {
   const smsTo = requireEnvironment("SMOKE_SMS_TO");
   const emailTo = requireEnvironment("SMOKE_EMAIL_TO");
   const suffix = new Date().toISOString();
-  const sms = await createSmsProvider().send(smsTo, `LegalBahi production smoke test ${suffix}`);
+  const sms = await createSmsProvider().send(smsTo, `Legal Bhai production smoke test ${suffix}`);
   const email = await createEmailProvider().send(
     emailTo,
-    "LegalBahi production smoke test",
-    `<p>LegalBahi production smoke test ${suffix}</p>`,
+    "Legal Bhai production smoke test",
+    `<p>Legal Bhai production smoke test ${suffix}</p>`,
   );
   if (!sms.providerId || !email.providerId) {
     throw new Error("Twilio or Resend did not return a provider delivery ID");
@@ -134,7 +134,7 @@ async function checkErrorReporting(): Promise<void> {
     environment: "production-smoke",
     sendDefaultPii: false,
   });
-  const eventId = Sentry.captureMessage(`LegalBahi production smoke ${new Date().toISOString()}`);
+  const eventId = Sentry.captureMessage(`Legal Bhai production smoke ${new Date().toISOString()}`);
   if (!eventId || !await Sentry.flush(10_000)) {
     throw new Error("Sentry did not accept the production smoke event");
   }
@@ -210,4 +210,4 @@ await checkProviders();
 await checkErrorReporting();
 await checkStaffOtp(apiBaseUrl);
 await checkPortalOtp(apiBaseUrl);
-console.log("LegalBahi production smoke test passed");
+console.log("Legal Bhai production smoke test passed");

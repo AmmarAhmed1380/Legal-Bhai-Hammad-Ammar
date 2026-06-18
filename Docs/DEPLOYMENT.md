@@ -1,4 +1,4 @@
-# LegalBahi Controlled Pilot Deployment
+# Legal Bhai Controlled Pilot Deployment
 
 ## Required services
 
@@ -10,8 +10,8 @@
 ## Release procedure
 
 1. Purchase the permanent domain and point the web and API DNS records to the VPS.
-2. Copy `.env.example` to `C:\LegalBahi\.env.production` and replace every production secret. Generate the `age` recipient/private key separately and set `BACKUP_AGE_RECIPIENT` and `BACKUP_AGE_IDENTITY`.
-3. Restrict `C:\LegalBahi\.env.production` and the age private key to administrators and `SYSTEM`.
+2. Copy `.env.example` to `C:\Legal Bhai\.env.production` and replace every production secret. Generate the `age` recipient/private key separately and set `BACKUP_AGE_RECIPIENT` and `BACKUP_AGE_IDENTITY`.
+3. Restrict `C:\Legal Bhai\.env.production` and the age private key to administrators and `SYSTEM`.
 4. Replace placeholder domains in `infra/windows/Caddyfile`. Permit inbound public traffic only on ports `80` and `443`; API and web services bind to loopback for Caddy.
 5. Run `npm ci`, `npx playwright install chromium`, `npm audit --omit=dev --audit-level=moderate`, and `npm run verify`.
 6. Run the production web build wrapper. It validates the production environment and Caddy hosts, builds with the permanent API URL, and writes a marker that the service installer verifies:
@@ -34,7 +34,7 @@
 
 The installer restarts running services after applying updated commands and environment values.
 
-9. Install Caddy as a Windows service and point it to `C:\LegalBahi\infra\windows\Caddyfile`.
+9. Install Caddy as a Windows service and point it to `C:\Legal Bhai\infra\windows\Caddyfile`.
 10. Apply `infra/r2/lifecycle.json` to the separate R2 backup bucket and install the daily encrypted backup task:
 
 ```powershell

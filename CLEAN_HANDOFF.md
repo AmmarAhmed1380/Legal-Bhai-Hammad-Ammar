@@ -1,4 +1,4 @@
-# LegalBahi Clean Handoff Checklist
+# Legal Bhai Clean Handoff Checklist
 
 Use this file before creating a ZIP or pushing to GitHub.
 

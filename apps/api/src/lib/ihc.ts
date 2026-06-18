@@ -188,7 +188,7 @@ async function postIhcJson<T>(path: string, body: Record<string, unknown> = {}):
     method: "POST",
     headers: {
       "content-type": "application/json; charset=utf-8",
-      "user-agent": "LegalBahi-Pilot/1.0",
+      "user-agent": "Legal Bhai-Pilot/1.0",
     },
     body: JSON.stringify(body),
   });

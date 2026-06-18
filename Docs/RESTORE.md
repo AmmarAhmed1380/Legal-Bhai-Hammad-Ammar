@@ -7,8 +7,8 @@
 
 ```powershell
 .\infra\windows\restore-postgres.ps1 `
-  -EncryptedBackup C:\LegalBahi\backups\legalbahi-YYYYMMDD-HHMMSS.dump.age `
-  -EnvironmentFile C:\LegalBahi\.env.restore-drill
+  -EncryptedBackup C:\Legal Bhai\backups\legalbahi-YYYYMMDD-HHMMSS.dump.age `
+  -EnvironmentFile C:\Legal Bhai\.env.restore-drill
 ```
 
 5. Verify all expected rows exist in `schema_migrations`, then compare firm, matter, document metadata, notification job, and audit-event counts with production.

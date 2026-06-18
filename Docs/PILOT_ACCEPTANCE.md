@@ -14,7 +14,7 @@
 | IHC automation | Regular, supplementary, urgent parsing; exact matching; unmatched review |
 | Reminder worker | Database claims, versioned templates, idempotency, three-attempt retry limit, active-recipient and explicit consent/opt-out enforcement, provider failures, non-overlapping guarded cycles |
 | Pilot journey | API and Playwright journeys cover invited signup through matter/client linking, hearing, client update, OTP portal, and client readback |
-| Android internal app | LegalBahi branding, secure sessions with server-side logout, matters, calendar, alerts, client updates, hearing and document photos |
+| Android internal app | Legal Bhai branding, secure sessions with server-side logout, matters, calendar, alerts, client updates, hearing and document photos |
 | Android workflow automation | Checked-in Maestro flows cover invited signup and an existing lawyer's hearing/client-update journey; CI validates flow/package consistency |
 | Windows deployment | Caddy HTTPS config, loopback-only least-privilege services, fail-closed preflight/web build marker, daily encrypted backup task, restore tooling, and host verifier |
 | CI | Dependency audit, migrations, API/PostgreSQL tests, Playwright web journey, web build, mobile flow/typecheck/export, Linux deployment verifier, Windows PowerShell parser/preflight, dump/restore drill |
@@ -23,7 +23,7 @@
 
 These require accounts or infrastructure and cannot be proven from the repository:
 
-- Permanent LegalBahi domain and DNS.
+- Permanent Legal Bhai domain and DNS.
 - Dedicated VPS selection or explicit acceptance of the [current shared-host risk](VPS_ASSESSMENT.md), followed by deployment with live HTTPS.
 - Live Twilio, Resend, R2, and Sentry credentials.
 - Successful `npm run smoke:production` with real staff/client OTPs.
