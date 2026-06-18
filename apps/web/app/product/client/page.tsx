@@ -138,9 +138,9 @@ function ProductClientWorkspace() {
   }, [incomingPortalToken, portalAuth]);
 
   function handleWorkspaceLoadError(error: unknown) {
-    if (error instanceof ProductRequestError && error.status === 401) {
+    if (error instanceof ProductRequestError && (error.status === 401 || error.status === 403)) {
       signOut();
-      setWorkspaceError("Your session expired. Sign in again.");
+      setWorkspaceError("Your session expired or access was denied. Please sign in again.");
       return;
     }
     setWorkspaceError(error instanceof Error ? error.message : "Could not load the workspace.");
@@ -370,7 +370,7 @@ function ProductClientWorkspace() {
             </div>
 
             <div className="panel">
-              <h2 style={{ marginTop: 0 }}>Shared matters</h2>
+              <h2 style={{ marginTop: 0 }}>Shared Matters</h2>
               <div className="case-list">
                 {matters.map((matter) => (
                   <button

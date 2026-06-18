@@ -437,9 +437,9 @@ export default function ProductStaffPage() {
   }, [activeSection, auth, clients, selectedClientId]);
 
   function handleWorkspaceLoadError(error: unknown) {
-    if (error instanceof ProductRequestError && error.status === 401) {
+    if (error instanceof ProductRequestError && (error.status === 401 || error.status === 403)) {
       signOut();
-      setOperationStatus("Your session expired. Sign in again.");
+      setOperationStatus("Your session expired or access was denied. Please sign in again.");
       return;
     }
     setOperationStatus(error instanceof Error ? error.message : "Could not load the workspace.");
@@ -848,13 +848,21 @@ export default function ProductStaffPage() {
 
   async function createClient() {
     if (!auth) return;
-    const response = await authedRequest("/v1/clients", {
-      method: "POST",
-      body: JSON.stringify(newClient),
-    }, auth);
-    setNewClient({ displayName: "", phone: "", language: "en" });
-    setOperationStatus("Client created.");
-    await loadWorkspace(response.auth);
+    try {
+      const response = await authedRequest("/v1/clients", {
+        method: "POST",
+        body: JSON.stringify(newClient),
+      }, auth);
+      setNewClient({ displayName: "", phone: "", language: "en" });
+      setOperationStatus("Client created.");
+      await loadWorkspace(response.auth);
+    } catch (e: any) {
+      if (e instanceof Error) {
+        setOperationStatus(e.message);
+      } else {
+        setOperationStatus("Failed to create client.");
+      }
+    }
   }
 
   async function addParty() {
@@ -1086,24 +1094,28 @@ export default function ProductStaffPage() {
             </div>
 
             <div className="panel">
-              <h2 style={{ marginTop: 0 }}>Court health</h2>
+              <h2 style={{ marginTop: 0 }}>Court Health</h2>
               <div className="grid">
                 {courtSources.map((source) => (
                   <div key={source.id} className="case-card" style={{ padding: 14 }}>
-                    <div className="top-bar" style={{ marginBottom: 8 }}>
-                      <strong>{courtLabel(source.courtId)}</strong>
-                      <span className={`badge ${source.status === "live" ? "live" : "conflict"}`}>{source.status}</span>
+                    <div className="source-card" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1rem' }}>
+                      <div>
+                        <h3>{courtLabel(source.courtId)}</h3>
+                        <span className={`badge ${source.status === "live" ? "live" : "conflict"}`}>{source.status}</span>
+                      </div>
+                      <p className="muted" style={{ marginTop: 0, width: '100%' }}>
+                        {source.ingestionMode === "automation" ? "Automation" : source.ingestionMode} · Fetched {source.metrics.fetched ?? 0} · Matched {source.metrics.matched ?? 0}
+                      </p>
+                      <p className="muted" style={{ width: '100%', marginBottom: 0 }}>Last sync {formatDateTime(source.lastSuccessfulSyncAt)}</p>
+                      <div style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between' }}>
+                        {source.officialUrl ? (
+                          <a className="muted" href={source.officialUrl} target="_blank" rel="noreferrer">Official Source</a>
+                        ) : <span />}
+                        <button className="button-secondary" type="button" onClick={() => void syncCourtSource(source.id)}>
+                          Sync Now
+                        </button>
+                      </div>
                     </div>
-                    <p className="muted" style={{ marginTop: 0 }}>
-                      {source.ingestionMode === "automation" ? "Automation" : source.ingestionMode} · Fetched {source.metrics.fetched ?? 0} · Matched {source.metrics.matched ?? 0}
-                    </p>
-                    <p className="muted">Last sync {formatDateTime(source.lastSuccessfulSyncAt)}</p>
-                    {source.officialUrl ? (
-                      <a className="muted" href={source.officialUrl} target="_blank" rel="noreferrer">Official source</a>
-                    ) : null}
-                    <button className="button-secondary" type="button" onClick={() => void syncCourtSource(source.id)}>
-                      Sync now
-                    </button>
                   </div>
                 ))}
               </div>
@@ -1112,13 +1124,13 @@ export default function ProductStaffPage() {
 
           <section className="grid">
             <div className="panel">
-              <h2 style={{ marginTop: 0 }}>Priority alerts</h2>
+              <h2 style={{ marginTop: 0 }}>Priority Alerts</h2>
               <div className="grid">
                 {alerts.map((alert) => (
                   <div key={alert.id} className="case-card" style={{ padding: 14, borderLeftColor: "var(--accent)" }}>
                     <div className="top-bar" style={{ marginBottom: 8 }}>
-                      <strong>{alert.title}</strong>
-                      {!alert.readAt ? <button className="button-secondary" type="button" onClick={() => void markAlertRead(alert.id)}>Mark read</button> : null}
+                      <strong>{alert.title.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")}</strong>
+                      {!alert.readAt ? <button className="button-secondary" type="button" onClick={() => void markAlertRead(alert.id)}>Mark Read</button> : null}
                     </div>
                     <p className="muted">{alert.body}</p>
                   </div>
@@ -1132,8 +1144,8 @@ export default function ProductStaffPage() {
                 <div className="grid">
                   {report?.mattersByStage.map((entry) => (
                     <div key={entry.stage} className="case-card" style={{ padding: 14 }}>
-                      <strong>{entry.stage}</strong>
-                      <div className="muted">{entry.count} Active Matters</div>
+                      <strong>{entry.stage.charAt(0).toUpperCase() + entry.stage.slice(1)}</strong>
+                      <div className="muted">{entry.count} {entry.count === 1 ? "Active Matter" : "Active Matters"}</div>
                     </div>
                   ))}
                 </div>
@@ -1141,7 +1153,7 @@ export default function ProductStaffPage() {
 
               <aside className="grid">
                 <div className="panel">
-                  <h2 style={{ marginTop: 0 }}>Recent activity</h2>
+                  <h2 style={{ marginTop: 0 }}>Recent Activity</h2>
                   <div className="grid">
                     {auditEvents.slice(0, 6).map((event) => (
                       <div key={event.id}>
@@ -1156,10 +1168,10 @@ export default function ProductStaffPage() {
                   <h2 style={{ marginTop: 0 }}>Unread Client Threads</h2>
                   <div className="grid">
                     {threads.map((thread) => (
-                      <Link key={thread.id} className="case-card" href={`/matters/${thread.matter.id}`} style={{ padding: 14 }}>
+                      <button key={thread.id} className="case-card" onClick={() => { setActiveSection("matters"); openMatter(thread.matter.id); }} style={{ padding: 14, textAlign: "left", cursor: "pointer" }}>
                         <strong>{thread.matter.rawCaseNumber}</strong>
                         <p className="muted">{thread.lastMessage?.body ?? "No messages yet"}</p>
-                      </Link>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -1182,17 +1194,19 @@ export default function ProductStaffPage() {
             <div className="field"><label>Case number</label><input value={newMatter.rawCaseNumber} onChange={(event) => setNewMatter({ ...newMatter, rawCaseNumber: event.target.value })} /></div>
             <div className="field"><label>Title</label><input value={newMatter.title} onChange={(event) => setNewMatter({ ...newMatter, title: event.target.value })} /></div>
             <div className="field"><label>Next date</label><input type="date" value={newMatter.nextHearingAt} onChange={(event) => setNewMatter({ ...newMatter, nextHearingAt: event.target.value })} /></div>
-            <button className="button" type="button" onClick={() => void createMatter()}>Create matter</button>
+            <button className="button" type="button" onClick={() => void createMatter()}>Create Matter</button>
             <hr style={{ margin: "24px 0" }} />
             <h2>CSV Import</h2>
             <p className="muted">
-              Validate duplicate and malformed rows before importing.
+              Validate Duplicate and Malformed Rows Before Importing.
             </p>
-            <a className="button-secondary" href={`${PRODUCT_API_BASE_URL}/v1/matters/import-template.csv`}>
-              Download template
-            </a>
-            <textarea value={csvImport} onChange={(event) => setCsvImport(event.target.value)} placeholder="Paste the Legal Bhai CSV template here" />
-            <button className="button-secondary" type="button" onClick={() => void previewCsvImport()}>Validate import</button>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <a className="button-secondary" href={`${PRODUCT_API_BASE_URL}/v1/matters/import-template.csv`} style={{ textAlign: "center" }}>
+                Download Template
+              </a>
+              <textarea value={csvImport} onChange={(event) => setCsvImport(event.target.value)} placeholder="Paste the Legal Bhai CSV template here" style={{ minHeight: 120 }} />
+              <button className="button-secondary" type="button" onClick={() => void previewCsvImport()}>Validate Import</button>
+            </div>
             {csvPreview ? (
               <div className="case-card" style={{ marginTop: 12, padding: 14 }}>
                 <strong>{csvPreview.acceptedRows} accepted · {csvPreview.rejectedRows} rejected</strong>
@@ -1206,10 +1220,10 @@ export default function ProductStaffPage() {
                 </div>
                 <div className="actions" style={{ marginTop: 12 }}>
                   {csvPreview.status === "preview" && csvPreview.acceptedRows > 0 ? (
-                    <button className="button" type="button" onClick={() => void confirmCsvImport()}>Confirm import</button>
+                    <button className="button" type="button" onClick={() => void confirmCsvImport()}>Confirm Import</button>
                   ) : null}
                   {csvPreview.rejectedRows > 0 ? (
-                    <button className="button-secondary" type="button" onClick={downloadRejectedRows}>Download rejected rows</button>
+                    <button className="button-secondary" type="button" onClick={downloadRejectedRows}>Download Rejected Rows</button>
                   ) : null}
                 </div>
               </div>
@@ -1227,7 +1241,7 @@ export default function ProductStaffPage() {
                 >
                   <div className="top-bar" style={{ marginBottom: 10 }}>
                     <strong>{matter.rawCaseNumber}</strong>
-                    <span className="badge live">{matter.stage}</span>
+                    <span className="badge live">{matter.stage.charAt(0).toUpperCase() + matter.stage.slice(1)}</span>
                   </div>
                   <div>{matter.title}</div>
                   <p className="muted" style={{ marginBottom: 0, marginTop: 8 }}>
@@ -1275,7 +1289,7 @@ export default function ProductStaffPage() {
                     <div className="field"><label>Next date</label><input type="date" value={matterDraft.nextHearingAt} onChange={(event) => setMatterDraft({ ...matterDraft, nextHearingAt: event.target.value })} /></div>
                     <div className="actions">
                       <button className="button" type="button" onClick={() => void saveMatter()}>Save Matter</button>
-                      {matterDraft.status !== "closed" ? <button className="button-danger" type="button" onClick={() => void archiveMatter()}>Archive matter</button> : null}
+                      {matterDraft.status !== "closed" ? <button className="button-danger" type="button" onClick={() => void archiveMatter()}>Archive Matter</button> : null}
                     </div>
                   </div>
 
@@ -1302,7 +1316,7 @@ export default function ProductStaffPage() {
                       {selectedMatter.parties.map((party) => (
                         <div key={party.id} className="case-card" style={{ padding: 14 }}>
                           <div className="field">
-                            <label>{party.partyType}</label>
+                            <label>{party.partyType.charAt(0).toUpperCase() + party.partyType.slice(1)}</label>
                             <input
                               value={partyNameDrafts[party.id] ?? party.displayName}
                               onChange={(event) => setPartyNameDrafts({ ...partyNameDrafts, [party.id]: event.target.value })}
@@ -1339,13 +1353,13 @@ export default function ProductStaffPage() {
                           <strong>{document.title}</strong>
                           <p className="muted">{document.type} · {document.mimeType} · OCR {document.ocrStatus}</p>
                           <button className="button-secondary" type="button" onClick={() => void openDocument(document.id)}>
-                            Open content
+                            Open Content
                           </button>
                         </div>
                       ))}
                     </div>
                     <hr style={{ margin: "24px 0" }} />
-                    <h3>Upload private document</h3>
+                    <h3>Upload Private Document</h3>
                     <div className="field"><label>Title</label><input value={documentUpload.title} onChange={(event) => setDocumentUpload({ ...documentUpload, title: event.target.value })} placeholder="Uses file name when blank" /></div>
                     <div className="field">
                       <label>Type</label>
@@ -1360,15 +1374,15 @@ export default function ProductStaffPage() {
                     <div className="field"><label>File</label><input type="file" accept="image/*,.pdf,.doc,.docx" onChange={(event) => setDocumentFile(event.target.files?.[0] ?? null)} /></div>
                     <label className="checkbox-field">
                       <input type="checkbox" checked={documentUpload.portalVisible} onChange={(event) => setDocumentUpload({ ...documentUpload, portalVisible: event.target.checked })} />
-                      Share with linked client
+                      Share With Linked Client
                     </label>
-                    <button className="button-secondary" type="button" disabled={!documentFile} onClick={() => void uploadDocument()}>Upload document</button>
+                    <button className="button-secondary" type="button" disabled={!documentFile} onClick={() => void uploadDocument()}>Upload Document</button>
                   </div>
                 </div>
 
                 <aside className="grid">
                   <div className="panel">
-                    <h2 style={{ marginTop: 0 }}>Capture hearing</h2>
+                    <h2 style={{ marginTop: 0 }}>Capture Hearing</h2>
                     <div className="field">
                       <label>Listed at</label>
                       <input
@@ -1382,15 +1396,15 @@ export default function ProductStaffPage() {
                       <input value={hearingOutcome} onChange={(event) => setHearingOutcome(event.target.value)} />
                     </div>
                     <div className="field">
-                      <label>Hearing notes</label>
+                      <label>Hearing Notes</label>
                       <textarea value={hearingNotes} onChange={(event) => setHearingNotes(event.target.value)} />
                     </div>
                     <div className="field">
-                      <label>Next date</label>
+                      <label>Next Date</label>
                       <input type="date" value={hearingNextDate} onChange={(event) => setHearingNextDate(event.target.value)} />
                     </div>
                     <div className="field">
-                      <label>Order image or PDF</label>
+                      <label>Order Image Or PDF</label>
                       <input
                         type="file"
                         accept="image/*,.pdf"
@@ -1398,13 +1412,13 @@ export default function ProductStaffPage() {
                       />
                     </div>
                     <button className="button" type="button" onClick={() => void captureHearing()}>
-                      Save hearing update
+                      Save Hearing Update
                     </button>
                     {hearingStatus ? <p className="muted" style={{ marginTop: 12 }}>{hearingStatus}</p> : null}
                   </div>
 
                   <div className="panel">
-                    <h2 style={{ marginTop: 0 }}>Client access</h2>
+                    <h2 style={{ marginTop: 0 }}>Client Access</h2>
                     <p className="muted">Link a client account before generating its protected one-matter portal.</p>
                     <div className="field">
                       <label>Client</label>
@@ -1415,15 +1429,17 @@ export default function ProductStaffPage() {
                         ))}
                       </select>
                     </div>
-                    <button className="button-secondary" type="button" disabled={!matterClientId} onClick={() => void linkClientToMatter()}>
-                      Link client to matter
-                    </button>
-                    <button className="button-danger" type="button" disabled={!matterClientId} onClick={() => void unlinkClientFromMatter()}>
-                      Unlink selected client
-                    </button>
-                    <button className="button-secondary" type="button" disabled={!matterClientId} onClick={() => void createPortalLink()}>
-                      Create portal link
-                    </button>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      <button className="button-secondary" type="button" disabled={!matterClientId} onClick={() => void linkClientToMatter()}>
+                        Link Client To Matter
+                      </button>
+                      <button className="button-danger" type="button" disabled={!matterClientId} onClick={() => void unlinkClientFromMatter()}>
+                        Unlink Selected Client
+                      </button>
+                      <button className="button-secondary" type="button" disabled={!matterClientId} onClick={() => void createPortalLink()}>
+                        Create Portal Link
+                      </button>
+                    </div>
                     {portalUrl ? (
                       <p className="muted" style={{ marginTop: 12, wordBreak: "break-all" }}>
                         <a href={portalUrl} target="_blank" rel="noreferrer">{portalUrl}</a>
@@ -1432,7 +1448,7 @@ export default function ProductStaffPage() {
                   </div>
 
                   <div className="panel">
-                    <h2 style={{ marginTop: 0 }}>Client thread</h2>
+                    <h2 style={{ marginTop: 0 }}>Client Thread</h2>
                     <div className="grid" style={{ maxHeight: 280, overflow: "auto" }}>
                       {messages.map((message) => (
                         <div key={message.id} className="case-card" style={{ padding: 14, borderLeftColor: message.senderType === "client" ? "var(--accent)" : "var(--primary)" }}>
@@ -1447,7 +1463,7 @@ export default function ProductStaffPage() {
                       <textarea value={messageDraft} onChange={(event) => setMessageDraft(event.target.value)} />
                     </div>
                     <button className="button-secondary" type="button" onClick={() => void sendMessage()}>
-                      Send update
+                      Send Update
                     </button>
                   </div>
                 </aside>
@@ -1460,7 +1476,7 @@ export default function ProductStaffPage() {
       {activeSection === "calendar" ? (
         <section className="detail-grid">
           <div className="panel">
-            <h2 style={{ marginTop: 0 }}>Calendar and conflicts</h2>
+            <h2 style={{ marginTop: 0 }}>Calendar And Conflicts</h2>
             <div className="grid">
               {calendar.map((item) => (
                 <div key={item.id} className="case-card" style={{ padding: 14, borderLeftColor: item.conflictState === "possible" ? "var(--accent)" : "var(--primary)" }}>
@@ -1499,7 +1515,7 @@ export default function ProductStaffPage() {
 
           <aside className="grid">
             <div className="panel">
-              <h2 style={{ marginTop: 0 }}>Possible conflicts</h2>
+              <h2 style={{ marginTop: 0 }}>Possible Conflicts</h2>
               <div className="grid">
                 {calendarConflicts.map((item) => (
                   <div key={item.id}>
@@ -1511,7 +1527,7 @@ export default function ProductStaffPage() {
             </div>
 
             <div className="panel">
-              <h2 style={{ marginTop: 0 }}>Court freshness</h2>
+              <h2 style={{ marginTop: 0 }}>Court Freshness</h2>
               <div className="grid">
                 {courtSources.map((source) => (
                   <div key={source.id}>
@@ -1528,13 +1544,13 @@ export default function ProductStaffPage() {
       {activeSection === "alerts" ? (
         <section className="detail-grid">
           <div className="panel">
-            <h2 style={{ marginTop: 0 }}>Alerts inbox</h2>
+            <h2 style={{ marginTop: 0 }}>Alerts Inbox</h2>
             <div className="grid">
               {alerts.map((alert) => (
                 <div key={alert.id} className="case-card" style={{ padding: 14 }}>
                   <div className="top-bar" style={{ marginBottom: 8 }}>
                     <strong>{alert.title}</strong>
-                    {!alert.readAt ? <button className="button-secondary" type="button" onClick={() => void markAlertRead(alert.id)}>Mark read</button> : <span className="badge live">read</span>}
+                    {!alert.readAt ? <button className="button-secondary" type="button" onClick={() => void markAlertRead(alert.id)}>Mark Read</button> : <span className="badge live">read</span>}
                   </div>
                   <p className="muted">{alert.body}</p>
                   <div className="muted">{formatDateTime(alert.createdAt)}</div>
@@ -1544,7 +1560,7 @@ export default function ProductStaffPage() {
           </div>
 
           <aside className="panel">
-            <h2 style={{ marginTop: 0 }}>Audit stream</h2>
+            <h2 style={{ marginTop: 0 }}>Audit Stream</h2>
             <div className="grid">
               {auditEvents.map((event) => (
                 <div key={event.id}>
@@ -1560,10 +1576,10 @@ export default function ProductStaffPage() {
       {activeSection === "clients" ? (
         <section className="dashboard-grid" style={{ gridTemplateColumns: "320px minmax(0, 1fr)" }}>
           <aside className="panel">
-            <h2 style={{ marginTop: 0 }}>Add client</h2>
+            <h2 style={{ marginTop: 0 }}>Add Client</h2>
             <div className="field"><label>Name</label><input value={newClient.displayName} onChange={(event) => setNewClient({ ...newClient, displayName: event.target.value })} /></div>
             <div className="field"><label>Phone</label><input value={newClient.phone} onChange={(event) => setNewClient({ ...newClient, phone: event.target.value })} /></div>
-            <button className="button" type="button" onClick={() => void createClient()}>Create client</button>
+            <button className="button" type="button" onClick={() => void createClient()}>Create Client</button>
             <hr style={{ margin: "24px 0" }} />
             <h2 style={{ marginTop: 0 }}>Client CRM</h2>
             <div className="case-list">
@@ -1592,7 +1608,7 @@ export default function ProductStaffPage() {
                   <div><strong>Next hearing:</strong> {clientDetail.client.nextHearingAt ?? "TBC"}</div>
                 </div>
                 <hr style={{ margin: "24px 0" }} />
-                <h3>Edit client</h3>
+                <h3>Edit Client</h3>
                 <div className="field"><label>Name</label><input value={clientDraft.displayName} onChange={(event) => setClientDraft({ ...clientDraft, displayName: event.target.value })} /></div>
                 <div className="field">
                   <label>Language</label>
@@ -1609,12 +1625,14 @@ export default function ProductStaffPage() {
                     <option value="archived">Archived</option>
                   </select>
                 </div>
-                <button className="button" type="button" onClick={() => void updateClient()}>Save client</button>
-                {clientDetail.client.status !== "archived" ? (
-                  <button className="button-danger" type="button" onClick={() => void archiveClient()}>Archive client</button>
-                ) : null}
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <button className="button" type="button" onClick={() => void updateClient()}>Save Client</button>
+                  {clientDetail.client.status !== "archived" ? (
+                    <button className="button-danger" type="button" onClick={() => void archiveClient()}>Archive Client</button>
+                  ) : null}
+                </div>
                 <hr style={{ margin: "24px 0" }} />
-                <h3>Client reminder consent</h3>
+                <h3>Client Reminder Consent</h3>
                 <p className="muted">Enable SMS only after the client has agreed to hearing reminders.</p>
                 {clientNotificationPreference ? (
                   <>
@@ -1632,7 +1650,7 @@ export default function ProductStaffPage() {
                       Client consented to SMS reminders
                     </label>
                     <button className="button-secondary" type="button" onClick={() => void saveClientNotificationPreference()}>
-                      Save reminder consent
+                      Save Reminder Consent
                     </button>
                   </>
                 ) : null}
@@ -1643,10 +1661,10 @@ export default function ProductStaffPage() {
                   <h2 style={{ marginTop: 0 }}>Shared Matters</h2>
                   <div className="grid">
                     {clientDetail.matters.map((matter) => (
-                      <Link key={matter.id} className="case-card" href={`/matters/${matter.id}`} style={{ padding: 14 }}>
+                      <button key={matter.id} className="case-card" onClick={() => { setActiveSection("matters"); openMatter(matter.id); }} style={{ padding: 14, textAlign: "left", cursor: "pointer" }}>
                         <strong>{matter.rawCaseNumber}</strong>
                         <p className="muted">{matter.title}</p>
-                      </Link>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -1656,10 +1674,10 @@ export default function ProductStaffPage() {
                     <h2 style={{ marginTop: 0 }}>Threads</h2>
                     <div className="grid">
                       {clientDetail.threadSummaries.map((thread) => (
-                        <Link key={thread.id} className="case-card" href={`/matters/${thread.matter.id}`} style={{ padding: 14 }}>
+                        <button key={thread.id} className="case-card" onClick={() => { setActiveSection("matters"); openMatter(thread.matter.id); }} style={{ padding: 14, textAlign: "left", cursor: "pointer" }}>
                           <strong>{thread.matter.rawCaseNumber}</strong>
                           <p className="muted">{thread.lastMessage?.body ?? "No client message yet"}</p>
-                        </Link>
+                        </button>
                       ))}
                     </div>
                   </div>
@@ -1673,7 +1691,7 @@ export default function ProductStaffPage() {
       {activeSection === "vault" ? (
         <section className="detail-grid">
           <div className="panel">
-            <h2 style={{ marginTop: 0 }}>Document vault</h2>
+            <h2 style={{ marginTop: 0 }}>Document Vault</h2>
             <div className="field-row" style={{ marginBottom: 16 }}>
               <input
                 value={vaultSearch}
@@ -1686,7 +1704,7 @@ export default function ProductStaffPage() {
             </div>
             {vaultSearchHits.length > 0 ? (
               <div className="panel" style={{ marginBottom: 18, background: "var(--primary-light)" }}>
-                <strong>Search results</strong>
+                <strong>Search Results</strong>
                 <div className="grid" style={{ marginTop: 10 }}>
                   {vaultSearchHits.map((hit) => (
                     <button key={hit.id} className="button-secondary" type="button" onClick={() => void openDocument(hit.id)}>
@@ -1709,7 +1727,7 @@ export default function ProductStaffPage() {
                   <div className="actions">
                     <button className="button-secondary" type="button" onClick={() => void openDocument(document.id)}>Download</button>
                     <button className="button-secondary" type="button" onClick={() => void updateDocumentVisibility(document)}>
-                      {document.portalVisible ? "Make internal" : "Share with client"}
+                      {document.portalVisible ? "Make Internal" : "Share With Client"}
                     </button>
                   </div>
                 </div>
@@ -1718,7 +1736,7 @@ export default function ProductStaffPage() {
           </div>
 
           <aside className="panel">
-            <h2 style={{ marginTop: 0 }}>Vault policy</h2>
+            <h2 style={{ marginTop: 0 }}>Vault Policy</h2>
             <div className="grid">
               <div><strong>Storage:</strong> quarantine then review</div>
               <div><strong>Portal visibility:</strong> off by default</div>
@@ -1733,7 +1751,7 @@ export default function ProductStaffPage() {
         <section className="detail-grid">
           <div className="grid">
             <div className="panel">
-              <h2 style={{ marginTop: 0 }}>Profile and session settings</h2>
+              <h2 style={{ marginTop: 0 }}>Profile and Session Settings</h2>
               <div className="info-list">
                 <div><strong>Name:</strong> {profile.staffUser.displayName}</div>
                 <div><strong>Phone:</strong> {profile.staffUser.phone}</div>
@@ -1742,16 +1760,16 @@ export default function ProductStaffPage() {
               </div>
             </div>
             <div className="panel">
-              <h2 style={{ marginTop: 0 }}>Notification preferences</h2>
+              <h2 style={{ marginTop: 0 }}>Notification Preferences</h2>
               {notificationPreference ? (
                 <div className="grid">
                   <label className="checkbox-field">
                     <input type="checkbox" checked={notificationPreference.emailEnabled} onChange={(event) => setNotificationPreference({ ...notificationPreference, emailEnabled: event.target.checked })} />
-                    Receive lawyer agenda emails
+                    Receive Lawyer Agenda Emails
                   </label>
                   <label className="checkbox-field">
                     <input type="checkbox" checked={notificationPreference.smsEnabled} onChange={(event) => setNotificationPreference({ ...notificationPreference, smsEnabled: event.target.checked })} />
-                    Receive lawyer agenda SMS
+                    Receive Lawyer Agenda SMS
                   </label>
                   <label className="checkbox-field">
                     <input
@@ -1769,7 +1787,7 @@ export default function ProductStaffPage() {
 
           <aside className="grid">
             <div className="panel">
-              <h2 style={{ marginTop: 0 }}>Delivery history</h2>
+              <h2 style={{ marginTop: 0 }}>Delivery History</h2>
               <div className="grid">
                 {notificationHistory.length === 0 ? <div className="muted">No reminders have been scheduled yet.</div> : null}
                 {notificationHistory.slice(0, 20).map((notification) => (
@@ -1810,9 +1828,9 @@ export default function ProductStaffPage() {
               relying on reminders for a real hearing.
             </p>
             <div className="actions">
-              <Link className="button" href="/matters">Add or import first matter</Link>
-              <Link className="button-secondary" href="/settings">Review reminder settings</Link>
-              <Link className="button-secondary" href="/clients">Add a client</Link>
+              <button className="button" type="button" onClick={() => setActiveSection("matters")}>Add or Import First Matter</button>
+              <button className="button-secondary" type="button" onClick={() => setActiveSection("settings")}>Review Reminder Settings</button>
+              <button className="button-secondary" type="button" onClick={() => setActiveSection("clients")}>Add a Client</button>
             </div>
           </div>
 

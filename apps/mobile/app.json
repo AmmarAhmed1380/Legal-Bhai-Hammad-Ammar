@@ -25,6 +25,9 @@
     },
     "assetBundlePatterns": [
       "**/*"
+    ],
+    "plugins": [
+      "expo-status-bar"
     ]
   }
 }

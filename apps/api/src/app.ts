@@ -222,6 +222,7 @@ export function buildServer(providedDemoStore?: DemoStore) {
   });
 
   app.register(cors, {
+    methods: ["GET", "PUT", "POST", "PATCH", "DELETE", "OPTIONS", "HEAD"],
     origin(origin, callback) {
       if (!origin) {
         callback(null, true);

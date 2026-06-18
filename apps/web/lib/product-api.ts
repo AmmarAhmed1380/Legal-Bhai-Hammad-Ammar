@@ -38,7 +38,12 @@ export async function productJsonRequest<T>(
 
   if (!response.ok) {
     const body = await response.text();
-    throw new ProductRequestError(response.status, body || `Request failed: ${response.status}`);
+    let errorMessage = body;
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed.error) errorMessage = parsed.error;
+    } catch {}
+    throw new ProductRequestError(response.status, errorMessage || `Request failed: ${response.status}`);
   }
 
   return response.json() as Promise<T>;
