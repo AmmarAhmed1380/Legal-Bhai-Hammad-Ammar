@@ -1067,7 +1067,7 @@ export default function ProductStaffPage() {
         <section className="dashboard-grid" style={{ gridTemplateColumns: "320px minmax(0, 1fr)" }}>
           <aside className="grid">
             <div className="panel">
-              <h2 style={{ marginTop: 0 }}>Workspace health</h2>
+              <h2 style={{ marginTop: 0 }}>Workspace Health</h2>
               <div className="stats-grid">
                 <div className="stat-card">
                   <div className="stat-number">{stats.matters}</div>
@@ -1128,7 +1128,7 @@ export default function ProductStaffPage() {
 
             <div className="detail-grid">
               <div className="panel">
-                <h2 style={{ marginTop: 0 }}>Matter pipeline</h2>
+                <h2 style={{ marginTop: 0 }}>Matter Pipeline</h2>
                 <div className="grid">
                   {report?.mattersByStage.map((entry) => (
                     <div key={entry.stage} className="case-card" style={{ padding: 14 }}>
@@ -1153,7 +1153,7 @@ export default function ProductStaffPage() {
                 </div>
 
                 <div className="panel">
-                  <h2 style={{ marginTop: 0 }}>Unread client threads</h2>
+                  <h2 style={{ marginTop: 0 }}>Unread Client Threads</h2>
                   <div className="grid">
                     {threads.map((thread) => (
                       <Link key={thread.id} className="case-card" href={`/matters/${thread.matter.id}`} style={{ padding: 14 }}>
@@ -1471,7 +1471,7 @@ export default function ProductStaffPage() {
               ))}
             </div>
             <hr style={{ margin: "24px 0" }} />
-            <h2>Court entries needing review</h2>
+            <h2>Court Entries Needing Review</h2>
             <p className="muted">Link only after confirming the cause-list entry belongs to one of your matters.</p>
             <div className="grid">
               {unmatchedCauseEntries.length === 0 ? <div className="muted">No unmatched court entries.</div> : null}
@@ -1640,7 +1640,7 @@ export default function ProductStaffPage() {
 
               <div className="detail-grid">
                 <div className="panel">
-                  <h2 style={{ marginTop: 0 }}>Shared matters</h2>
+                  <h2 style={{ marginTop: 0 }}>Shared Matters</h2>
                   <div className="grid">
                     {clientDetail.matters.map((matter) => (
                       <Link key={matter.id} className="case-card" href={`/matters/${matter.id}`} style={{ padding: 14 }}>
