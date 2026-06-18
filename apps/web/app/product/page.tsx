@@ -4,7 +4,7 @@ export default function ProductHomePage() {
   return (
     <main className="page-shell">
       <section className="panel share-card" style={{ maxWidth: 920 }}>
-        <div className="eyebrow">LegalBahi</div>
+        <div className="eyebrow">Legal Bhai</div>
         <h1 className="title">Secure legal practice workspace</h1>
         <p className="muted" style={{ maxWidth: 640 }}>
           Manage matters, hearing dates, IHC cause-list matches, private documents, reminders, and

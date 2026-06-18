@@ -1,4 +1,4 @@
-# LegalBahi Test Report
+# Legal Bhai Test Report
 
 Date: 2026-06-13
 
@@ -54,7 +54,7 @@ Date: 2026-06-13
 | `npm run build:web` | Pass | Next production build passed. |
 | `npm run test:web:e2e` | Pass | Playwright pilot workflow passed. |
 | `npm run typecheck:mobile` | Pass | Mobile TypeScript check passed. |
-| `npm run test:mobile:flows` | Pass | 2 LegalBahi Android Maestro flow definitions verified. |
+| `npm run test:mobile:flows` | Pass | 2 Legal Bhai Android Maestro flow definitions verified. |
 | `npm run test:deployment` | Pass | Windows scripts, Caddy loopback routing, R2 lifecycle, and 6 migrations verified. |
 
 ## Skipped test

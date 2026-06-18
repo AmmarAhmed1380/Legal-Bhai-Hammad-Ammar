@@ -16,8 +16,8 @@
 - Lawyer web workflows for matter edit/archive, client and party management, document search/visibility, IHC manual review, and notification preferences/history.
 - IHC exact-match ingestion, match review API, and database-backed reminder worker.
 - Twilio SMS, Resend email, Cloudflare R2, Android internal-build, Caddy, CI, backup, and restore configuration.
-- LegalBahi-first web and Android entry points; demo and deferred surfaces are hidden from production navigation.
-- LegalBahi Android launcher/adaptive icons, secure session storage, internal EAS profile, and production-line Android export.
+- Legal Bhai-first web and Android entry points; demo and deferred surfaces are hidden from production navigation.
+- Legal Bhai Android launcher/adaptive icons, secure session storage, internal EAS profile, and production-line Android export.
 - Android matter-document camera upload in addition to hearing-order capture.
 - Android invited-lawyer signup, secure session hydration, and checked-in Maestro signup/hearing-update flows.
 - Production API and worker runtime use PostgreSQL only; SQLite is limited to explicit development/demo mode.
@@ -29,7 +29,7 @@
 - App services run as `LocalService`, receive only runtime settings, and cannot receive separate R2 backup credentials or the age restore identity.
 - Production web builds are marked with their API URL and rejected by service installation when the configured URL differs.
 - Host acceptance checks verify service accounts, loopback listeners, HTTPS, the scheduled task, a recent encrypted backup, and optional full smoke execution.
-- GitHub uptime checks cover both API readiness and the hosted LegalBahi web app; production smoke submits a Sentry test event.
+- GitHub uptime checks cover both API readiness and the hosted Legal Bhai web app; production smoke submits a Sentry test event.
 - Local `main` Git repository is initialized, with generated/runtime uploads and secrets excluded from version control.
 - Loopback-proxy-aware per-client rate limits, delivery-time consent checks, and changed-hearing reminder rescheduling.
 - Playwright web pilot journey and deployment/mobile-flow contract verifiers in CI.
@@ -57,7 +57,7 @@
 - IHC live-source fetch succeeds for regular, supplementary, and urgent lists.
 - IHC matcher evaluation passes all five known matches and the expected unmatched case.
 - Playwright web journey passes from invited signup through matter/client linking, hearing update, protected portal OTP, scoped exact-matter access, and client readback.
-- Android production-line export succeeds with LegalBahi icon and package configuration.
+- Android production-line export succeeds with Legal Bhai icon and package configuration.
 - Android Maestro signup and hearing/client-update flows pass structural/package-ID validation; installed-build execution remains an external launch gate.
 - Deployment validation confirms separate document/backup bucket enforcement in both service and backup-task installers.
 - All ten deployment PowerShell scripts parse successfully under Windows PowerShell 5.1 on the current VPS.

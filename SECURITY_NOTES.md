@@ -1,4 +1,4 @@
-# LegalBahi Security Notes
+# Legal Bhai Security Notes
 
 Date: 2026-06-13
 

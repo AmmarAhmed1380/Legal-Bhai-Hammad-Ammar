@@ -1,11 +1,11 @@
-# LegalBahi Final Handoff for Hammad
+# Legal Bhai Final Handoff for Hammad
 
 Prepared for: Hammad  
-Purpose: Explain what the project is, what already works, what is unfinished, and what Hammad must complete to turn LegalBahi into a usable Pakistan-focused legal practice product.
+Purpose: Explain what the project is, what already works, what is unfinished, and what Hammad must complete to turn Legal Bhai into a usable Pakistan-focused legal practice product.
 
 ## 1. What This Project Is
 
-LegalBahi is a Pakistan-focused legal practice management product for lawyers.
+Legal Bhai is a Pakistan-focused legal practice management product for lawyers.
 
 It is designed mainly for lawyers working around Islamabad and Rawalpindi, with early focus on:
 
@@ -26,7 +26,7 @@ The intended user is a lawyer who wants one place to manage cases, hearing dates
 
 ## 2. What Problem It Solves
 
-Pakistani lawyers often manage case work through a mix of diary notes, WhatsApp, phone calls, paper files, screenshots, cause lists, and memory. LegalBahi tries to make that workflow more organized.
+Pakistani lawyers often manage case work through a mix of diary notes, WhatsApp, phone calls, paper files, screenshots, cause lists, and memory. Legal Bhai tries to make that workflow more organized.
 
 The final product should help a lawyer answer these questions quickly:
 
@@ -39,7 +39,7 @@ The final product should help a lawyer answer these questions quickly:
 - Can a client safely see their own case update without seeing anything else?
 - Has the client given consent for SMS reminders?
 
-The goal is simple: a pilot lawyer should be able to use LegalBahi as a real legal-work diary and client-update tool.
+The goal is simple: a pilot lawyer should be able to use Legal Bhai as a real legal-work diary and client-update tool.
 
 ## 3. Current Product Surfaces
 
@@ -120,7 +120,7 @@ Primary files:
 - `apps/mobile/App.tsx`
 - `apps/mobile/src/productApp.tsx`
 
-The Android app exists and has LegalBahi branding.
+The Android app exists and has Legal Bhai branding.
 
 It currently supports:
 
@@ -141,7 +141,7 @@ It currently supports:
 Current limitation:
 
 - `apps/mobile/App.tsx` still contains the older Wakeel demo app and the newer product app wrapper in the same file.
-- Production mode opens the real LegalBahi product app.
+- Production mode opens the real Legal Bhai product app.
 - Demo mode is still available only when demo surfaces are enabled.
 
 This is acceptable for pilot, but Hammad should clean it before commercial launch.
@@ -966,7 +966,7 @@ Tasks:
 
 Exit condition:
 
-- LegalBahi opens from a hosted URL.
+- Legal Bhai opens from a hosted URL.
 - API and web talk to the hosted database.
 
 ### Day 3: Providers and Mobile
@@ -1003,7 +1003,7 @@ Tasks:
 
 Exit condition:
 
-- A pilot lawyer can test the full LegalBahi workflow on hosted web and Android using fake or pilot-safe data.
+- A pilot lawyer can test the full Legal Bhai workflow on hosted web and Android using fake or pilot-safe data.
 - Any unfinished item is documented as a launch blocker or post-pilot task.
 
 ## 14. What Hammad Should Not Do First
@@ -1036,4 +1036,4 @@ Hammad's 4-day execution plan should be:
 
 The success condition is not "all features are perfect." The success condition is:
 
-> A pilot lawyer can use LegalBahi on web and Android with fake or pilot data, manage real-looking matters, update hearings, share a protected client portal link, and trust that private client data does not leak.
+> A pilot lawyer can use Legal Bhai on web and Android with fake or pilot data, manage real-looking matters, update hearings, share a protected client portal link, and trust that private client data does not leak.

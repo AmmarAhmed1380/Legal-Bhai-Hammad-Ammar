@@ -980,7 +980,7 @@ export default function ProductStaffPage() {
     return (
       <main className="page-shell">
         <section className="auth-card">
-          <div className="eyebrow">LegalBahi</div>
+          <div className="eyebrow">Legal Bhai</div>
           <h1 className="title">Lawyer workspace</h1>
           <p className="muted">
             Secure matters, hearing dates, court-list matches, documents, and client updates.
@@ -1032,7 +1032,7 @@ export default function ProductStaffPage() {
     <main className="page-shell">
       <div className="top-bar">
         <div>
-          <div className="eyebrow">LegalBahi Lawyer Workspace</div>
+          <div className="eyebrow">Legal Bhai Lawyer Workspace</div>
           <h1 className="title" style={{ marginBottom: 4 }}>
             {profile.firm?.name}
           </h1>
@@ -1206,7 +1206,7 @@ export default function ProductStaffPage() {
             <a className="button-secondary" href={`${PRODUCT_API_BASE_URL}/v1/matters/import-template.csv`}>
               Download template
             </a>
-            <textarea value={csvImport} onChange={(event) => setCsvImport(event.target.value)} placeholder="Paste the LegalBahi CSV template here" />
+            <textarea value={csvImport} onChange={(event) => setCsvImport(event.target.value)} placeholder="Paste the Legal Bhai CSV template here" />
             <button className="button-secondary" type="button" onClick={() => void previewCsvImport()}>Validate import</button>
             {csvPreview ? (
               <div className="case-card" style={{ marginTop: 12, padding: 14 }}>
@@ -1819,7 +1819,7 @@ export default function ProductStaffPage() {
         <section className="detail-grid">
           <div className="panel">
             <div className="eyebrow">Onboarding step</div>
-            <h2 style={{ marginTop: 6 }}>Your LegalBahi workspace is ready</h2>
+            <h2 style={{ marginTop: 6 }}>Your Legal Bhai workspace is ready</h2>
             <p className="muted">
               Your invited signup created a private solo-lawyer workspace. Finish these steps before
               relying on reminders for a real hearing.

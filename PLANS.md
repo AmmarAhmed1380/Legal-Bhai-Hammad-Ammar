@@ -1,4 +1,4 @@
-# LegalBahi Pilot-Ready Implementation Plan
+# Legal Bhai Pilot-Ready Implementation Plan
 
 Target: a controlled pilot for Islamabad High Court and Rawalpindi legal practice work, with web, mobile, client portal, backend API, PostgreSQL, secure document storage, OTP auth, court-source tracking, tests, and deployment handoff.
 

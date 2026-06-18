@@ -6,7 +6,7 @@ Use this mode only with fake test information. It is for checking the product be
 
 Your Mac and your brother's phone or laptop must be connected to the same Wi-Fi.
 
-From the LegalBahi folder, run:
+From the Legal Bhai folder, run:
 
 ```bash
 npm run brother:test
@@ -64,7 +64,7 @@ npm run brother:test:mobile
 
 Scan the Expo QR code using Expo Go. Use the lawyer test account or the invited phone number.
 
-This checks the app screens and camera workflow. It is not the final installable LegalBahi APK.
+This checks the app screens and camera workflow. It is not the final installable Legal Bhai APK.
 
 ## Feature checklist
 

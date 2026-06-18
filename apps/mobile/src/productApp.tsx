@@ -302,7 +302,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
   async function pickHearingImage() {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert("Camera permission required", "LegalBahi needs camera access to upload hearing orders.");
+      Alert.alert("Camera permission required", "Legal Bhai needs camera access to upload hearing orders.");
       return;
     }
     const image = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.8 });
@@ -314,7 +314,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
   async function pickDocumentImage() {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert("Camera permission required", "LegalBahi needs camera access to upload matter documents.");
+      Alert.alert("Camera permission required", "Legal Bhai needs camera access to upload matter documents.");
       return;
     }
     const image = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.8 });
@@ -372,7 +372,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
           {onBack ? <Pressable onPress={onBack}>
             <Text style={styles.eyebrow}>Back to mode select</Text>
           </Pressable> : null}
-          <Text style={styles.title}>LegalBahi</Text>
+          <Text style={styles.title}>Legal Bhai</Text>
           <Text style={styles.copy}>
             Production-line staff workspace with OTP auth, matters, hearing timeline, client thread,
             alerts, and client updates.
@@ -531,7 +531,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
     <SafeAreaView style={styles.safe}>
       <StatusBar style="dark" />
       <View style={styles.screen}>
-        <Text style={styles.eyebrow}>LegalBahi</Text>
+        <Text style={styles.eyebrow}>Legal Bhai</Text>
         <Text style={styles.title}>{profile.firm?.name ?? "Workspace"}</Text>
         <Text style={styles.copy}>{profile.staffUser.displayName} · {profile.staffMembership.role}</Text>
         <View style={styles.tabRow}>

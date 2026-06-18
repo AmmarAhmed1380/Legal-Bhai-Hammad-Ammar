@@ -352,7 +352,7 @@ function ProductClientWorkspace() {
             <div className="panel">
               <div className="eyebrow">Portal access</div>
               <h1 className="title">Client portal</h1>
-              <p className="muted">Enter the client OTP before LegalBahi shows the one matter protected by this link.</p>
+              <p className="muted">Enter the client OTP before Legal Bhai shows the one matter protected by this link.</p>
               {workspaceError ? <p className="muted">{workspaceError}</p> : null}
               {!portalAuth ? <button className="button-secondary" type="button" onClick={() => void requestPortalReplyAccess()}>
                 Request portal OTP
@@ -447,7 +447,7 @@ function ProductClientWorkspace() {
     return (
       <main className="page-shell">
         <section className="auth-card">
-          <div className="eyebrow">LegalBahi</div>
+          <div className="eyebrow">Legal Bhai</div>
           <h1 className="title">Client workspace</h1>
           <p className="muted">
             Invite-only client login for the production line. Clients get a persistent workspace
@@ -491,7 +491,7 @@ function ProductClientWorkspace() {
           <h1 className="title" style={{ marginBottom: 4 }}>
             {profile.clientAccount.displayName}
           </h1>
-          <p className="muted">{profile.firm?.name ?? "LegalBahi"} · invite-only account</p>
+          <p className="muted">{profile.firm?.name ?? "Legal Bhai"} · invite-only account</p>
         </div>
         <div className="actions">
           <Link className="button-secondary" href="/overview">

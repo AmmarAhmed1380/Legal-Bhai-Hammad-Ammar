@@ -1,7 +1,7 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "LegalBahi",
+  title: "Legal Bhai",
   description: "Secure matter and hearing management for Pakistani lawyers",
 };
 

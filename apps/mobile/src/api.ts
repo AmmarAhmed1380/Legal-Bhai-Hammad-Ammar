@@ -18,10 +18,10 @@ export async function apiRequest<T>(
   token?: string | null,
 ): Promise<T> {
   if (!API_BASE_URL) {
-    throw new ApiRequestError(0, "EXPO_PUBLIC_API_URL is required in production LegalBahi builds");
+    throw new ApiRequestError(0, "EXPO_PUBLIC_API_URL is required in production Legal Bhai builds");
   }
   if (!developmentRuntime && !demoSurfacesEnabled && !API_BASE_URL.startsWith("https://")) {
-    throw new ApiRequestError(0, "Production LegalBahi builds require an HTTPS API URL");
+    throw new ApiRequestError(0, "Production Legal Bhai builds require an HTTPS API URL");
   }
   const headers = new Headers(options.headers);
   if (!(options.body instanceof FormData)) {

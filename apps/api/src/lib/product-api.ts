@@ -361,7 +361,7 @@ export function registerProductRoutes(app: FastifyInstance, store: ProductStoreC
     if (!requestRecord) {
       return null;
     }
-    await smsProvider.send(phone, `Your LegalBahi verification code is ${code}. It expires in 10 minutes.`);
+    await smsProvider.send(phone, `Your Legal Bhai verification code is ${code}. It expires in 10 minutes.`);
     return {
       ok: true,
       expiresAt: requestRecord.expiresAt,

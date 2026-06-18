@@ -1,4 +1,4 @@
-# LegalBahi Pilot Acceptance Report
+# Legal Bhai Pilot Acceptance Report
 
 Date: 2026-06-13
 

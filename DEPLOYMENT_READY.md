@@ -1,4 +1,4 @@
-# LegalBahi Deployment Ready Notes
+# Legal Bhai Deployment Ready Notes
 
 Date: 2026-06-13
 
