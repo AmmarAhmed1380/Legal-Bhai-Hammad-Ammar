@@ -70,7 +70,7 @@ const CLIENT_PHONES = [
 ] as const;
 
 const STORAGE_KEY = "legalbahi-client-auth";
-const DEMO_SURFACES = process.env.NEXT_PUBLIC_ENABLE_DEMO_SURFACES === "true";
+
 
 function formatDateTime(value: string | null): string {
   if (!value) {
@@ -454,18 +454,7 @@ function ProductClientWorkspace() {
             with matter timelines, documents, and in-app threads.
           </p>
           {workspaceError ? <p className="muted">{workspaceError}</p> : null}
-          {DEMO_SURFACES ? <div className="actions" style={{ margin: "16px 0" }}>
-            {CLIENT_PHONES.map((client) => (
-              <button
-                key={client.phone}
-                className={phone === client.phone ? "button" : "button-secondary"}
-                type="button"
-                onClick={() => setPhone(client.phone)}
-              >
-                {client.label}
-              </button>
-            ))}
-          </div> : null}
+
           <div className="field">
             <label>Phone</label>
             <input value={phone} onChange={(event) => setPhone(event.target.value)} />
@@ -477,7 +466,7 @@ function ProductClientWorkspace() {
           <button className="button" type="button" onClick={() => void (otpRequested ? verifyLogin() : startLogin())}>
             {otpRequested ? "Verify OTP and sign in" : "Request OTP"}
           </button>
-          {DEMO_SURFACES && loginCode ? <p className="muted" style={{ marginTop: 12 }}>Development OTP: <strong>{loginCode}</strong></p> : null}
+
         </section>
       </main>
     );

@@ -303,7 +303,7 @@ const STAFF_NAV: Array<{ id: StaffSection; label: string; href: string }> = [
 ];
 
 const STORAGE_KEY = "legalbahi-staff-auth";
-const DEMO_SURFACES = process.env.NEXT_PUBLIC_ENABLE_DEMO_SURFACES === "true";
+
 
 function defaultDateTimeValue(): string {
   const now = new Date();
@@ -986,18 +986,7 @@ export default function ProductStaffPage() {
             Secure matters, hearing dates, court-list matches, documents, and client updates.
           </p>
           {operationStatus ? <p className="muted">{operationStatus}</p> : null}
-          {DEMO_SURFACES ? <div className="actions" style={{ margin: "16px 0" }}>
-            {STAFF_PHONES.map((user) => (
-              <button
-                key={user.phone}
-                className={phone === user.phone ? "button" : "button-secondary"}
-                type="button"
-                onClick={() => setPhone(user.phone)}
-              >
-                {user.label}
-              </button>
-            ))}
-          </div> : null}
+
           <div className="field">
             <label>Phone</label>
             <input value={phone} onChange={(event) => setPhone(event.target.value)} />
@@ -1015,11 +1004,7 @@ export default function ProductStaffPage() {
           <button className="button" type="button" onClick={() => void (otpRequested ? verifyLogin() : startLogin())}>
             {otpRequested ? "Verify OTP and sign in" : "Request OTP"}
           </button>
-          {DEMO_SURFACES && loginCode ? (
-            <p className="muted" style={{ marginTop: 12 }}>
-              Development OTP: <strong>{loginCode}</strong>
-            </p>
-          ) : null}
+
           <button className="button-secondary" type="button" onClick={() => { setRegistrationMode(!registrationMode); setOtpRequested(false); }}>
             {registrationMode ? "Use existing lawyer login" : "Invited lawyer? Create workspace"}
           </button>
@@ -1791,7 +1776,7 @@ export default function ProductStaffPage() {
                   <div key={notification.id} className="case-card" style={{ padding: 14 }}>
                     <div className="top-bar" style={{ marginBottom: 6 }}>
                       <strong>{notification.templateKey.replaceAll("_", " ")}</strong>
-                      <span className={`badge ${notification.status === "sent" ? "live" : notification.status === "failed" ? "conflict" : "demo"}`}>{notification.status}</span>
+                      <span className={`badge ${notification.status === "sent" ? "live" : notification.status === "failed" ? "conflict" : "secondary"}`}>{notification.status}</span>
                     </div>
                     <div className="muted">{notification.actorType} · {notification.channel} · {formatDateTime(notification.scheduledAt)}</div>
                     <div className="muted">Attempts: {notification.attemptCount}{notification.lastError ? ` · ${notification.lastError}` : ""}</div>
@@ -1836,9 +1821,9 @@ export default function ProductStaffPage() {
             <div className="grid">
               <div><span className="badge live">Ready</span> Private workspace: {profile.firm?.name}</div>
               <div><span className="badge live">Ready</span> Owner: {profile.staffUser.displayName}</div>
-              <div><span className={`badge ${matters.length > 0 ? "live" : "demo"}`}>{matters.length > 0 ? "Ready" : "To do"}</span> First matter</div>
-              <div><span className={`badge ${clients.length > 0 ? "live" : "demo"}`}>{clients.length > 0 ? "Ready" : "To do"}</span> First client</div>
-              <div><span className={`badge ${notificationPreference ? "live" : "demo"}`}>{notificationPreference ? "Ready" : "To do"}</span> Reminder preferences</div>
+              <div><span className={`badge ${matters.length > 0 ? "live" : "secondary"}`}>{matters.length > 0 ? "Ready" : "To do"}</span> First matter</div>
+              <div><span className={`badge ${clients.length > 0 ? "live" : "secondary"}`}>{clients.length > 0 ? "Ready" : "To do"}</span> First client</div>
+              <div><span className={`badge ${notificationPreference ? "live" : "secondary"}`}>{notificationPreference ? "Ready" : "To do"}</span> Reminder preferences</div>
             </div>
           </aside>
         </section>
