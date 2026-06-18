@@ -9,14 +9,15 @@
     "start": "node --import tsx src/server.ts",
     "smoke:production": "node --import tsx src/production-smoke.ts",
     "test": "node --import tsx --test ./test/*.test.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "npx tsc --noEmit",
     "reset:demo": "node --import tsx src/reset.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1066.0",
     "@aws-sdk/s3-request-presigner": "^3.1066.0",
+    "@fastify/busboy": "^3.2.0",
     "@fastify/cors": "latest",
-    "@fastify/multipart": "latest",
+    "@fastify/multipart": "^10.0.0",
     "@sentry/node": "^10.57.0",
     "@wakeel/shared": "*",
     "fastify": "latest",
