@@ -209,7 +209,7 @@ test("PostgreSQL pilot runtime migrates and isolates workspaces", { skip: !testD
       portalVisible: false,
     }), null);
 
-    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const { agendaDate: tomorrow } = (await import("../src/lib/product-store.js")).nextDayAgendaSchedule(new Date());
     const ingestion = await store.ingestIhcCauseList([
       {
         court: "Court No. 1",
