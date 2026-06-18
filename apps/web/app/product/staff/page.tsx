@@ -1022,15 +1022,15 @@ export default function ProductStaffPage() {
             {profile.firm?.name}
           </h1>
           <p className="muted">
-            {profile.staffUser.displayName} · {profile.staffMembership.role} · {profile.staffMembership.officeLabel ?? "Main office"}
+            {profile.staffUser.displayName} · {profile.staffMembership.role.charAt(0).toUpperCase() + profile.staffMembership.role.slice(1)} · {profile.staffMembership.officeLabel ?? "Main Office"}
           </p>
         </div>
         <div className="actions">
           <Link className="button-secondary" href="/client">
-            Client workspace
+            Client Workspace
           </Link>
           <button className="button" type="button" onClick={() => void signOut()}>
-            Sign out
+            Sign Out
           </button>
         </div>
       </div>
@@ -1075,11 +1075,11 @@ export default function ProductStaffPage() {
                 </div>
                 <div className="stat-card">
                   <div className="stat-number">{report?.metrics.upcomingHearings ?? calendar.length}</div>
-                  <div>Upcoming hearings</div>
+                  <div>Upcoming Hearings</div>
                 </div>
                 <div className="stat-card">
                   <div className="stat-number">{stats.unreadAlerts}</div>
-                  <div>Unread alerts</div>
+                  <div>Unread Alerts</div>
                 </div>
               </div>
               {syncMessage ? <p className="muted" style={{ marginTop: 12 }}>{syncMessage}</p> : null}
@@ -1095,7 +1095,7 @@ export default function ProductStaffPage() {
                       <span className={`badge ${source.status === "live" ? "live" : "conflict"}`}>{source.status}</span>
                     </div>
                     <p className="muted" style={{ marginTop: 0 }}>
-                      {source.ingestionMode} · fetched {source.metrics.fetched ?? 0} · matched {source.metrics.matched ?? 0}
+                      {source.ingestionMode === "automation" ? "Automation" : source.ingestionMode} · Fetched {source.metrics.fetched ?? 0} · Matched {source.metrics.matched ?? 0}
                     </p>
                     <p className="muted">Last sync {formatDateTime(source.lastSuccessfulSyncAt)}</p>
                     {source.officialUrl ? (
@@ -1133,7 +1133,7 @@ export default function ProductStaffPage() {
                   {report?.mattersByStage.map((entry) => (
                     <div key={entry.stage} className="case-card" style={{ padding: 14 }}>
                       <strong>{entry.stage}</strong>
-                      <div className="muted">{entry.count} active matters</div>
+                      <div className="muted">{entry.count} Active Matters</div>
                     </div>
                   ))}
                 </div>
@@ -1145,8 +1145,8 @@ export default function ProductStaffPage() {
                   <div className="grid">
                     {auditEvents.slice(0, 6).map((event) => (
                       <div key={event.id}>
-                        <strong>{event.eventType}</strong>
-                        <div className="muted">{event.objectType} · {formatDateTime(event.createdAt)}</div>
+                        <strong>{event.eventType.charAt(0).toUpperCase() + event.eventType.slice(1)}</strong>
+                        <div className="muted">{event.objectType.charAt(0).toUpperCase() + event.objectType.slice(1)} · {formatDateTime(event.createdAt)}</div>
                       </div>
                     ))}
                   </div>
@@ -1172,7 +1172,7 @@ export default function ProductStaffPage() {
       {activeSection === "matters" ? (
         <section className="dashboard-grid" style={{ gridTemplateColumns: "320px minmax(0, 1fr)" }}>
           <aside className="panel">
-            <h2 style={{ marginTop: 0 }}>Add matter</h2>
+            <h2 style={{ marginTop: 0 }}>Add Matter</h2>
             <div className="field">
               <label>Court</label>
               <select value={newMatter.courtId} onChange={(event) => setNewMatter({ ...newMatter, courtId: event.target.value })}>
@@ -1184,7 +1184,7 @@ export default function ProductStaffPage() {
             <div className="field"><label>Next date</label><input type="date" value={newMatter.nextHearingAt} onChange={(event) => setNewMatter({ ...newMatter, nextHearingAt: event.target.value })} /></div>
             <button className="button" type="button" onClick={() => void createMatter()}>Create matter</button>
             <hr style={{ margin: "24px 0" }} />
-            <h2>CSV import</h2>
+            <h2>CSV Import</h2>
             <p className="muted">
               Validate duplicate and malformed rows before importing.
             </p>
@@ -1215,7 +1215,7 @@ export default function ProductStaffPage() {
               </div>
             ) : null}
             <hr style={{ margin: "24px 0" }} />
-            <h2 style={{ marginTop: 0 }}>Matter roster</h2>
+            <h2 style={{ marginTop: 0 }}>Matter Roster</h2>
             <div className="case-list">
               {matters.map((matter) => (
                 <button
@@ -1230,8 +1230,8 @@ export default function ProductStaffPage() {
                     <span className="badge live">{matter.stage}</span>
                   </div>
                   <div>{matter.title}</div>
-                  <p className="muted" style={{ marginBottom: 0 }}>
-                    {courtLabel(matter.courtId)} · {matter.status} · Next {matter.nextHearingAt ?? "TBC"}
+                  <p className="muted" style={{ marginBottom: 0, marginTop: 8 }}>
+                    {courtLabel(matter.courtId)} · {matter.status.charAt(0).toUpperCase() + matter.status.slice(1)} · Next {matter.nextHearingAt ?? "TBC"}
                   </p>
                 </button>
               ))}
@@ -1254,7 +1254,7 @@ export default function ProductStaffPage() {
                   </div>
 
                   <div className="panel">
-                    <h2 style={{ marginTop: 0 }}>Edit matter</h2>
+                    <h2 style={{ marginTop: 0 }}>Edit Matter</h2>
                     <div className="field">
                       <label>Court</label>
                       <select value={matterDraft.courtId} onChange={(event) => setMatterDraft({ ...matterDraft, courtId: event.target.value })}>
@@ -1274,7 +1274,7 @@ export default function ProductStaffPage() {
                     </div>
                     <div className="field"><label>Next date</label><input type="date" value={matterDraft.nextHearingAt} onChange={(event) => setMatterDraft({ ...matterDraft, nextHearingAt: event.target.value })} /></div>
                     <div className="actions">
-                      <button className="button" type="button" onClick={() => void saveMatter()}>Save matter</button>
+                      <button className="button" type="button" onClick={() => void saveMatter()}>Save Matter</button>
                       {matterDraft.status !== "closed" ? <button className="button-danger" type="button" onClick={() => void archiveMatter()}>Archive matter</button> : null}
                     </div>
                   </div>
