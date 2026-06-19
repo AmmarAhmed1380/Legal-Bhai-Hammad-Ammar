@@ -430,7 +430,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
           <View style={styles.card}>
             <Text style={styles.meta}><Text style={styles.metaLabel}>Court:</Text> {courtLabel(selectedMatter.courtId)}</Text>
             <Text style={styles.meta}><Text style={styles.metaLabel}>Stage:</Text> {selectedMatter.stage}</Text>
-            <Text style={styles.meta}><Text style={styles.metaLabel}>Next hearing:</Text> {selectedMatter.nextHearingAt ?? "TBC"}</Text>
+            <Text style={styles.meta}><Text style={styles.metaLabel}>Next Hearing:</Text> {selectedMatter.nextHearingAt ?? "TBC"}</Text>
           </View>
 
           <View style={styles.card}>

@@ -34,7 +34,7 @@ a {
   transition: color 0.2s ease;
 }
 
-a:hover {
+a:not(.button):hover {
   color: var(--primary);
 }
 
@@ -107,7 +107,7 @@ textarea {
 .dashboard-grid {
   display: grid;
   gap: 24px;
-  grid-template-columns: 320px minmax(0, 1fr);
+  grid-template-columns: 380px minmax(0, 1fr);
 }
 
 .stats-grid {
@@ -137,6 +137,7 @@ textarea {
 
 .panel {
   padding: 24px;
+  overflow-x: hidden;
 }
 
 .case-card {

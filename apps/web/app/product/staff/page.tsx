@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -38,7 +38,9 @@ const PILOT_COURTS = [
 ] as const;
 
 function courtLabel(courtId: string): string {
-  return PILOT_COURTS.find((court) => court.id === courtId)?.label ?? courtId;
+  const found = PILOT_COURTS.find((court) => court.id === courtId);
+  if (found) return found.label;
+  return formatCourtId(courtId);
 }
 
 type StaffProfile = {
@@ -311,12 +313,84 @@ function defaultDateTimeValue(): string {
   return local.toISOString().slice(0, 16);
 }
 
+function toTitleCase(str: string): string {
+  if (!str) return str;
+  return str.split(/[\s_]+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+}
+
+function formatMimeType(mime: string): string {
+  if (!mime) return "";
+  if (mime.toLowerCase().startsWith("image/")) return "Image";
+  if (mime.toLowerCase() === "application/pdf") return "PDF";
+  return mime.split("/")[1]?.toUpperCase() || mime;
+}
+
+function formatCourtId(courtId: string): string {
+  if (!courtId) return "";
+  if (courtId.toLowerCase() === "ihc") return "IHC";
+  return courtId.toUpperCase();
+}
+
+function getDownloadFilename(title: string, mimeType?: string): string {
+  if (!title) title = "document";
+  
+  // Check if title already ends with a common file extension (case-insensitive)
+  const hasExt = /\.[a-zA-Z0-9]{2,4}$/.test(title);
+  if (hasExt) {
+    return title;
+  }
+  
+  if (!mimeType) {
+    return title;
+  }
+  
+  const mime = mimeType.toLowerCase();
+  if (mime === "application/pdf") return `${title}.pdf`;
+  if (mime === "image/png") return `${title}.png`;
+  if (mime === "image/jpeg" || mime === "image/jpg") return `${title}.jpg`;
+  if (mime === "image/gif") return `${title}.gif`;
+  
+  // fallback for other/unknown mime types
+  const parts = mime.split("/");
+  if (parts.length === 2 && parts[1]) {
+    return `${title}.${parts[1]}`;
+  }
+  
+  return title;
+}
+
 function formatDateTime(value: string | null): string {
   if (!value) {
     return "TBC";
   }
 
-  return new Date(value).toLocaleString();
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return value;
+  
+  const dateStr = d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+  const timeStr = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+  
+  if (value.length <= 10) return dateStr; // If it's just YYYY-MM-DD
+  return `${dateStr} • ${timeStr}`;
+}
+
+function formatPhone(phone: string): string {
+  if (!phone) return phone;
+  if (phone.startsWith("+1")) return phone;
+  
+  const digits = phone.replace(/\D/g, "");
+  let local = digits;
+  if (digits.startsWith("92")) {
+    local = digits.slice(2);
+  } else if (digits.startsWith("0")) {
+    local = digits.slice(1);
+  }
+  
+  if (local.length >= 3) {
+    return `(+92) ${local.slice(0, 3)}-${local.slice(3)}`;
+  }
+  
+  return `(+92) ${local}`;
 }
 
 function formatCurrency(value: number): string {
@@ -347,6 +421,7 @@ function resolveMatterId(pathname: string): string | null {
 
 export default function ProductStaffPage() {
   const pathname = usePathname();
+  const router = useRouter();
   const activeSection = useMemo(() => resolveSection(pathname), [pathname]);
   const routedMatterId = useMemo(() => resolveMatterId(pathname), [pathname]);
 
@@ -403,6 +478,10 @@ export default function ProductStaffPage() {
   const [vaultSearchHits, setVaultSearchHits] = useState<SearchHit[]>([]);
   const [courtReviewMatterIds, setCourtReviewMatterIds] = useState<Record<string, string>>({});
   const [operationStatus, setOperationStatus] = useState<string | null>(null);
+  const [viewingDocument, setViewingDocument] = useState<{ id: string; title: string; mimeType?: string } | null>(null);
+  const [viewingDocumentUrl, setViewingDocumentUrl] = useState<string | null>(null);
+  const [zoomScale, setZoomScale] = useState(1);
+  const [isCloseHovered, setIsCloseHovered] = useState(false);
 
   useEffect(() => {
     setAuth(readStoredProductAuth(STORAGE_KEY));
@@ -418,6 +497,12 @@ export default function ProductStaffPage() {
       void loadWorkspace(auth).catch(handleWorkspaceLoadError);
     }
   }, [auth, authHydrated]);
+
+  useEffect(() => {
+    if (authHydrated && !auth) {
+      router.replace("/");
+    }
+  }, [authHydrated, auth, router]);
 
   useEffect(() => {
     if (auth && routedMatterId && routedMatterId !== selectedMatter?.id) {
@@ -528,27 +613,37 @@ export default function ProductStaffPage() {
   }
 
   async function startLogin() {
-    const response = await productJsonRequest<{ devCode: string | null }>("/v1/auth/otp/request", {
-      method: "POST",
-      body: JSON.stringify({ phone, actorType: "staff" }),
-    });
-    setLoginCode(response.devCode ?? "");
-    setOtpRequested(true);
+    setOperationStatus("Requesting OTP...");
+    try {
+      const response = await productJsonRequest<{ devCode: string | null }>("/v1/auth/otp/request", {
+        method: "POST",
+        body: JSON.stringify({ phone, actorType: "staff" }),
+      });
+      setLoginCode(response.devCode ?? "");
+      setOtpRequested(true);
+      setOperationStatus("");
+    } catch (err: any) {
+      setOperationStatus(err.message || "Failed to request OTP.");
+    }
   }
 
   async function verifyLogin() {
-    const payload = await productJsonRequest<{ token: string; refreshToken: string | null }>(
-      registrationMode ? "/v1/auth/staff/register" : "/v1/auth/otp/verify",
-      {
-      method: "POST",
-      body: JSON.stringify(registrationMode ? { phone, code: loginCode, ...registration } : { phone, actorType: "staff", code: loginCode }),
-    });
-    const nextAuth = {
-      token: payload.token,
-      refreshToken: payload.refreshToken,
-    };
-    writeStoredProductAuth(STORAGE_KEY, nextAuth);
-    setAuth(nextAuth);
+    setOperationStatus("Verifying OTP...");
+    try {
+      const payload = await productJsonRequest<{ token: string; refreshToken: string | null }>(
+        registrationMode ? "/v1/auth/staff/register" : "/v1/auth/otp/verify",
+        {
+          method: "POST",
+          body: JSON.stringify(registrationMode ? { phone, code: loginCode, ...registration } : { phone, actorType: "staff", code: loginCode }),
+        }
+      );
+      const nextAuth = { token: payload.token, refreshToken: payload.refreshToken };
+      writeStoredProductAuth(STORAGE_KEY, nextAuth);
+      setAuth(nextAuth);
+      setOperationStatus("");
+    } catch (err: any) {
+      setOperationStatus(err.message || "Invalid OTP or registration failed.");
+    }
   }
 
   async function openMatter(matterId: string, activeAuth = auth) {
@@ -601,6 +696,16 @@ export default function ProductStaffPage() {
     });
   }
 
+  const closeDocumentViewer = () => {
+    if (viewingDocumentUrl) {
+      window.URL.revokeObjectURL(viewingDocumentUrl);
+    }
+    setViewingDocument(null);
+    setViewingDocumentUrl(null);
+    setZoomScale(1);
+    setIsCloseHovered(false);
+  };
+
   async function openDocument(documentId: string, activeAuth = auth) {
     if (!activeAuth) {
       return;
@@ -625,8 +730,13 @@ export default function ProductStaffPage() {
 
     const blob = await response.blob();
     const url = window.URL.createObjectURL(blob);
-    window.open(url, "_blank", "noopener,noreferrer");
-    window.setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
+    
+    // Find document title and mimeType
+    const doc = selectedMatter?.documents.find((d) => d.id === documentId) || documents.find((d) => d.id === documentId);
+    const docTitle = doc?.title || "Document Viewer";
+    const docMime = doc?.mimeType || "";
+    setViewingDocument({ id: documentId, title: docTitle, mimeType: docMime });
+    setViewingDocumentUrl(url);
   }
 
   async function syncCourtSource(sourceId: string) {
@@ -984,41 +1094,28 @@ export default function ProductStaffPage() {
     [calendar],
   );
 
-  if (!auth || !profile) {
-    return (
-      <main className="page-shell">
-        <section className="auth-card">
-          <div className="eyebrow">Legal Bhai</div>
-          <h1 className="title">Lawyer workspace</h1>
-          <p className="muted">
-            Secure matters, hearing dates, court-list matches, documents, and client updates.
-          </p>
-          {operationStatus ? <p className="muted">{operationStatus}</p> : null}
+  if (!authHydrated) {
+    return <main className="page-shell">
+      <section className="auth-card" style={{ textAlign: "center" }}>
+        <p className="muted">Loading workspace…</p>
+      </section>
+    </main>;
+  }
 
-          <div className="field">
-            <label>Phone</label>
-            <input value={phone} onChange={(event) => setPhone(event.target.value)} />
-          </div>
-          {registrationMode ? <>
-            <div className="field"><label>Your name</label><input value={registration.displayName} onChange={(event) => setRegistration({ ...registration, displayName: event.target.value })} /></div>
-            <div className="field"><label>Email</label><input type="email" value={registration.email} onChange={(event) => setRegistration({ ...registration, email: event.target.value })} /></div>
-            <div className="field"><label>Practice name</label><input value={registration.firmName} onChange={(event) => setRegistration({ ...registration, firmName: event.target.value })} /></div>
-            <div className="field"><label>City</label><input value={registration.primaryCity} onChange={(event) => setRegistration({ ...registration, primaryCity: event.target.value })} /></div>
-          </> : null}
-          {otpRequested ? <div className="field">
-            <label>OTP code</label>
-            <input inputMode="numeric" value={loginCode ?? ""} onChange={(event) => setLoginCode(event.target.value)} />
-          </div> : null}
-          <button className="button" type="button" onClick={() => void (otpRequested ? verifyLogin() : startLogin())}>
-            {otpRequested ? "Verify OTP and sign in" : "Request OTP"}
-          </button>
+  if (!auth) {
+    return <main className="page-shell">
+      <section className="auth-card" style={{ textAlign: "center" }}>
+        <p className="muted">Redirecting to login…</p>
+      </section>
+    </main>;
+  }
 
-          <button className="button-secondary" type="button" onClick={() => { setRegistrationMode(!registrationMode); setOtpRequested(false); }}>
-            {registrationMode ? "Use existing lawyer login" : "Invited lawyer? Create workspace"}
-          </button>
-        </section>
-      </main>
-    );
+  if (!profile) {
+    return <main className="page-shell">
+      <section className="auth-card" style={{ textAlign: "center" }}>
+        <p className="muted">Loading profile data…</p>
+      </section>
+    </main>;
   }
 
   return (
@@ -1043,25 +1140,22 @@ export default function ProductStaffPage() {
         </div>
       </div>
 
-      <section className="panel" style={{ marginBottom: 20 }}>
-        <div className="actions" style={{ flexWrap: "wrap" }}>
-          {STAFF_NAV.map((item) => (
-            <Link
-              key={item.id}
-              className={activeSection === item.id ? "button" : "button-secondary"}
-              href={item.href}
-            >
-              {item.label}
-            </Link>
-          ))}
-          <Link
-            className={activeSection === "onboarding" ? "button" : "button-secondary"}
-            href="/onboarding/firm-profile"
-          >
-            Onboarding
-          </Link>
-        </div>
-      </section>
+      {activeSection !== "onboarding" ? (
+        <section className="panel" style={{ marginBottom: 20 }}>
+          <div className="actions" style={{ flexWrap: "wrap" }}>
+            {STAFF_NAV.map((item) => (
+              <Link
+                key={item.id}
+                className={activeSection === item.id ? "button" : "button-secondary"}
+                href={item.href}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       {operationStatus ? (
         <section className="panel" style={{ marginBottom: 20, borderLeft: "4px solid var(--primary)" }}>
           <div className="top-bar" style={{ marginBottom: 0 }}>
@@ -1072,7 +1166,7 @@ export default function ProductStaffPage() {
       ) : null}
 
       {activeSection === "overview" ? (
-        <section className="dashboard-grid" style={{ gridTemplateColumns: "320px minmax(0, 1fr)" }}>
+        <section className="dashboard-grid" style={{ gridTemplateColumns: "380px minmax(0, 1fr)" }}>
           <aside className="grid">
             <div className="panel">
               <h2 style={{ marginTop: 0 }}>Workspace Health</h2>
@@ -1093,33 +1187,28 @@ export default function ProductStaffPage() {
               {syncMessage ? <p className="muted" style={{ marginTop: 12 }}>{syncMessage}</p> : null}
             </div>
 
-            <div className="panel">
+            <aside className="panel" style={{ width: "100%", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
               <h2 style={{ marginTop: 0 }}>Court Health</h2>
               <div className="grid">
                 {courtSources.map((source) => (
-                  <div key={source.id} className="case-card" style={{ padding: 14 }}>
-                    <div className="source-card" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1rem' }}>
-                      <div>
-                        <h3>{courtLabel(source.courtId)}</h3>
-                        <span className={`badge ${source.status === "live" ? "live" : "conflict"}`}>{source.status}</span>
-                      </div>
-                      <p className="muted" style={{ marginTop: 0, width: '100%' }}>
-                        {source.ingestionMode === "automation" ? "Automation" : source.ingestionMode} · Fetched {source.metrics.fetched ?? 0} · Matched {source.metrics.matched ?? 0}
-                      </p>
-                      <p className="muted" style={{ width: '100%', marginBottom: 0 }}>Last sync {formatDateTime(source.lastSuccessfulSyncAt)}</p>
-                      <div style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between' }}>
-                        {source.officialUrl ? (
-                          <a className="muted" href={source.officialUrl} target="_blank" rel="noreferrer">Official Source</a>
-                        ) : <span />}
-                        <button className="button-secondary" type="button" onClick={() => void syncCourtSource(source.id)}>
-                          Sync Now
-                        </button>
-                      </div>
+                  <div key={source.id} className="case-card" style={{ padding: "12px", border: "1px solid #e1e4e8", borderRadius: "8px", backgroundColor: "#fff" }}>
+                    <strong>{courtLabel(source.courtId)}</strong>
+                    <p className="muted" style={{ marginBottom: 6 }}>
+                      {source.ingestionMode === "automation" ? "Automation" : source.ingestionMode} • Fetched {source.metrics.fetched ?? 0} • Matched {source.metrics.matched ?? 0}
+                    </p>
+                    <p className="muted" style={{ width: '100%', marginBottom: 0 }}>Last sync {formatDateTime(source.lastSuccessfulSyncAt)}</p>
+                    <div style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+                      {source.officialUrl ? (
+                        <a className="muted" href={source.officialUrl} target="_blank" rel="noreferrer">Official Source</a>
+                      ) : <span />}
+                      <button className="button-secondary" type="button" onClick={() => void syncCourtSource(source.id)}>
+                        Sync Now
+                      </button>
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
+            </aside>
           </aside>
 
           <section className="grid">
@@ -1153,22 +1242,10 @@ export default function ProductStaffPage() {
 
               <aside className="grid">
                 <div className="panel">
-                  <h2 style={{ marginTop: 0 }}>Recent Activity</h2>
-                  <div className="grid">
-                    {auditEvents.slice(0, 6).map((event) => (
-                      <div key={event.id}>
-                        <strong>{event.eventType.charAt(0).toUpperCase() + event.eventType.slice(1)}</strong>
-                        <div className="muted">{event.objectType.charAt(0).toUpperCase() + event.objectType.slice(1)} · {formatDateTime(event.createdAt)}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="panel">
                   <h2 style={{ marginTop: 0 }}>Unread Client Threads</h2>
                   <div className="grid">
                     {threads.map((thread) => (
-                      <button key={thread.id} className="case-card" onClick={() => { setActiveSection("matters"); openMatter(thread.matter.id); }} style={{ padding: 14, textAlign: "left", cursor: "pointer" }}>
+                      <button key={thread.id} className="case-card" onClick={() => { router.push("/matters"); openMatter(thread.matter.id); }} style={{ padding: 14, textAlign: "left", cursor: "pointer" }}>
                         <strong>{thread.matter.rawCaseNumber}</strong>
                         <p className="muted">{thread.lastMessage?.body ?? "No messages yet"}</p>
                       </button>
@@ -1182,7 +1259,7 @@ export default function ProductStaffPage() {
       ) : null}
 
       {activeSection === "matters" ? (
-        <section className="dashboard-grid" style={{ gridTemplateColumns: "320px minmax(0, 1fr)" }}>
+        <section className="dashboard-grid" style={{ gridTemplateColumns: "380px minmax(0, 1fr)" }}>
           <aside className="panel">
             <h2 style={{ marginTop: 0 }}>Add Matter</h2>
             <div className="field">
@@ -1193,7 +1270,7 @@ export default function ProductStaffPage() {
             </div>
             <div className="field"><label>Case number</label><input value={newMatter.rawCaseNumber} onChange={(event) => setNewMatter({ ...newMatter, rawCaseNumber: event.target.value })} /></div>
             <div className="field"><label>Title</label><input value={newMatter.title} onChange={(event) => setNewMatter({ ...newMatter, title: event.target.value })} /></div>
-            <div className="field"><label>Next date</label><input type="date" value={newMatter.nextHearingAt} onChange={(event) => setNewMatter({ ...newMatter, nextHearingAt: event.target.value })} /></div>
+            <div className="field"><label>Next Date</label><input type="date" value={newMatter.nextHearingAt} onChange={(event) => setNewMatter({ ...newMatter, nextHearingAt: event.target.value })} /></div>
             <button className="button" type="button" onClick={() => void createMatter()}>Create Matter</button>
             <hr style={{ margin: "24px 0" }} />
             <h2>CSV Import</h2>
@@ -1256,14 +1333,14 @@ export default function ProductStaffPage() {
             <section className="grid">
               <div className="detail-grid">
                 <div className="grid">
-                  <div className="panel">
-                    <h2 style={{ marginTop: 0 }}>{selectedMatter.rawCaseNumber}</h2>
-                    <p className="muted">{selectedMatter.title}</p>
-                    <div className="info-list">
+                  <div className="panel" style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <h2 style={{ margin: 0, fontSize: "24px", fontWeight: 800 }}>{selectedMatter.rawCaseNumber}</h2>
+                    <div style={{ margin: 0, fontSize: "14px", lineHeight: "1.4", color: "var(--text-secondary)" }}>{selectedMatter.title}</div>
+                    <div className="info-list" style={{ gap: "8px", marginTop: "4px" }}>
                       <div><strong>Court:</strong> {courtLabel(selectedMatter.courtId)}</div>
-                      <div><strong>Stage:</strong> {selectedMatter.stage}</div>
-                      <div><strong>Type:</strong> {selectedMatter.matterType}</div>
-                      <div><strong>Next hearing:</strong> {selectedMatter.nextHearingAt ?? "TBC"}</div>
+                      <div><strong>Stage:</strong> {toTitleCase(selectedMatter.stage)}</div>
+                      <div><strong>Type:</strong> {toTitleCase(selectedMatter.matterType)}</div>
+                      <div><strong>Next Hearing:</strong> {selectedMatter.nextHearingAt ? formatDateTime(selectedMatter.nextHearingAt) : "TBC"}</div>
                     </div>
                   </div>
 
@@ -1286,7 +1363,7 @@ export default function ProductStaffPage() {
                         <option value="closed">Closed / archived</option>
                       </select>
                     </div>
-                    <div className="field"><label>Next date</label><input type="date" value={matterDraft.nextHearingAt} onChange={(event) => setMatterDraft({ ...matterDraft, nextHearingAt: event.target.value })} /></div>
+                    <div className="field"><label>Next Date</label><input type="date" value={matterDraft.nextHearingAt} onChange={(event) => setMatterDraft({ ...matterDraft, nextHearingAt: event.target.value })} /></div>
                     <div className="actions">
                       <button className="button" type="button" onClick={() => void saveMatter()}>Save Matter</button>
                       {matterDraft.status !== "closed" ? <button className="button-danger" type="button" onClick={() => void archiveMatter()}>Archive Matter</button> : null}
@@ -1347,14 +1424,100 @@ export default function ProductStaffPage() {
 
                   <div className="panel">
                     <h2 style={{ marginTop: 0 }}>Documents</h2>
-                    <div className="grid">
+                    <div style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+                      gap: "16px",
+                      marginTop: "16px"
+                    }}>
                       {selectedMatter.documents.map((document) => (
-                        <div key={document.id} className="case-card" style={{ padding: 14 }}>
-                          <strong>{document.title}</strong>
-                          <p className="muted">{document.type} · {document.mimeType} · OCR {document.ocrStatus}</p>
-                          <button className="button-secondary" type="button" onClick={() => void openDocument(document.id)}>
-                            Open Content
-                          </button>
+                        <div
+                          key={document.id}
+                          onClick={() => void openDocument(document.id)}
+                          style={{
+                            cursor: "pointer",
+                            display: "flex",
+                            flexDirection: "column",
+                            background: "var(--surface)",
+                            backdropFilter: "blur(12px)",
+                            border: "1px solid var(--border)",
+                            borderRadius: "14px",
+                            transition: "all 0.2s ease",
+                            overflow: "hidden",
+                            minHeight: "160px",
+                            boxShadow: "0 4px 12px rgba(15, 110, 86, 0.02)",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.transform = "translateY(-4px)";
+                            e.currentTarget.style.boxShadow = "0 12px 24px rgba(15, 110, 86, 0.08)";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.transform = "none";
+                            e.currentTarget.style.boxShadow = "0 4px 12px rgba(15, 110, 86, 0.02)";
+                          }}
+                        >
+                          {/* Top Section: Large File Type Thumbnail */}
+                          <div style={{
+                            height: "90px",
+                            background: "rgba(15, 110, 86, 0.04)",
+                            borderBottom: "1px solid var(--border)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            position: "relative",
+                            color: "var(--primary)"
+                          }}>
+                            {document.mimeType.toLowerCase() === "application/pdf" ? (
+                              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                            ) : (
+                              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                            )}
+                          </div>
+
+                          {/* Bottom Section: Title Info */}
+                          <div style={{
+                            padding: "12px 14px 13px",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: "8px",
+                            flex: 1
+                          }}>
+                            <div style={{
+                              fontWeight: 700,
+                              color: "var(--text-primary)",
+                              fontSize: "13px",
+                              textAlign: "center",
+                              wordBreak: "break-all",
+                              display: "-webkit-box",
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              lineHeight: "1.4"
+                            }} title={document.title}>
+                              {document.title}
+                            </div>
+
+                            <span style={{
+                              fontSize: document.type === "hearing_order" ? "10px" : "8.5px",
+                              fontWeight: 800,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.06em",
+                              padding: document.type === "hearing_order" ? "4px 8px" : "3px 6px",
+                              borderRadius: "6px",
+                              background: "rgba(255, 255, 255, 0.95)",
+                              backdropFilter: "blur(4px)",
+                              border: "1px solid rgba(15, 110, 86, 0.15)",
+                              color: "var(--primary-dark)",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              boxShadow: "0 2px 6px rgba(0, 0, 0, 0.05)"
+                            }}>
+                              {toTitleCase(document.type)}
+                            </span>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1448,23 +1611,95 @@ export default function ProductStaffPage() {
                   </div>
 
                   <div className="panel">
-                    <h2 style={{ marginTop: 0 }}>Client Thread</h2>
-                    <div className="grid" style={{ maxHeight: 280, overflow: "auto" }}>
-                      {messages.map((message) => (
-                        <div key={message.id} className="case-card" style={{ padding: 14, borderLeftColor: message.senderType === "client" ? "var(--accent)" : "var(--primary)" }}>
-                          <strong>{message.senderType}</strong>
-                          <p className="muted">{message.body}</p>
-                          <div className="muted">{message.deliveryChannel} · {formatDateTime(message.createdAt)}</div>
-                        </div>
-                      ))}
+                    <h2 style={{ marginTop: 0 }}>Chat</h2>
+                    <div style={{
+                      maxHeight: 280,
+                      overflowY: "auto",
+                      overflowX: "hidden",
+                      paddingRight: "12px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "12px"
+                    }}>
+                      {messages.map((message) => {
+                        const isMe = message.senderType === "staff";
+                        return (
+                          <div
+                            key={message.id}
+                            style={{
+                              alignSelf: isMe ? "flex-end" : "flex-start",
+                              maxWidth: "75%",
+                              backgroundColor: isMe ? "var(--primary-light)" : "#ffffff",
+                              border: isMe ? "none" : "1px solid var(--border)",
+                              borderRadius: isMe ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+                              padding: "12px 16px",
+                              boxShadow: "0 2px 6px rgba(0, 0, 0, 0.03)",
+                              position: "relative"
+                            }}
+                          >
+                            <strong style={{ fontSize: "12px", color: isMe ? "var(--primary-dark)" : "var(--text-secondary)", display: "block", marginBottom: "4px" }}>
+                              {isMe ? "Counsel" : "Client"}
+                            </strong>
+                            <p style={{ margin: 0, fontSize: "14px", color: "var(--text-primary)", wordBreak: "break-word", lineHeight: "1.4" }}>
+                              {message.body}
+                            </p>
+                            <div style={{ fontSize: "10px", color: "var(--text-tertiary)", marginTop: "4px", textAlign: isMe ? "right" : "left" }}>
+                              {message.deliveryChannel} · {formatDateTime(message.createdAt)}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <div className="field" style={{ marginTop: 12 }}>
-                      <label>Reply</label>
-                      <textarea value={messageDraft} onChange={(event) => setMessageDraft(event.target.value)} />
+                    
+                    {/* Instagram style message box */}
+                    <div style={{ display: "flex", alignItems: "center", position: "relative", marginTop: 12 }}>
+                      <input
+                        type="text"
+                        value={messageDraft}
+                        onChange={(e) => setMessageDraft(e.target.value)}
+                        placeholder="Write a reply..."
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            void sendMessage();
+                          }
+                        }}
+                        style={{
+                          width: "100%",
+                          padding: "14px 50px 14px 20px",
+                          borderRadius: "24px",
+                          border: "1px solid var(--border)",
+                          background: "rgba(255, 255, 255, 0.9)",
+                          fontSize: "14px",
+                          outline: "none",
+                          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.05)",
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void sendMessage()}
+                        disabled={!messageDraft.trim()}
+                        style={{
+                          position: "absolute",
+                          right: "6px",
+                          width: "36px",
+                          height: "36px",
+                          borderRadius: "50%",
+                          border: "none",
+                          background: messageDraft.trim() ? "var(--primary)" : "var(--text-tertiary)",
+                          color: "white",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: "pointer",
+                          transition: "background-color 0.2s ease, transform 0.1s ease",
+                          padding: 0
+                        }}
+                      >
+                        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+                        </svg>
+                      </button>
                     </div>
-                    <button className="button-secondary" type="button" onClick={() => void sendMessage()}>
-                      Send Update
-                    </button>
                   </div>
                 </aside>
               </div>
@@ -1482,19 +1717,18 @@ export default function ProductStaffPage() {
                 <div key={item.id} className="case-card" style={{ padding: 14, borderLeftColor: item.conflictState === "possible" ? "var(--accent)" : "var(--primary)" }}>
                   <strong>{item.matter.rawCaseNumber}</strong>
                   <p className="muted">{item.matter.title}</p>
-                  <div className="muted">{formatDateTime(item.listedAt)} · {item.sourceType}</div>
+                  <div className="muted">{formatDateTime(item.listedAt)} • {item.sourceType}</div>
                 </div>
               ))}
             </div>
             <hr style={{ margin: "24px 0" }} />
             <h2>Court Entries Needing Review</h2>
-            <p className="muted">Link only after confirming the cause-list entry belongs to one of your matters.</p>
             <div className="grid">
-              {unmatchedCauseEntries.length === 0 ? <div className="muted">No unmatched court entries.</div> : null}
+              {unmatchedCauseEntries.length === 0 ? <div className="muted">No unmatched court entries.</div> : <p className="muted" style={{ marginBottom: 8 }}>Link only after confirming the cause-list entry belongs to one of your matters.</p>}
               {unmatchedCauseEntries.map((entry) => (
                 <div key={entry.id} className="case-card" style={{ padding: 14, borderLeftColor: "var(--accent)" }}>
                   <strong>{entry.rawCaseNumber}</strong>
-                  <div className="muted">{courtLabel(entry.courtId ?? "")} · {entry.listType} · {entry.listDate} · {entry.courtroom ?? "courtroom TBC"}</div>
+                  <div className="muted">{courtLabel(entry.courtId ?? "")} • {toTitleCase(entry.listType)} • {entry.listDate} • {entry.courtroom ?? "Courtroom TBC"}</div>
                   <div className="field" style={{ marginTop: 12 }}>
                     <label>Confirmed workspace matter</label>
                     <select
@@ -1502,11 +1736,11 @@ export default function ProductStaffPage() {
                       onChange={(event) => setCourtReviewMatterIds({ ...courtReviewMatterIds, [entry.id]: event.target.value })}
                     >
                       <option value="">Select a matter</option>
-                      {matters.map((matter) => <option key={matter.id} value={matter.id}>{matter.rawCaseNumber} · {matter.title}</option>)}
+                      {matters.map((matter) => <option key={matter.id} value={matter.id}>{matter.rawCaseNumber} • {matter.title}</option>)}
                     </select>
                   </div>
                   <button className="button-secondary" type="button" disabled={!courtReviewMatterIds[entry.id]} onClick={() => void linkUnmatchedCauseEntry(entry.id)}>
-                    Confirm and link
+                    Confirm And Link
                   </button>
                 </div>
               ))}
@@ -1542,43 +1776,46 @@ export default function ProductStaffPage() {
       ) : null}
 
       {activeSection === "alerts" ? (
-        <section className="detail-grid">
-          <div className="panel">
+        <section>
+          <div className="panel" style={{ width: "100%" }}>
             <h2 style={{ marginTop: 0 }}>Alerts Inbox</h2>
             <div className="grid">
               {alerts.map((alert) => (
                 <div key={alert.id} className="case-card" style={{ padding: 14 }}>
                   <div className="top-bar" style={{ marginBottom: 8 }}>
-                    <strong>{alert.title}</strong>
-                    {!alert.readAt ? <button className="button-secondary" type="button" onClick={() => void markAlertRead(alert.id)}>Mark Read</button> : <span className="badge live">read</span>}
+                    <strong>{toTitleCase(alert.title)}</strong>
+                    {!alert.readAt ? <button className="button-secondary" type="button" onClick={() => void markAlertRead(alert.id)}>Mark Read</button> : <span className="badge live">Read</span>}
                   </div>
-                  <p className="muted">{alert.body}</p>
+                  <p className="muted">{toTitleCase(alert.body)}</p>
                   <div className="muted">{formatDateTime(alert.createdAt)}</div>
                 </div>
               ))}
             </div>
           </div>
-
-          <aside className="panel">
-            <h2 style={{ marginTop: 0 }}>Audit Stream</h2>
-            <div className="grid">
-              {auditEvents.map((event) => (
-                <div key={event.id}>
-                  <strong>{event.eventType}</strong>
-                  <div className="muted">{event.objectType} · {formatDateTime(event.createdAt)}</div>
-                </div>
-              ))}
-            </div>
-          </aside>
         </section>
       ) : null}
 
       {activeSection === "clients" ? (
-        <section className="dashboard-grid" style={{ gridTemplateColumns: "320px minmax(0, 1fr)" }}>
-          <aside className="panel">
+        <section className="dashboard-grid" style={{ gridTemplateColumns: "380px minmax(0, 1fr)" }}>
+          <div className="panel">
             <h2 style={{ marginTop: 0 }}>Add Client</h2>
-            <div className="field"><label>Name</label><input value={newClient.displayName} onChange={(event) => setNewClient({ ...newClient, displayName: event.target.value })} /></div>
-            <div className="field"><label>Phone</label><input value={newClient.phone} onChange={(event) => setNewClient({ ...newClient, phone: event.target.value })} /></div>
+            <div className="grid">
+              <div className="field">
+                <label>Name:</label>
+                <input value={newClient.displayName} onChange={(event) => setNewClient({ ...newClient, displayName: event.target.value })} />
+              </div>
+              <div className="field">
+                <label>Phone Number:</label>
+                <input value={newClient.phone} onChange={(event) => setNewClient({ ...newClient, phone: event.target.value })} placeholder="(+92) 300-0000000" />
+              </div>
+              <div className="field">
+                <label>Language:</label>
+                <select className="input" value={newClient.language} onChange={(event) => setNewClient({ ...newClient, language: event.target.value })}>
+                  <option value="en">English</option>
+                  <option value="ur">Urdu</option>
+                </select>
+              </div>
+            </div>
             <button className="button" type="button" onClick={() => void createClient()}>Create Client</button>
             <hr style={{ margin: "24px 0" }} />
             <h2 style={{ marginTop: 0 }}>Client CRM</h2>
@@ -1592,31 +1829,23 @@ export default function ProductStaffPage() {
                   style={{ textAlign: "left", cursor: "pointer" }}
                 >
                   <strong>{client.displayName}</strong>
-                  <p className="muted">{client.phone} · {client.matterCount} matters</p>
+                  <p className="muted">{formatPhone(client.phone)} · {client.matterCount} {client.matterCount === 1 ? "matter" : "matters"}</p>
                 </button>
               ))}
             </div>
-          </aside>
+          </div>
 
           {clientDetail ? (
-            <section className="grid">
-              <div className="panel">
+            <section>
+              <div className="panel" style={{ width: "100%" }}>
                 <h2 style={{ marginTop: 0 }}>{clientDetail.client.displayName}</h2>
                 <div className="info-list">
-                  <div><strong>Phone:</strong> {clientDetail.client.phone}</div>
-                  <div><strong>Language:</strong> {clientDetail.client.language}</div>
-                  <div><strong>Next hearing:</strong> {clientDetail.client.nextHearingAt ?? "TBC"}</div>
+                  <div><strong>Phone:</strong> {formatPhone(clientDetail.client.phone)}</div>
+                  <div><strong>Language:</strong> {clientDetail.client.language === "en" ? "English" : clientDetail.client.language === "ur" ? "Urdu" : clientDetail.client.language}</div>
+                  <div><strong>Next Hearing:</strong> {clientDetail.client.nextHearingAt ? formatDateTime(clientDetail.client.nextHearingAt) : "TBC"}</div>
                 </div>
                 <hr style={{ margin: "24px 0" }} />
                 <h3>Edit Client</h3>
-                <div className="field"><label>Name</label><input value={clientDraft.displayName} onChange={(event) => setClientDraft({ ...clientDraft, displayName: event.target.value })} /></div>
-                <div className="field">
-                  <label>Language</label>
-                  <select value={clientDraft.language} onChange={(event) => setClientDraft({ ...clientDraft, language: event.target.value })}>
-                    <option value="en">English</option>
-                    <option value="ur">Urdu</option>
-                  </select>
-                </div>
                 <div className="field">
                   <label>Status</label>
                   <select value={clientDraft.status} onChange={(event) => setClientDraft({ ...clientDraft, status: event.target.value })}>
@@ -1635,7 +1864,7 @@ export default function ProductStaffPage() {
                 <h3>Client Reminder Consent</h3>
                 <p className="muted">Enable SMS only after the client has agreed to hearing reminders.</p>
                 {clientNotificationPreference ? (
-                  <>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                     <label className="checkbox-row">
                       <input
                         type="checkbox"
@@ -1647,12 +1876,12 @@ export default function ProductStaffPage() {
                           optedOutAt: null,
                         })}
                       />
-                      Client consented to SMS reminders
+                      Client Consented To SMS Reminders
                     </label>
                     <button className="button-secondary" type="button" onClick={() => void saveClientNotificationPreference()}>
                       Save Reminder Consent
                     </button>
-                  </>
+                  </div>
                 ) : null}
               </div>
 
@@ -1661,7 +1890,7 @@ export default function ProductStaffPage() {
                   <h2 style={{ marginTop: 0 }}>Shared Matters</h2>
                   <div className="grid">
                     {clientDetail.matters.map((matter) => (
-                      <button key={matter.id} className="case-card" onClick={() => { setActiveSection("matters"); openMatter(matter.id); }} style={{ padding: 14, textAlign: "left", cursor: "pointer" }}>
+                      <button key={matter.id} className="case-card" onClick={() => { router.push("/matters"); openMatter(matter.id); }} style={{ padding: 14, textAlign: "left", cursor: "pointer" }}>
                         <strong>{matter.rawCaseNumber}</strong>
                         <p className="muted">{matter.title}</p>
                       </button>
@@ -1674,7 +1903,7 @@ export default function ProductStaffPage() {
                     <h2 style={{ marginTop: 0 }}>Threads</h2>
                     <div className="grid">
                       {clientDetail.threadSummaries.map((thread) => (
-                        <button key={thread.id} className="case-card" onClick={() => { setActiveSection("matters"); openMatter(thread.matter.id); }} style={{ padding: 14, textAlign: "left", cursor: "pointer" }}>
+                        <button key={thread.id} className="case-card" onClick={() => { router.push("/matters"); openMatter(thread.matter.id); }} style={{ padding: 14, textAlign: "left", cursor: "pointer" }}>
                           <strong>{thread.matter.rawCaseNumber}</strong>
                           <p className="muted">{thread.lastMessage?.body ?? "No client message yet"}</p>
                         </button>
@@ -1689,8 +1918,8 @@ export default function ProductStaffPage() {
       ) : null}
 
       {activeSection === "vault" ? (
-        <section className="detail-grid">
-          <div className="panel">
+        <section>
+          <div className="panel" style={{ width: "100%" }}>
             <h2 style={{ marginTop: 0 }}>Document Vault</h2>
             <div className="field-row" style={{ marginBottom: 16 }}>
               <input
@@ -1708,7 +1937,7 @@ export default function ProductStaffPage() {
                 <div className="grid" style={{ marginTop: 10 }}>
                   {vaultSearchHits.map((hit) => (
                     <button key={hit.id} className="button-secondary" type="button" onClick={() => void openDocument(hit.id)}>
-                      {hit.title} · {hit.subtitle}
+                      {hit.title} • {hit.subtitle}
                     </button>
                   ))}
                 </div>
@@ -1720,12 +1949,14 @@ export default function ProductStaffPage() {
                   <div className="top-bar" style={{ marginBottom: 8 }}>
                     <strong>{document.title}</strong>
                     <span className={`badge ${document.portalVisible ? "live" : "conflict"}`}>
-                      {document.portalVisible ? "portal shared" : "internal"}
+                      {document.portalVisible ? "Portal Shared" : "Internal"}
                     </span>
                   </div>
-                  <p className="muted">{document.type} · {document.mimeType} · OCR {document.ocrStatus}</p>
+                  <p className="muted">
+                    {toTitleCase(document.type)} · {formatMimeType(document.mimeType)}
+                  </p>
                   <div className="actions">
-                    <button className="button-secondary" type="button" onClick={() => void openDocument(document.id)}>Download</button>
+                    <button className="button-secondary" type="button" onClick={() => void openDocument(document.id)}>Open</button>
                     <button className="button-secondary" type="button" onClick={() => void updateDocumentVisibility(document)}>
                       {document.portalVisible ? "Make Internal" : "Share With Client"}
                     </button>
@@ -1734,32 +1965,22 @@ export default function ProductStaffPage() {
               ))}
             </div>
           </div>
-
-          <aside className="panel">
-            <h2 style={{ marginTop: 0 }}>Vault Policy</h2>
-            <div className="grid">
-              <div><strong>Storage:</strong> quarantine then review</div>
-              <div><strong>Portal visibility:</strong> off by default</div>
-              <div><strong>OCR:</strong> searchable if completed</div>
-              <div><strong>Signed access:</strong> served through `/v1/documents/:id/download`</div>
-            </div>
-          </aside>
         </section>
       ) : null}
 
       {activeSection === "settings" ? (
-        <section className="detail-grid">
+        <section>
           <div className="grid">
-            <div className="panel">
-              <h2 style={{ marginTop: 0 }}>Profile and Session Settings</h2>
+            <div className="panel" style={{ width: "100%" }}>
+              <h2 style={{ marginTop: 0 }}>Profile And Session Settings</h2>
               <div className="info-list">
                 <div><strong>Name:</strong> {profile.staffUser.displayName}</div>
-                <div><strong>Phone:</strong> {profile.staffUser.phone}</div>
-                <div><strong>Role:</strong> {profile.staffMembership.role}</div>
-                <div><strong>Language:</strong> {profile.staffUser.language}</div>
+                <div><strong>Phone:</strong> {formatPhone(profile.staffUser.phone)}</div>
+                <div><strong>Role:</strong> {toTitleCase(profile.staffMembership.role)}</div>
+                <div><strong>Language:</strong> {profile.staffUser.language === "en" ? "English" : profile.staffUser.language === "ur" ? "Urdu" : profile.staffUser.language}</div>
               </div>
             </div>
-            <div className="panel">
+            <div className="panel" style={{ width: "100%" }}>
               <h2 style={{ marginTop: 0 }}>Notification Preferences</h2>
               {notificationPreference ? (
                 <div className="grid">
@@ -1777,75 +1998,278 @@ export default function ProductStaffPage() {
                       checked={Boolean(notificationPreference.optedOutAt)}
                       onChange={(event) => setNotificationPreference({ ...notificationPreference, optedOutAt: event.target.checked ? new Date().toISOString() : null })}
                     />
-                    Pause all notifications
+                    Pause All Notifications
                   </label>
-                  <button className="button" type="button" onClick={() => void saveNotificationPreference()}>Save preferences</button>
+                  <button className="button" type="button" onClick={() => void saveNotificationPreference()}>Save Preferences</button>
                 </div>
               ) : <div className="muted">Notification preferences are unavailable.</div>}
             </div>
           </div>
-
-          <aside className="grid">
-            <div className="panel">
-              <h2 style={{ marginTop: 0 }}>Delivery History</h2>
-              <div className="grid">
-                {notificationHistory.length === 0 ? <div className="muted">No reminders have been scheduled yet.</div> : null}
-                {notificationHistory.slice(0, 20).map((notification) => (
-                  <div key={notification.id} className="case-card" style={{ padding: 14 }}>
-                    <div className="top-bar" style={{ marginBottom: 6 }}>
-                      <strong>{notification.templateKey.replaceAll("_", " ")}</strong>
-                      <span className={`badge ${notification.status === "sent" ? "live" : notification.status === "failed" ? "conflict" : "secondary"}`}>{notification.status}</span>
-                    </div>
-                    <div className="muted">{notification.actorType} · {notification.channel} · {formatDateTime(notification.scheduledAt)}</div>
-                    <div className="muted">Attempts: {notification.attemptCount}{notification.lastError ? ` · ${notification.lastError}` : ""}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="panel">
-              <h2 style={{ marginTop: 0 }}>Active sessions</h2>
-              <div className="grid">
-                {sessions.map((session) => (
-                  <div key={session.id}>
-                    <strong>{session.authMethod}</strong>
-                    <div className="muted">{formatDateTime(session.createdAt)}</div>
-                    <div className="muted">{session.revokedAt ? `Revoked ${formatDateTime(session.revokedAt)}` : "Active"}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </aside>
         </section>
       ) : null}
 
       {activeSection === "onboarding" ? (
         <section className="detail-grid">
-          <div className="panel">
-            <div className="eyebrow">Onboarding step</div>
-            <h2 style={{ marginTop: 6 }}>Your Legal Bhai workspace is ready</h2>
+          <div className="panel" style={{ margin: "0 auto", maxWidth: 600, width: "100%", textAlign: "center" }}>
+            <div className="eyebrow">Onboarding Step</div>
+            <h2 style={{ marginTop: 6 }}>Your Legal Bhai Workspace Is Ready</h2>
             <p className="muted">
               Your invited signup created a private solo-lawyer workspace. Finish these steps before
               relying on reminders for a real hearing.
             </p>
-            <div className="actions">
-              <button className="button" type="button" onClick={() => setActiveSection("matters")}>Add or Import First Matter</button>
-              <button className="button-secondary" type="button" onClick={() => setActiveSection("settings")}>Review Reminder Settings</button>
-              <button className="button-secondary" type="button" onClick={() => setActiveSection("clients")}>Add a Client</button>
+            <div className="actions" style={{ justifyContent: "center", marginTop: 24 }}>
+              <button className="button" type="button" onClick={() => router.push("/matters")}>Add or Import First Matter</button>
+              <button className="button-secondary" type="button" onClick={() => router.push("/settings")}>Review Reminder Settings</button>
+              <button className="button-secondary" type="button" onClick={() => router.push("/clients")}>Add a Client</button>
             </div>
           </div>
 
-          <aside className="panel">
-            <h2 style={{ marginTop: 0 }}>Workspace checklist</h2>
+          <div className="panel" style={{ margin: "24px auto 0", maxWidth: 600, width: "100%" }}>
+            <h2 style={{ marginTop: 0 }}>Workspace Checklist</h2>
             <div className="grid">
-              <div><span className="badge live">Ready</span> Private workspace: {profile.firm?.name}</div>
+              <div><span className="badge live">Ready</span> Private Workspace: {profile.firm?.name}</div>
               <div><span className="badge live">Ready</span> Owner: {profile.staffUser.displayName}</div>
-              <div><span className={`badge ${matters.length > 0 ? "live" : "secondary"}`}>{matters.length > 0 ? "Ready" : "To do"}</span> First matter</div>
-              <div><span className={`badge ${clients.length > 0 ? "live" : "secondary"}`}>{clients.length > 0 ? "Ready" : "To do"}</span> First client</div>
-              <div><span className={`badge ${notificationPreference ? "live" : "secondary"}`}>{notificationPreference ? "Ready" : "To do"}</span> Reminder preferences</div>
+              <div><span className={`badge ${matters.length > 0 ? "live" : "secondary"}`}>{matters.length > 0 ? "Ready" : "To do"}</span> First Matter</div>
+              <div><span className={`badge ${clients.length > 0 ? "live" : "secondary"}`}>{clients.length > 0 ? "Ready" : "To do"}</span> First Client</div>
+              <div><span className={`badge ${notificationPreference ? "live" : "secondary"}`}>{notificationPreference ? "Ready" : "To do"}</span> Reminder Preferences</div>
             </div>
-          </aside>
+          </div>
         </section>
       ) : null}
+      
+      {/* Lightbox Document Viewer */}
+      {viewingDocumentUrl && viewingDocument && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(0, 0, 0, 0.65)",
+          backdropFilter: "blur(4px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 9999,
+          padding: "20px"
+        }} onClick={closeDocumentViewer}>
+          <div style={{
+            backgroundColor: "white",
+            width: "95%",
+            maxWidth: "1400px",
+            height: "95%",
+            maxHeight: "920px",
+            borderRadius: "18px",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+            boxShadow: "0 20px 50px rgba(0, 0, 0, 0.3)",
+          }} onClick={(e) => e.stopPropagation()}>
+            <div style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              padding: "16px 24px",
+              borderBottom: "1px solid var(--border)",
+              backgroundColor: "#fcfbfa"
+            }}>
+              <h3 style={{ margin: 0, color: "var(--primary-dark)", fontSize: "18px", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginRight: "16px" }}>
+                {viewingDocument.title}
+              </h3>
+              <div style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
+                {/* Magnification Controls */}
+                {viewingDocument.mimeType?.startsWith("image/") && (
+                  <div style={{
+                    display: "flex",
+                    alignItems: "center",
+                    background: "rgba(0, 0, 0, 0.05)",
+                    borderRadius: "20px",
+                    padding: "2px 8px",
+                    marginRight: "16px"
+                  }}>
+                    <button
+                      type="button"
+                      onClick={() => setZoomScale(prev => Math.max(0.25, prev - 0.25))}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        color: "var(--text-secondary)",
+                        width: "28px",
+                        height: "28px",
+                        borderRadius: "50%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        outline: "none",
+                        transition: "background-color 0.2s ease",
+                        padding: 0
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(0, 0, 0, 0.08)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
+                      title="Zoom Out"
+                    >
+                      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4"/></svg>
+                    </button>
+                    <span style={{
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      color: "var(--text-secondary)",
+                      minWidth: "42px",
+                      textAlign: "center"
+                    }}>
+                      {Math.round(zoomScale * 100)}%
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setZoomScale(prev => Math.min(3, prev + 0.25))}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        color: "var(--text-secondary)",
+                        width: "28px",
+                        height: "28px",
+                        borderRadius: "50%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        outline: "none",
+                        transition: "background-color 0.2s ease",
+                        padding: 0
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(0, 0, 0, 0.08)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
+                      title="Zoom In"
+                    >
+                      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setZoomScale(1)}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        color: "var(--text-secondary)",
+                        width: "28px",
+                        height: "28px",
+                        borderRadius: "50%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        outline: "none",
+                        transition: "background-color 0.2s ease",
+                        padding: 0
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(0, 0, 0, 0.08)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
+                      title="Reset Zoom"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                        <path d="M3 3v5h5" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+                {/* Download Button */}
+                <a
+                  href={viewingDocumentUrl}
+                  download={getDownloadFilename(viewingDocument.title, viewingDocument.mimeType)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    width: "36px",
+                    height: "36px",
+                    borderRadius: "50%",
+                    cursor: "pointer",
+                    color: "var(--text-secondary)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    transition: "all 0.2s ease",
+                    outline: "none",
+                    marginRight: "8px"
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "rgba(0, 0, 0, 0.08)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "none";
+                  }}
+                  title="Download File"
+                >
+                  <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                  </svg>
+                </a>
+                {/* Close Button */}
+                <button
+                  type="button"
+                  onClick={closeDocumentViewer}
+                  onMouseEnter={() => setIsCloseHovered(true)}
+                  onMouseLeave={() => setIsCloseHovered(false)}
+                  style={{
+                    background: isCloseHovered ? "rgba(0, 0, 0, 0.08)" : "none",
+                    border: "none",
+                    width: "36px",
+                    height: "36px",
+                    borderRadius: "50%",
+                    cursor: "pointer",
+                    color: "var(--text-secondary)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    transition: "all 0.2s ease",
+                    outline: "none",
+                    padding: 0
+                  }}
+                  title="Close"
+                >
+                  <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div style={{
+              flex: 1,
+              backgroundColor: "#eae7dc",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              overflow: "auto",
+              padding: "10px"
+            }}>
+              {viewingDocument.mimeType?.startsWith("image/") ? (
+                <img
+                  src={viewingDocumentUrl}
+                  alt={viewingDocument.title}
+                  style={{
+                    maxWidth: "100%",
+                    maxHeight: "100%",
+                    objectFit: "contain",
+                    boxShadow: "0 4px 20px rgba(0, 0, 0, 0.15)",
+                    borderRadius: "8px",
+                    transform: `scale(${zoomScale})`,
+                    transformOrigin: "center center",
+                    transition: "transform 0.15s ease-out"
+                  }}
+                />
+              ) : (
+                <iframe
+                  src={viewingDocumentUrl}
+                  width="100%"
+                  height="100%"
+                  style={{ border: "none" }}
+                  title={viewingDocument.title}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

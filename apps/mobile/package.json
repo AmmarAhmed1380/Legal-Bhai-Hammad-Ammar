@@ -1,7 +1,7 @@
 {
   "name": "@wakeel/mobile",
   "private": true,
-  "main": "expo/AppEntry",
+  "main": "index.js",
   "scripts": {
     "dev": "expo start",
     "ios": "expo run:ios",

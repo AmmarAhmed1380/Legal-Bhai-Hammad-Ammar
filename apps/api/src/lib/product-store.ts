@@ -825,6 +825,51 @@ export class ProductStore {
         portalVisible: true,
       },
       {
+        id: "doc-redtone-vakalatnama",
+        firmId,
+        matterId: "matter-redtone",
+        folderId: null,
+        type: "vakalatnama",
+        title: "vakalatnama-signed-final.pdf",
+        storageKey: "seed:plaint-summary.pdf",
+        mimeType: "application/pdf",
+        uploadedBy: "staff-owner",
+        ocrStatus: "completed",
+        ocrText: "Vakalatnama client proxy attorney signature",
+        searchText: "Vakalatnama client proxy attorney signature",
+        portalVisible: true,
+      },
+      {
+        id: "doc-redtone-evidence",
+        firmId,
+        matterId: "matter-redtone",
+        folderId: null,
+        type: "evidence",
+        title: "evidence-receipts-photograph.jpg",
+        storageKey: "seed:hearing-order-sample.png",
+        mimeType: "image/png",
+        uploadedBy: "staff-owner",
+        ocrStatus: "completed",
+        ocrText: "Receipt 50000 PKR payment bank transfer",
+        searchText: "Receipt 50000 PKR payment bank transfer",
+        portalVisible: true,
+      },
+      {
+        id: "doc-redtone-reply-long",
+        firmId,
+        matterId: "matter-redtone",
+        folderId: null,
+        type: "pleading",
+        title: "written-reply-objections-redtone-telecom-vs-fbr-long-filename-test.pdf",
+        storageKey: "seed:plaint-summary.pdf",
+        mimeType: "application/pdf",
+        uploadedBy: "staff-owner",
+        ocrStatus: "completed",
+        ocrText: "Written objections reply grounds of appeal",
+        searchText: "Written objections reply grounds of appeal",
+        portalVisible: true,
+      },
+      {
         id: "doc-farooq-pleading",
         firmId,
         matterId: "matter-farooq",
@@ -839,6 +884,51 @@ export class ProductStore {
         searchText: "Farooq Traders plaint summary Rizwan Builders",
         portalVisible: true,
       },
+      {
+        id: "doc-farooq-order",
+        firmId,
+        matterId: "matter-farooq",
+        folderId: null,
+        type: "hearing_order",
+        title: "hearing-order-farooq-29-apr.png",
+        storageKey: "seed:hearing-order-sample.png",
+        mimeType: "image/png",
+        uploadedBy: "staff-lawyer",
+        ocrStatus: "completed",
+        ocrText: "Next hearing on Rizwan Builders case",
+        searchText: "Next hearing on Rizwan Builders case",
+        portalVisible: true,
+      },
+      {
+        id: "doc-farooq-evidence",
+        firmId,
+        matterId: "matter-farooq",
+        folderId: null,
+        type: "evidence",
+        title: "delivery-challans-and-invoices-2026-final.pdf",
+        storageKey: "seed:plaint-summary.pdf",
+        mimeType: "application/pdf",
+        uploadedBy: "staff-lawyer",
+        ocrStatus: "completed",
+        ocrText: "Challan invoice numbers evidence",
+        searchText: "Challan invoice numbers evidence",
+        portalVisible: true,
+      },
+      {
+        id: "doc-farooq-vakalatnama",
+        firmId,
+        matterId: "matter-farooq",
+        folderId: null,
+        type: "vakalatnama",
+        title: "signed-vakalatnama-farooq-traders.pdf",
+        storageKey: "seed:plaint-summary.pdf",
+        mimeType: "application/pdf",
+        uploadedBy: "staff-lawyer",
+        ocrStatus: "completed",
+        ocrText: "signed vakalatnama proxy form",
+        searchText: "signed vakalatnama proxy form",
+        portalVisible: true,
+      },
     ];
     for (const document of documents) {
       this.insertDocument(document);
@@ -848,7 +938,13 @@ export class ProductStore {
       "INSERT INTO document_links (id, document_id, matter_id, created_at) VALUES (?, ?, ?, ?)",
     );
     insertDocumentLink.run("document-link-redtone", "doc-redtone-order", "matter-redtone", createdAt);
+    insertDocumentLink.run("document-link-redtone-test-1", "doc-redtone-vakalatnama", "matter-redtone", createdAt);
+    insertDocumentLink.run("document-link-redtone-test-2", "doc-redtone-evidence", "matter-redtone", createdAt);
+    insertDocumentLink.run("document-link-redtone-test-3", "doc-redtone-reply-long", "matter-redtone", createdAt);
     insertDocumentLink.run("document-link-farooq", "doc-farooq-pleading", "matter-farooq", createdAt);
+    insertDocumentLink.run("document-link-farooq-test-1", "doc-farooq-order", "matter-farooq", createdAt);
+    insertDocumentLink.run("document-link-farooq-test-2", "doc-farooq-evidence", "matter-farooq", createdAt);
+    insertDocumentLink.run("document-link-farooq-test-3", "doc-farooq-vakalatnama", "matter-farooq", createdAt);
 
     const hearings: Hearing[] = [
       {
