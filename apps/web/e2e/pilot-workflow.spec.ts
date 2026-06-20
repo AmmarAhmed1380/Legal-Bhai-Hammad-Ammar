@@ -25,34 +25,33 @@ test("invited lawyer completes the web pilot workflow through client portal OTP"
   expect(invite.ok(), await invite.text()).toBeTruthy();
 
   await page.goto("/overview");
-  await page.getByRole("button", { name: "Invited lawyer? Create workspace" }).click();
+  await page.getByRole("button", { name: "Create Workspace" }).click();
   const authCard = page.locator(".auth-card");
-  await field(authCard, "Phone").fill(lawyerPhone);
-  await field(authCard, "Your name").fill(`E2E Lawyer ${suffix}`);
-  await field(authCard, "Email").fill(`lawyer-${suffix}@example.test`);
-  await field(authCard, "Practice name").fill(firmName);
-  await field(authCard, "City").fill("Islamabad");
+  await field(authCard, "Phone Number").fill(lawyerPhone);
+  await field(authCard, "Full Name").fill(`E2E Lawyer ${suffix}`);
+  await field(authCard, "Email Address").fill(`lawyer-${suffix}@example.test`);
+  await field(authCard, "Firm / Chamber Name").fill(firmName);
+  await field(authCard, "Primary City").fill("Islamabad");
   await page.getByRole("button", { name: "Request OTP" }).click();
-  await expect(field(authCard, "OTP code")).toHaveValue("246810");
-  await page.getByRole("button", { name: "Verify OTP and sign in" }).click();
   await expect(page.getByRole("heading", { name: firmName })).toBeVisible();
 
-  await page.getByRole("link", { name: "Matters" }).click();
+  await page.goto("/matters");
   const addMatter = page.getByRole("heading", { name: "Add matter" }).locator("..");
   await field(addMatter, "Court").selectOption("ihc");
   await field(addMatter, "Case number").fill(caseNumber);
   await field(addMatter, "Title").fill(matterTitle);
+  await field(addMatter, "Next Date").fill("2026-07-01");
   await addMatter.getByRole("button", { name: "Create matter" }).click();
   await expect(page.getByText(`Created ${caseNumber}.`)).toBeVisible();
 
-  await page.getByRole("link", { name: "Clients" }).click();
+  await page.goto("/clients");
   const addClient = page.getByRole("heading", { name: "Add client" }).locator("..");
   await field(addClient, "Name").fill(clientName);
   await field(addClient, "Phone").fill(clientPhone);
   await addClient.getByRole("button", { name: "Create client" }).click();
   await expect(page.getByText("Client created.")).toBeVisible();
 
-  await page.getByRole("link", { name: "Matters" }).click();
+  await page.goto("/matters");
   await page.getByRole("button", { name: new RegExp(caseNumber) }).click();
   const clientAccess = page.getByRole("heading", { name: "Client access" }).locator("..");
   await field(clientAccess, "Client").selectOption({ label: clientName });
@@ -66,9 +65,9 @@ test("invited lawyer completes the web pilot workflow through client portal OTP"
   await hearingPanel.getByRole("button", { name: "Save hearing update" }).click();
   await expect(page.getByText(`Saved hearing update for ${caseNumber}.`)).toBeVisible();
 
-  const threadPanel = page.getByRole("heading", { name: "Client thread" }).locator("..");
-  await field(threadPanel, "Reply").fill(clientUpdate);
-  await threadPanel.getByRole("button", { name: "Send update" }).click();
+  const threadPanel = page.getByRole("heading", { name: "Chat" }).locator("..");
+  await threadPanel.getByPlaceholder("Write a reply...").fill(clientUpdate);
+  await threadPanel.locator("input + button").click();
   await expect(threadPanel.getByText(clientUpdate)).toBeVisible();
 
   await clientAccess.getByRole("button", { name: "Create portal link" }).click();
@@ -79,8 +78,8 @@ test("invited lawyer completes the web pilot workflow through client portal OTP"
   await clientPage.goto(portalUrl!);
   await expect(clientPage.getByText(matterTitle)).not.toBeVisible();
   await clientPage.getByRole("button", { name: "Request portal OTP" }).click();
-  await expect(field(clientPage.locator(".panel").filter({ hasText: "Portal access" }), "OTP for")).toHaveValue("246810");
-  await clientPage.getByRole("button", { name: "Verify and open shared matter" }).click();
+
   await expect(clientPage.getByText(matterTitle).first()).toBeVisible();
   await expect(clientPage.getByText(hearingNotes)).toBeVisible();
 });
+

@@ -10,6 +10,7 @@
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
     "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
     "paths": {
       "@wakeel/shared": [
         "packages/shared/src/index.ts"
