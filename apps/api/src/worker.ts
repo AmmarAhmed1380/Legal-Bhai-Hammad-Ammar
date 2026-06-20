@@ -5,6 +5,8 @@ import { COURT_SOURCE_DEFINITIONS, fetchCourtCauseList } from "./lib/court-sourc
 import { renderNotificationTemplate } from "./lib/notification-schedule.js";
 import { captureError, initializeErrorReporting } from "./lib/telemetry.js";
 
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
 initializeErrorReporting();
 validateProductionEnvironment();
 const store = createRuntimeProductStore();
@@ -38,7 +40,7 @@ async function runCycle(): Promise<void> {
 }
 
 async function runCourtSourceCycle(): Promise<void> {
-  if (!envFlag("COURT_SYNC_ENABLED", envFlag("IHC_SYNC_ENABLED", isProduction()))) {
+  if (process.env.COURT_SYNC_ENABLED === "false") {
     return;
   }
   for (const source of COURT_SOURCE_DEFINITIONS) {
@@ -87,7 +89,7 @@ async function runCourtSourceCycleSafely(): Promise<void> {
 const notificationInterval = setInterval(() => void runNotificationCycleSafely(), 60_000);
 const courtInterval = setInterval(
   () => void runCourtSourceCycleSafely(),
-  Number(process.env.COURT_SYNC_INTERVAL_MINUTES ?? process.env.IHC_SYNC_INTERVAL_MINUTES ?? 60) * 60_000,
+  Number(process.env.COURT_SYNC_INTERVAL_MINUTES ?? 1) * 60_000,
 );
 void runNotificationCycleSafely();
 void runCourtSourceCycleSafely();

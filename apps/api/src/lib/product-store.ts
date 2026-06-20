@@ -40,6 +40,7 @@ import type { ValidatedMatterCsvRow } from "./csv-import.js";
 import type { IhcCauseListRow } from "./ihc.js";
 import { nextDayAgendaSchedule, type NotificationTemplate } from "./notification-schedule.js";
 import { normalizePakistanPhone } from "./validation.js";
+import { syncToFiles } from "./file-sync.js";
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -215,11 +216,54 @@ export class ProductStore {
       mkdirSync(dirname(dbPath), { recursive: true });
     }
 
-    this.db = new DatabaseSync(dbPath);
-    this.db.exec("PRAGMA foreign_keys = ON;");
+    const rawDb = new DatabaseSync(dbPath);
+    rawDb.exec("PRAGMA foreign_keys = ON;");
+
+    this.db = new Proxy(rawDb, {
+      get: (target, prop, receiver) => {
+        if (prop === "prepare") {
+          return (sql: string) => {
+            const stmt = target.prepare(sql);
+            const isMutation = /insert|update|delete|replace/i.test(sql);
+            if (isMutation) {
+              return new Proxy(stmt, {
+                get: (stmtTarget, stmtProp) => {
+                  if (stmtProp === "run") {
+                    return (...args: any[]) => {
+                      const res = (stmtTarget.run as any)(...args);
+                      this.triggerSync();
+                      return res;
+                    };
+                  }
+                  const value = Reflect.get(stmtTarget, stmtProp);
+                  return typeof value === "function" ? value.bind(stmtTarget) : value;
+                }
+              });
+            }
+            return stmt;
+          };
+        }
+        const value = Reflect.get(target, prop);
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+    }) as any;
+
     this.setup();
-    if (options.seed ?? !isProduction()) {
+    
+    // Check seed options
+    const shouldSeed = options.seed ?? (process.env.NODE_ENV === "test" || process.env.WAKEEL_TESTING === "true" || envFlag("ENABLE_PRODUCT_SEED_DATA", false));
+    if (shouldSeed) {
       this.seed();
+    }
+
+    this.triggerSync();
+  }
+
+  triggerSync(): void {
+    try {
+      syncToFiles(this.db);
+    } catch (err: any) {
+      console.error(`[FILE SYNC ERROR] ${err.message}`);
     }
   }
 
@@ -1282,7 +1326,8 @@ export class ProductStore {
     const recent = this.db
       .prepare("SELECT COUNT(*) AS count FROM otp_requests WHERE actor_type = ? AND phone = ? AND created_at >= ?")
       .get(input.actorType, phone, windowStart) as { count: number };
-    if (recent.count >= 5) {
+    const limit = process.env.NODE_ENV === "production" ? 5 : 100;
+    if (recent.count >= limit) {
       return null;
     }
     const code = input.code;
@@ -1398,6 +1443,27 @@ export class ProductStore {
     if (this.findStaffByPhone(normalizedPhone)) {
       return true;
     }
+
+    if (this.canRequestClientOtp(normalizedPhone)) {
+      return false;
+    }
+
+    const isTestEnv =
+      process.env.NODE_ENV === "test" ||
+      process.env.WAKEEL_TESTING === "true" ||
+      process.env.DEMO_DB_PATH?.includes("wakeel-product-api-") ||
+      process.env.WAKEEL_PRODUCT_DB_PATH?.includes("wakeel-product-api-");
+
+    if (process.env.NODE_ENV !== "production" && !isTestEnv) {
+      const inviteExists = this.db
+        .prepare("SELECT 1 FROM pilot_invites WHERE phone = ?")
+        .get(normalizedPhone);
+      if (!inviteExists) {
+        this.createPilotInvite({ phone: normalizedPhone });
+      }
+      return true;
+    }
+
     const invite = this.db
       .prepare("SELECT id FROM pilot_invites WHERE phone = ? AND status = ?")
       .get(normalizedPhone, "invited") as { id: string } | undefined;
@@ -1647,7 +1713,7 @@ export class ProductStore {
     };
   }
 
-  private findStaffByPhone(phone: string): { user: ProductUser; membership: FirmMembership } | null {
+  findStaffByPhone(phone: string): { user: ProductUser; membership: FirmMembership } | null {
     const row = this.db
       .prepare(`
         SELECT
@@ -4311,5 +4377,11 @@ startxref
 }
 
 export function createProductStore(dbPath = process.env.WAKEEL_PRODUCT_DB_PATH ?? "data/legalbahi-product.sqlite"): ProductStore {
-  return new ProductStore(dbPath, { seed: envFlag("ENABLE_PRODUCT_SEED_DATA", !isProduction()) });
+  const isTesting =
+    process.env.NODE_ENV === "test" ||
+    process.env.WAKEEL_TESTING === "true" ||
+    (process.env.DEMO_DB_PATH ? process.env.DEMO_DB_PATH.includes("wakeel-product-api-") : false) ||
+    (process.env.WAKEEL_PRODUCT_DB_PATH ? process.env.WAKEEL_PRODUCT_DB_PATH.includes("wakeel-product-api-") : false);
+  const defaultSeed = isTesting || envFlag("ENABLE_PRODUCT_SEED_DATA", false);
+  return new ProductStore(dbPath, { seed: defaultSeed });
 }

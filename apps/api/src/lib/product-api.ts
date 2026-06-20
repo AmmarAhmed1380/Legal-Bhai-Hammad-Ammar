@@ -24,6 +24,7 @@ import { getJwtSecret, isProduction } from "./config.js";
 import { fetchCourtCauseList, isSupportedCourtSource, normalizeCourtCaseNumber, type CourtListType } from "./court-sources.js";
 import { MATTER_CSV_TEMPLATE, validateMatterCsv } from "./csv-import.js";
 import { isIsoDateOnly, isIsoDateOrDateTime } from "./date-validation.js";
+import { normalizePakistanPhone } from "./validation.js";
 import { runOcr } from "./ocr.js";
 import { createSmsProvider } from "./providers.js";
 import { createPrivateObjectStorage } from "./storage.js";
@@ -222,10 +223,11 @@ function parseMatterPatch(value: unknown): Partial<Omit<Matter, "id" | "firmId">
     patch.status = value.status as Matter["status"];
   }
   if ("nextHearingAt" in value) {
-    if (!isNullableIsoDate(value.nextHearingAt)) {
+    const nextHearingAt = value.nextHearingAt === "" ? null : value.nextHearingAt;
+    if (!isNullableIsoDate(nextHearingAt)) {
       return null;
     }
-    patch.nextHearingAt = value.nextHearingAt;
+    patch.nextHearingAt = nextHearingAt;
   }
   if ("leadLawyerId" in value) {
     if (value.leadLawyerId !== null && !isNonEmptyText(value.leadLawyerId, 100)) {
@@ -347,39 +349,107 @@ export function registerProductRoutes(app: FastifyInstance, store: ProductStoreC
     return issued;
   }
 
-  async function issueOtp(actorType: "staff" | "client", phone: string, clientAccountId?: string) {
-    const accountCanReceiveOtp = actorType === "staff"
-      ? await store.canRequestStaffOtp(phone)
-      : clientAccountId
-        ? await store.canRequestClientOtpForAccount(clientAccountId, phone)
-        : await store.canRequestClientOtp(phone);
-    if (!accountCanReceiveOtp) {
-      return { ok: true, expiresAt: null };
+  async function issueOtp(actorType: "staff" | "client", phone: string, clientAccountId?: string, purpose?: string) {
+    const normalizedPhone = normalizePakistanPhone(phone);
+    if (!normalizedPhone) {
+      return { error: "Invalid phone number format. Please check the format and try again." };
     }
-    const code = isProduction() ? String(randomInt(100000, 1000000)) : DEV_OTP_CODE;
-    const requestRecord = await store.createOtpRequest({ actorType, phone, code });
+
+    // Portal distinction checks
+    if (actorType === "staff") {
+      const isClient = await store.canRequestClientOtp(normalizedPhone);
+      if (isClient) {
+        return { error: "This phone number is registered as a client. Please sign in through the Client Portal." };
+      }
+      
+      const isStaff = await store.canRequestStaffOtp(normalizedPhone);
+      const existing = await store.findStaffByPhone(normalizedPhone);
+      
+      if (purpose === "register") {
+        if (existing) {
+          return { error: "An account already exists for this phone number. Please sign in instead." };
+        }
+        if (!isStaff) {
+          return { error: "This phone number is not invited to the pilot program yet. Please contact support." };
+        }
+      } else if (purpose === "login") {
+        if (!existing) {
+          return { error: "Lawyer account not found. Please create a workspace first." };
+        }
+      } else {
+        if (!existing && !isStaff) {
+          return { error: "Lawyer account not found. Please create a workspace first." };
+        }
+      }
+    } else {
+      const isClient = clientAccountId
+        ? await store.canRequestClientOtpForAccount(clientAccountId, normalizedPhone)
+        : await store.canRequestClientOtp(normalizedPhone);
+      if (!isClient) {
+        return { ok: true, expiresAt: null };
+      }
+
+      const isStaff = await store.findStaffByPhone(normalizedPhone);
+      if (isStaff) {
+        return { error: "This phone number is registered as a lawyer. Please sign in through the Lawyer Portal." };
+      }
+    }
+
+    const isTesting =
+      process.env.NODE_ENV === "test" ||
+      process.env.WAKEEL_TESTING === "true" ||
+      (process.env.DEMO_DB_PATH ? process.env.DEMO_DB_PATH.includes("wakeel-product-api-") : false) ||
+      (process.env.WAKEEL_PRODUCT_DB_PATH ? process.env.WAKEEL_PRODUCT_DB_PATH.includes("wakeel-product-api-") : false);
+
+    const code = isTesting
+      ? DEV_OTP_CODE
+      : String(randomInt(100000, 1000000));
+
+    const requestRecord = await store.createOtpRequest({ actorType, phone: normalizedPhone, code });
     if (!requestRecord) {
-      return null;
+      return { error: "Too many OTP requests. Please wait a few minutes before trying again." };
     }
-    await smsProvider.send(phone, `Your Legal Bhai verification code is ${code}. It expires in 10 minutes.`);
+
+    if (process.env.NODE_ENV !== "production") {
+      console.log(`[DEV OTP] Generated verification code for ${normalizedPhone}: ${code}`);
+    }
+
+    try {
+      await smsProvider.send(normalizedPhone, `Your Legal Bhai verification code is ${code}. It expires in 10 minutes.`);
+    } catch (err: any) {
+      if (process.env.NODE_ENV !== "production") {
+        console.log(`[DEV OTP FALLBACK] Twilio error: ${err.message}. Autofilled code: ${code}`);
+        return {
+          ok: true,
+          expiresAt: requestRecord.expiresAt,
+          devCode: code,
+        };
+      }
+      return { error: `SMS failed to send: ${err.message}` };
+    }
     return {
       ok: true,
       expiresAt: requestRecord.expiresAt,
-      ...publicDevelopmentFields({ devCode: requestRecord.devCode }),
+      ...(isTesting ? { devCode: requestRecord.devCode } : {}),
     };
   }
 
   function registerOtpRequestRoute(path: string, actorType: "staff" | "client"): void {
     app.post(path, async (request, reply) => {
-      const body = (request.body ?? {}) as { phone?: string };
+      const body = (request.body ?? {}) as { phone?: string; purpose?: string };
       if (!body.phone) {
         reply.code(400);
         return { error: "Phone is required" };
       }
-      const response = await issueOtp(actorType, body.phone);
+      const response = await issueOtp(actorType, body.phone, undefined, body.purpose);
       if (!response) {
-        reply.code(429);
-        return { error: "Invalid phone or too many OTP requests" };
+        reply.code(400);
+        return { error: "Failed to request OTP" };
+      }
+      if ("error" in response && typeof response.error === "string") {
+        const statusCode = response.error.includes("Too many") ? 429 : 400;
+        reply.code(statusCode);
+        return { error: response.error };
       }
       return response;
     });
@@ -492,15 +562,20 @@ export function registerProductRoutes(app: FastifyInstance, store: ProductStoreC
   registerOtpVerifyRoute("/auth/client/otp/verify", "client", "client_otp");
 
   app.post("/v1/auth/otp/request", async (request, reply) => {
-    const body = (request.body ?? {}) as { phone?: string; actorType?: unknown };
+    const body = (request.body ?? {}) as { phone?: string; actorType?: unknown; purpose?: string };
     if (!body.phone || !isProductActorType(body.actorType)) {
       reply.code(400);
       return { error: "A valid phone and actorType are required" };
     }
-    const response = await issueOtp(body.actorType, body.phone);
+    const response = await issueOtp(body.actorType, body.phone, undefined, body.purpose);
     if (!response) {
-      reply.code(429);
-      return { error: "Invalid phone or too many OTP requests" };
+      reply.code(400);
+      return { error: "Failed to request OTP" };
+    }
+    if ("error" in response && typeof response.error === "string") {
+      const statusCode = response.error.includes("Too many") ? 429 : 400;
+      reply.code(statusCode);
+      return { error: response.error };
     }
     return response;
   });
@@ -791,6 +866,7 @@ export function registerProductRoutes(app: FastifyInstance, store: ProductStoreC
       nextHearingAt?: string | null;
       leadLawyerId?: string | null;
     };
+    const nextHearingAtNormalized = body.nextHearingAt === "" ? null : (body.nextHearingAt ?? null);
     if (
       !isNonEmptyText(body.courtId, 100) ||
       !isNonEmptyText(body.rawCaseNumber, 200) ||
@@ -799,7 +875,7 @@ export function registerProductRoutes(app: FastifyInstance, store: ProductStoreC
       !PRODUCT_MATTER_TYPES.includes(body.matterType as Matter["matterType"]) ||
       !isNonEmptyText(body.stage, 100) ||
       !PRODUCT_MATTER_STATUSES.includes(body.status as Matter["status"]) ||
-      (body.nextHearingAt !== undefined && !isNullableIsoDate(body.nextHearingAt)) ||
+      !isNullableIsoDate(nextHearingAtNormalized) ||
       (body.leadLawyerId !== undefined && body.leadLawyerId !== null && !isNonEmptyText(body.leadLawyerId, 100))
     ) {
       reply.code(400);
@@ -814,7 +890,7 @@ export function registerProductRoutes(app: FastifyInstance, store: ProductStoreC
       matterType: body.matterType as Matter["matterType"],
       stage: body.stage,
       status: body.status as Matter["status"],
-      nextHearingAt: body.nextHearingAt ?? null,
+      nextHearingAt: nextHearingAtNormalized,
       leadLawyerId: body.leadLawyerId === undefined ? session.actorId : body.leadLawyerId,
     });
     if (!matter) {

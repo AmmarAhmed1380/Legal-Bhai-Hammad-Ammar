@@ -1,0 +1,74 @@
+{
+  "clientId": "client-redtone",
+  "phone": "03005550001",
+  "displayName": "Ahmed Zubair",
+  "language": "en",
+  "status": "active",
+  "createdAt": "2026-06-14T01:10:34.664Z",
+  "firmId": "firm-hassan-co",
+  "sharedMatters": [
+    {
+      "id": "matter-redtone",
+      "courtId": "ihc",
+      "rawCaseNumber": "W.P. 2076/2019",
+      "normalizedCaseNumber": "WRIT PETITION 2076/2019",
+      "title": "Redtone Telecommunications Pak Pvt Ltd v CIR etc",
+      "stage": "arguments",
+      "status": "open",
+      "nextHearingAt": "2026-04-28T09:30:00+05:00",
+      "hearings": [
+        {
+          "id": "hearing-redtone-1",
+          "listedAt": "2026-04-18T10:05:00+05:00",
+          "outcome": "Arguments concluded",
+          "notes": "Bench reserved the order and adjourned for pronouncement.",
+          "nextDate": "2026-05-14",
+          "courtroom": "Court No: 8"
+        }
+      ],
+      "documents": [
+        {
+          "id": "doc-redtone-order",
+          "title": "order-18-apr-2026.jpg",
+          "type": "hearing_order",
+          "mimeType": "image/png",
+          "ocrStatus": "completed"
+        }
+      ]
+    }
+  ],
+  "messages": [
+    {
+      "id": "message-redtone-1",
+      "senderType": "staff",
+      "body": "Arguments concluded today. The bench reserved the order.",
+      "language": "en",
+      "deliveryChannel": "in_app",
+      "createdAt": "2026-04-18T11:42:00+05:00"
+    },
+    {
+      "id": "message-redtone-2",
+      "senderType": "client",
+      "body": "Received. Please let us know once the next order is announced.",
+      "language": "en",
+      "deliveryChannel": "in_app",
+      "createdAt": "2026-04-18T12:05:00+05:00"
+    },
+    {
+      "id": "8b8f5a2a-0a7c-40f9-b133-c08cc55aaa41",
+      "senderType": "client",
+      "body": "Please confirm whether any further documents are needed from my side.",
+      "language": "en",
+      "deliveryChannel": "in_app",
+      "createdAt": "2026-06-19T03:50:56.033Z"
+    },
+    {
+      "id": "cea8682f-acbf-4ec2-84db-62f2156572f1",
+      "senderType": "client",
+      "body": "Please confirm whether any further documents are needed from my side.Testing Enter key submission",
+      "language": "en",
+      "deliveryChannel": "in_app",
+      "createdAt": "2026-06-19T03:51:11.201Z"
+    }
+  ]
+}

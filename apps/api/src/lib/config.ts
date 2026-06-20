@@ -1,3 +1,30 @@
+import { join } from "node:path";
+import { existsSync } from "node:fs";
+
+// Load .env files programmatically in non-production environments unless running tests
+const isRunningTests =
+  process.env.NODE_ENV === "test" ||
+  process.execArgv.includes("--test") ||
+  process.argv.some((arg) => arg.includes("test")) ||
+  Boolean(process.env.WAKEEL_TESTING);
+
+if (process.env.NODE_ENV !== "production" && !isRunningTests) {
+  const possiblePaths = [
+    join(process.cwd(), ".env"),
+    join(process.cwd(), "apps/api", ".env"),
+    join(process.cwd(), "../..", ".env"),
+  ];
+  for (const p of possiblePaths) {
+    if (existsSync(p)) {
+      try {
+        process.loadEnvFile(p);
+      } catch (err) {
+        // Ignore errors
+      }
+    }
+  }
+}
+
 const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
 const PLACEHOLDER_SECRET = /replace|change.?me|example|password|secret-at-least/i;
 const PLACEHOLDER_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "legalbahi.example.com", "api.legalbahi.example.com"]);

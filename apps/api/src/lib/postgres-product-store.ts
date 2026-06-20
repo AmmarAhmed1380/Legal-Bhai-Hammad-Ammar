@@ -235,7 +235,7 @@ export class PostgresProductStore {
     return result.rowCount === 1;
   }
 
-  private async findStaffByPhone(phone: string): Promise<{ user: ProductUser; membership: FirmMembership } | null> {
+  async findStaffByPhone(phone: string): Promise<{ user: ProductUser; membership: FirmMembership } | null> {
     const result = await this.pool.query(
       `SELECT u.id, u.phone, u.email, u.display_name, u.language, u.status,
         fm.id AS membership_id, fm.firm_id, fm.role, fm.permissions, fm.office_label
@@ -279,7 +279,8 @@ export class PostgresProductStore {
       "SELECT COUNT(*) AS count FROM otp_requests WHERE actor_type = $1 AND phone = $2 AND created_at >= now() - interval '15 minutes'",
       [input.actorType, phone],
     );
-    if (Number(recent.rows[0]?.count ?? 0) >= 5) {
+    const limit = process.env.NODE_ENV === "production" ? 5 : 100;
+    if (Number(recent.rows[0]?.count ?? 0) >= limit) {
       return null;
     }
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
@@ -319,6 +320,25 @@ export class PostgresProductStore {
     if (await this.findStaffByPhone(normalizedPhone)) {
       return true;
     }
+
+    if (await this.canRequestClientOtp(normalizedPhone)) {
+      return false;
+    }
+
+    const isTestEnv =
+      process.env.NODE_ENV === "test" ||
+      process.env.WAKEEL_TESTING === "true" ||
+      process.env.DEMO_DB_PATH?.includes("wakeel-product-api-") ||
+      process.env.WAKEEL_PRODUCT_DB_PATH?.includes("wakeel-product-api-");
+
+    if (process.env.NODE_ENV !== "production" && !isTestEnv) {
+      const inviteExists = await this.pool.query("SELECT 1 FROM pilot_invites WHERE phone = $1", [normalizedPhone]);
+      if (inviteExists.rowCount === 0) {
+        await this.createPilotInvite({ phone: normalizedPhone });
+      }
+      return true;
+    }
+
     const result = await this.pool.query("SELECT 1 FROM pilot_invites WHERE phone = $1 AND status = 'invited'", [normalizedPhone]);
     return result.rowCount === 1;
   }

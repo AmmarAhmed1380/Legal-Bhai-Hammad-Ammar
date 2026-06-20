@@ -207,6 +207,7 @@ interface TeamMember {
   displayName: string;
   phone: string;
   email: string | null;
+  status: string;
   membership: {
     id: string;
     role: string;
@@ -374,11 +375,28 @@ function formatDateTime(value: string | null): string {
   return `${dateStr} • ${timeStr}`;
 }
 
+function formatRole(role: string): string {
+  if (!role) return "";
+  const r = role.toLowerCase();
+  if (r === "co_owner" || r === "co-owner") return "Co-Owner";
+  if (r === "owner") return "Owner";
+  if (r === "lawyer") return "Lawyer";
+  if (r === "assistant") return "Assistant";
+  if (r === "billing") return "Billing Officer";
+  return r.split(/[\s_-]+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+
 function formatPhone(phone: string): string {
   if (!phone) return phone;
-  if (phone.startsWith("+1")) return phone;
-  
   const digits = phone.replace(/\D/g, "");
+  
+  if (phone.startsWith("+1") || (digits.length === 11 && digits.startsWith("1"))) {
+    const local = digits.startsWith("1") ? digits.slice(1) : digits;
+    if (local.length === 10) {
+      return `+1 (${local.slice(0, 3)}) ${local.slice(3, 6)}-${local.slice(6)}`;
+    }
+  }
+  
   let local = digits;
   if (digits.startsWith("92")) {
     local = digits.slice(2);
@@ -386,11 +404,17 @@ function formatPhone(phone: string): string {
     local = digits.slice(1);
   }
   
+  if (local.length === 10) {
+    return `+92 (${local.slice(0, 3)}) ${local.slice(3, 6)}-${local.slice(6)}`;
+  }
+  if (local.length === 9) {
+    return `+92 (${local.slice(0, 3)}) ${local.slice(3, 6)}-${local.slice(6)}`;
+  }
+  
   if (local.length >= 3) {
     return `(+92) ${local.slice(0, 3)}-${local.slice(3)}`;
   }
-  
-  return `(+92) ${local}`;
+  return phone;
 }
 
 function formatCurrency(value: number): string {
@@ -478,10 +502,20 @@ export default function ProductStaffPage() {
   const [vaultSearchHits, setVaultSearchHits] = useState<SearchHit[]>([]);
   const [courtReviewMatterIds, setCourtReviewMatterIds] = useState<Record<string, string>>({});
   const [operationStatus, setOperationStatus] = useState<string | null>(null);
+  const [matterSearch, setMatterSearch] = useState("");
+  const [matterStatusFilter, setMatterStatusFilter] = useState<"all" | "open" | "closed">("all");
   const [viewingDocument, setViewingDocument] = useState<{ id: string; title: string; mimeType?: string } | null>(null);
   const [viewingDocumentUrl, setViewingDocumentUrl] = useState<string | null>(null);
   const [zoomScale, setZoomScale] = useState(1);
   const [isCloseHovered, setIsCloseHovered] = useState(false);
+
+  // Workspace Settings / Team Management states
+  const [settingsTab, setSettingsTab] = useState<"profile" | "workspace">("profile");
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [invitePhone, setInvitePhone] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"owner" | "lawyer" | "assistant" | "billing">("lawyer");
+  const [inviteOfficeLabel, setInviteOfficeLabel] = useState("");
 
   useEffect(() => {
     setAuth(readStoredProductAuth(STORAGE_KEY));
@@ -606,9 +640,82 @@ export default function ProductStaffPage() {
     setNotificationPreference(preferenceResponse.data.preference);
     setNotificationHistory(notificationResponse.data.notifications);
 
+    if (me.profile.firm && (me.profile.staffMembership.role === "owner" || me.profile.staffMembership.role === "co_owner")) {
+      try {
+        const teamResponse = await authedRequest<{ memberships: TeamMember[] }>(
+          `/v1/firms/${me.profile.firm.id}/memberships`,
+          {},
+          resolvedAuth
+        );
+        resolvedAuth = teamResponse.auth;
+        setTeamMembers(teamResponse.data.memberships || []);
+      } catch (err: any) {
+        console.error("Failed to load team memberships:", err.message);
+      }
+    }
+
     const nextMatterId = routedMatterId ?? selectedMatter?.id ?? matterResponse.data.matters[0]?.id ?? null;
     if (nextMatterId) {
       await openMatter(nextMatterId, resolvedAuth);
+    }
+  }
+
+  async function loadTeamMembers(firmId: string, token: string) {
+    try {
+      const response = await productJsonRequest<{ memberships: TeamMember[] }>(
+        `/v1/firms/${firmId}/memberships`,
+        {},
+        token
+      );
+      setTeamMembers(response.memberships || []);
+    } catch (err: any) {
+      console.error("Failed to load team members:", err.message);
+    }
+  }
+
+  async function handleSendInvite() {
+    if (!profile?.firm || !auth) return;
+    setOperationStatus("Sending invitation...");
+    try {
+      const cleanPhone = invitePhone.replace(/\D/g, "");
+      const formattedPhone = cleanPhone.startsWith("0") ? cleanPhone : `0${cleanPhone}`;
+      
+      await productJsonRequest(`/v1/firms/${profile.firm.id}/invitations`, {
+        method: "POST",
+        body: JSON.stringify({
+          phone: formattedPhone,
+          role: inviteRole,
+          officeLabel: inviteOfficeLabel || null,
+          email: inviteEmail || null
+        })
+      }, auth.token);
+
+      setInvitePhone("");
+      setInviteOfficeLabel("");
+      setInviteEmail("");
+      setOperationStatus("Invitation sent successfully!");
+      
+      await loadTeamMembers(profile.firm.id, auth.token);
+    } catch (err: any) {
+      setOperationStatus(err.message || "Failed to send invitation.");
+    }
+  }
+
+  async function handleUpdateMembership(membershipId: string, role: string, officeLabel: string | null) {
+    if (!auth || !profile?.firm) return;
+    setOperationStatus("Updating member...");
+    try {
+      await productJsonRequest(`/v1/memberships/${membershipId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          role,
+          officeLabel
+        })
+      }, auth.token);
+      setOperationStatus("Member updated successfully!");
+      await loadTeamMembers(profile.firm.id, auth.token);
+    } catch (err: any) {
+      setOperationStatus(err.message || "Failed to update member.");
     }
   }
 
@@ -841,19 +948,41 @@ export default function ProductStaffPage() {
 
   async function createMatter() {
     if (!auth) return;
-    const response = await authedRequest<{ matter: MatterListItem }>("/v1/matters", {
-      method: "POST",
-      body: JSON.stringify({
-        ...newMatter,
-        nextHearingAt: newMatter.nextHearingAt || null,
-        matterType: "litigation",
-        stage: "new",
-        status: "open",
-      }),
-    }, auth);
-    setNewMatter({ courtId: "ihc", rawCaseNumber: "", title: "", nextHearingAt: "" });
-    setOperationStatus(`Created ${response.data.matter.rawCaseNumber}.`);
-    await loadWorkspace(response.auth);
+    const courtId = newMatter.courtId;
+    const rawCaseNumber = newMatter.rawCaseNumber.trim();
+    const title = newMatter.title.trim();
+    const nextHearingAt = newMatter.nextHearingAt;
+
+    if (!courtId || !rawCaseNumber || !title || !nextHearingAt) {
+      setOperationStatus("All fields (Court, Case number, Title, and Next Date) are required.");
+      return;
+    }
+
+    const caseNumberRegex = /^[A-Za-z .&()'-]+\s*\d+\s*\/\s*\d{4}$/;
+    if (!caseNumberRegex.test(rawCaseNumber)) {
+      setOperationStatus("Case number must be in format: Type Number/Year (e.g., WP 123/2026 or C.R. 45/2025).");
+      return;
+    }
+
+    try {
+      const response = await authedRequest<{ matter: MatterListItem }>("/v1/matters", {
+        method: "POST",
+        body: JSON.stringify({
+          ...newMatter,
+          rawCaseNumber,
+          title,
+          nextHearingAt: nextHearingAt || null,
+          matterType: "litigation",
+          stage: "new",
+          status: "open",
+        }),
+      }, auth);
+      setNewMatter({ courtId: "ihc", rawCaseNumber: "", title: "", nextHearingAt: "" });
+      setOperationStatus(`Created ${response.data.matter.rawCaseNumber}.`);
+      await loadWorkspace(response.auth);
+    } catch (err: any) {
+      setOperationStatus(err.message || "Failed to create matter. Please check inputs.");
+    }
   }
 
   async function previewCsvImport() {
@@ -1169,7 +1298,7 @@ export default function ProductStaffPage() {
         <section className="dashboard-grid" style={{ gridTemplateColumns: "380px minmax(0, 1fr)" }}>
           <aside className="grid">
             <div className="panel">
-              <h2 style={{ marginTop: 0 }}>Workspace Health</h2>
+              <h2 style={{ marginTop: 0 }}>Workspace</h2>
               <div className="stats-grid">
                 <div className="stat-card">
                   <div className="stat-number">{stats.matters}</div>
@@ -1190,23 +1319,35 @@ export default function ProductStaffPage() {
             <aside className="panel" style={{ width: "100%", boxShadow: "0 2px 8px rgba(0,0,0,0.05)" }}>
               <h2 style={{ marginTop: 0 }}>Court Health</h2>
               <div className="grid">
-                {courtSources.map((source) => (
-                  <div key={source.id} className="case-card" style={{ padding: "12px", border: "1px solid #e1e4e8", borderRadius: "8px", backgroundColor: "#fff" }}>
-                    <strong>{courtLabel(source.courtId)}</strong>
-                    <p className="muted" style={{ marginBottom: 6 }}>
-                      {source.ingestionMode === "automation" ? "Automation" : source.ingestionMode} • Fetched {source.metrics.fetched ?? 0} • Matched {source.metrics.matched ?? 0}
-                    </p>
-                    <p className="muted" style={{ width: '100%', marginBottom: 0 }}>Last sync {formatDateTime(source.lastSuccessfulSyncAt)}</p>
-                    <div style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
-                      {source.officialUrl ? (
-                        <a className="muted" href={source.officialUrl} target="_blank" rel="noreferrer">Official Source</a>
-                      ) : <span />}
-                      <button className="button-secondary" type="button" onClick={() => void syncCourtSource(source.id)}>
-                        Sync Now
-                      </button>
+                {courtSources.map((source) => {
+                  const isLive = source.status === "live";
+                  const isFailed = source.status === "failed";
+                  const bg = isLive 
+                    ? "rgba(15, 110, 86, 0.05)" 
+                    : isFailed 
+                      ? "rgba(216, 90, 48, 0.05)" 
+                      : "rgba(235, 160, 40, 0.05)";
+                  const border = isLive 
+                    ? "1px solid rgba(15, 110, 86, 0.15)" 
+                    : isFailed 
+                      ? "1px solid rgba(216, 90, 48, 0.15)" 
+                      : "1px solid rgba(235, 160, 40, 0.15)";
+                  
+                  return (
+                    <div key={source.id} className="case-card" style={{ padding: "12px", border, borderRadius: "8px", backgroundColor: bg }}>
+                      <strong>{courtLabel(source.courtId)}</strong>
+                      <p className="muted" style={{ marginBottom: 6 }}>
+                        {source.ingestionMode === "automation" ? "Automation" : source.ingestionMode} • Fetched {source.metrics.fetched ?? 0} • Matched {source.metrics.matched ?? 0}
+                      </p>
+                      <p className="muted" style={{ width: '100%', marginBottom: 0 }}>Last sync {formatDateTime(source.lastSuccessfulSyncAt)}</p>
+                      <div style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+                        {source.officialUrl ? (
+                          <a className="muted" href={source.officialUrl} target="_blank" rel="noreferrer">Official Source</a>
+                        ) : <span />}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </aside>
           </aside>
@@ -1215,41 +1356,53 @@ export default function ProductStaffPage() {
             <div className="panel">
               <h2 style={{ marginTop: 0 }}>Priority Alerts</h2>
               <div className="grid">
-                {alerts.map((alert) => (
-                  <div key={alert.id} className="case-card" style={{ padding: 14, borderLeftColor: "var(--accent)" }}>
-                    <div className="top-bar" style={{ marginBottom: 8 }}>
-                      <strong>{alert.title.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")}</strong>
-                      {!alert.readAt ? <button className="button-secondary" type="button" onClick={() => void markAlertRead(alert.id)}>Mark Read</button> : null}
+                {alerts.length === 0 ? (
+                  <p className="muted" style={{ margin: 0, padding: "12px 0", fontSize: "14px", fontStyle: "italic", textAlign: "center" }}>No priority alerts.</p>
+                ) : (
+                  alerts.map((alert) => (
+                    <div key={alert.id} className="case-card" style={{ padding: 14, borderLeftColor: "var(--accent)" }}>
+                      <div className="top-bar" style={{ marginBottom: 8 }}>
+                        <strong>{alert.title.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")}</strong>
+                        {!alert.readAt ? <button className="button-secondary" type="button" onClick={() => void markAlertRead(alert.id)}>Mark Read</button> : null}
+                      </div>
+                      <p className="muted">{alert.body}</p>
                     </div>
-                    <p className="muted">{alert.body}</p>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
 
             <div className="detail-grid">
               <div className="panel">
-                <h2 style={{ marginTop: 0 }}>Matter Pipeline</h2>
+                <h2 style={{ marginTop: 0 }}>Matter Stages</h2>
                 <div className="grid">
-                  {report?.mattersByStage.map((entry) => (
-                    <div key={entry.stage} className="case-card" style={{ padding: 14 }}>
-                      <strong>{entry.stage.charAt(0).toUpperCase() + entry.stage.slice(1)}</strong>
-                      <div className="muted">{entry.count} {entry.count === 1 ? "Active Matter" : "Active Matters"}</div>
-                    </div>
-                  ))}
+                  {!report?.mattersByStage || report.mattersByStage.length === 0 ? (
+                    <p className="muted" style={{ margin: 0, padding: "12px 0", fontSize: "14px", fontStyle: "italic", textAlign: "center" }}>No matters in pipeline.</p>
+                  ) : (
+                    report.mattersByStage.map((entry) => (
+                      <div key={entry.stage} className="case-card" style={{ padding: 14 }}>
+                        <strong>{entry.stage.charAt(0).toUpperCase() + entry.stage.slice(1)}</strong>
+                        <div className="muted">{entry.count} {entry.count === 1 ? "Active Matter" : "Active Matters"}</div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
 
               <aside className="grid">
                 <div className="panel">
-                  <h2 style={{ marginTop: 0 }}>Unread Client Threads</h2>
+                  <h2 style={{ marginTop: 0 }}>Client Threads</h2>
                   <div className="grid">
-                    {threads.map((thread) => (
-                      <button key={thread.id} className="case-card" onClick={() => { router.push("/matters"); openMatter(thread.matter.id); }} style={{ padding: 14, textAlign: "left", cursor: "pointer" }}>
-                        <strong>{thread.matter.rawCaseNumber}</strong>
-                        <p className="muted">{thread.lastMessage?.body ?? "No messages yet"}</p>
-                      </button>
-                    ))}
+                    {threads.length === 0 ? (
+                      <p className="muted" style={{ margin: 0, padding: "12px 0", fontSize: "14px", fontStyle: "italic", textAlign: "center" }}>No active client threads.</p>
+                    ) : (
+                      threads.map((thread) => (
+                        <button key={thread.id} className="case-card" onClick={() => { router.push("/matters"); openMatter(thread.matter.id); }} style={{ padding: 14, textAlign: "left", cursor: "pointer" }}>
+                          <strong>{thread.matter.rawCaseNumber}</strong>
+                          <p className="muted">{thread.lastMessage?.body ?? "No messages yet"}</p>
+                        </button>
+                      ))
+                    )}
                   </div>
                 </div>
               </aside>
@@ -1264,9 +1417,37 @@ export default function ProductStaffPage() {
             <h2 style={{ marginTop: 0 }}>Add Matter</h2>
             <div className="field">
               <label>Court</label>
-              <select value={newMatter.courtId} onChange={(event) => setNewMatter({ ...newMatter, courtId: event.target.value })}>
-                {PILOT_COURTS.map((court) => <option key={court.id} value={court.id}>{court.label}</option>)}
-              </select>
+              <div style={{ position: "relative", width: "100%" }}>
+                <select
+                  value={newMatter.courtId}
+                  onChange={(event) => {
+                    setNewMatter({ ...newMatter, courtId: event.target.value });
+                    event.target.blur();
+                  }}
+                  style={{
+                    width: "100%",
+                    appearance: "none",
+                    backgroundImage: "none",
+                    paddingRight: "40px"
+                  }}
+                >
+                  {PILOT_COURTS.map((court) => <option key={court.id} value={court.id}>{court.label}</option>)}
+                </select>
+                <div style={{
+                  position: "absolute",
+                  right: "16px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  pointerEvents: "none",
+                  display: "flex",
+                  alignItems: "center",
+                  color: "var(--text-secondary)"
+                }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </div>
+              </div>
             </div>
             <div className="field"><label>Case number</label><input value={newMatter.rawCaseNumber} onChange={(event) => setNewMatter({ ...newMatter, rawCaseNumber: event.target.value })} /></div>
             <div className="field"><label>Title</label><input value={newMatter.title} onChange={(event) => setNewMatter({ ...newMatter, title: event.target.value })} /></div>
@@ -1274,14 +1455,20 @@ export default function ProductStaffPage() {
             <button className="button" type="button" onClick={() => void createMatter()}>Create Matter</button>
             <hr style={{ margin: "24px 0" }} />
             <h2>CSV Import</h2>
-            <p className="muted">
-              Validate Duplicate and Malformed Rows Before Importing.
-            </p>
+            <div className="case-card" style={{ padding: "14px", marginBottom: "14px", backgroundColor: "rgba(0,0,0,0.02)" }}>
+              <strong style={{ display: "block", marginBottom: "6px", fontSize: "14px" }}>How does CSV Import work?</strong>
+              <ol style={{ margin: 0, paddingLeft: "20px", fontSize: "13px", lineHeight: "1.5", color: "var(--text-secondary)" }}>
+                <li>Download the case import spreadsheet template.</li>
+                <li>Add your cases inside Excel or Google Sheets.</li>
+                <li>Copy the CSV data and paste it into the textbox below.</li>
+                <li>Click <strong>Validate Import</strong> to preview duplicates or formatting issues, then confirm.</li>
+              </ol>
+            </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <a className="button-secondary" href={`${PRODUCT_API_BASE_URL}/v1/matters/import-template.csv`} style={{ textAlign: "center" }}>
-                Download Template
+                Download CSV Template
               </a>
-              <textarea value={csvImport} onChange={(event) => setCsvImport(event.target.value)} placeholder="Paste the Legal Bhai CSV template here" style={{ minHeight: 120 }} />
+              <textarea value={csvImport} onChange={(event) => setCsvImport(event.target.value)} placeholder="Paste your CSV data rows here" style={{ minHeight: 120 }} />
               <button className="button-secondary" type="button" onClick={() => void previewCsvImport()}>Validate Import</button>
             </div>
             {csvPreview ? (
@@ -1306,26 +1493,101 @@ export default function ProductStaffPage() {
               </div>
             ) : null}
             <hr style={{ margin: "24px 0" }} />
-            <h2 style={{ marginTop: 0 }}>Matter Roster</h2>
+            <h2 style={{ marginTop: 0, marginBottom: 12 }}>Matter Roster</h2>
+            
+            <div className="field" style={{ marginBottom: 10 }}>
+              <input
+                type="text"
+                placeholder="🔍 Search case number or title..."
+                value={matterSearch}
+                onChange={(e) => setMatterSearch(e.target.value)}
+                style={{ padding: "8px 12px", fontSize: "14px" }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: "6px", marginBottom: 16 }}>
+              <button
+                className="button-secondary"
+                style={{
+                  flex: 1,
+                  padding: "6px 0",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  backgroundColor: matterStatusFilter === "all" ? "var(--primary-light)" : "transparent",
+                  color: matterStatusFilter === "all" ? "var(--primary-dark)" : "var(--text-secondary)",
+                  border: "1px solid rgba(0,0,0,0.08)",
+                  borderRadius: "6px",
+                  cursor: "pointer"
+                }}
+                onClick={() => setMatterStatusFilter("all")}
+              >
+                All
+              </button>
+              <button
+                className="button-secondary"
+                style={{
+                  flex: 1,
+                  padding: "6px 0",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  backgroundColor: matterStatusFilter === "open" ? "var(--primary-light)" : "transparent",
+                  color: matterStatusFilter === "open" ? "var(--primary-dark)" : "var(--text-secondary)",
+                  border: "1px solid rgba(0,0,0,0.08)",
+                  borderRadius: "6px",
+                  cursor: "pointer"
+                }}
+                onClick={() => setMatterStatusFilter("open")}
+              >
+                Open
+              </button>
+              <button
+                className="button-secondary"
+                style={{
+                  flex: 1,
+                  padding: "6px 0",
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  backgroundColor: matterStatusFilter === "closed" ? "var(--primary-light)" : "transparent",
+                  color: matterStatusFilter === "closed" ? "var(--primary-dark)" : "var(--text-secondary)",
+                  border: "1px solid rgba(0,0,0,0.08)",
+                  borderRadius: "6px",
+                  cursor: "pointer"
+                }}
+                onClick={() => setMatterStatusFilter("closed")}
+              >
+                Closed
+              </button>
+            </div>
+
             <div className="case-list">
-              {matters.map((matter) => (
-                <button
-                  key={matter.id}
-                  className="case-card"
-                  type="button"
-                  onClick={() => void openMatter(matter.id)}
-                  style={{ textAlign: "left", cursor: "pointer" }}
-                >
-                  <div className="top-bar" style={{ marginBottom: 10 }}>
-                    <strong>{matter.rawCaseNumber}</strong>
-                    <span className="badge live">{matter.stage.charAt(0).toUpperCase() + matter.stage.slice(1)}</span>
-                  </div>
-                  <div>{matter.title}</div>
-                  <p className="muted" style={{ marginBottom: 0, marginTop: 8 }}>
-                    {courtLabel(matter.courtId)} · {matter.status.charAt(0).toUpperCase() + matter.status.slice(1)} · Next {matter.nextHearingAt ?? "TBC"}
-                  </p>
-                </button>
-              ))}
+              {matters
+                .filter((matter) => {
+                  const matchesSearch =
+                    matter.rawCaseNumber.toLowerCase().includes(matterSearch.toLowerCase()) ||
+                    matter.title.toLowerCase().includes(matterSearch.toLowerCase());
+                  const matchesStatus =
+                    matterStatusFilter === "all" ||
+                    (matterStatusFilter === "open" && matter.status === "open") ||
+                    (matterStatusFilter === "closed" && (matter.status === "closed" || matter.status === "on_hold"));
+                  return matchesSearch && matchesStatus;
+                })
+                .map((matter) => (
+                  <button
+                    key={matter.id}
+                    className="case-card"
+                    type="button"
+                    onClick={() => void openMatter(matter.id)}
+                    style={{ textAlign: "left", cursor: "pointer" }}
+                  >
+                    <div className="top-bar" style={{ marginBottom: 10 }}>
+                      <strong>{matter.rawCaseNumber}</strong>
+                      <span className="badge live">{matter.stage.charAt(0).toUpperCase() + matter.stage.slice(1)}</span>
+                    </div>
+                    <div>{matter.title}</div>
+                    <p className="muted" style={{ marginBottom: 0, marginTop: 8 }}>
+                      {courtLabel(matter.courtId)} · {matter.status.charAt(0).toUpperCase() + matter.status.slice(1)} · Next {matter.nextHearingAt ?? "TBC"}
+                    </p>
+                  </button>
+                ))}
             </div>
           </aside>
 
@@ -1348,9 +1610,37 @@ export default function ProductStaffPage() {
                     <h2 style={{ marginTop: 0 }}>Edit Matter</h2>
                     <div className="field">
                       <label>Court</label>
-                      <select value={matterDraft.courtId} onChange={(event) => setMatterDraft({ ...matterDraft, courtId: event.target.value })}>
-                        {PILOT_COURTS.map((court) => <option key={court.id} value={court.id}>{court.label}</option>)}
-                      </select>
+                      <div style={{ position: "relative", width: "100%" }}>
+                        <select
+                          value={matterDraft.courtId}
+                          onChange={(event) => {
+                            setMatterDraft({ ...matterDraft, courtId: event.target.value });
+                            event.target.blur();
+                          }}
+                          style={{
+                            width: "100%",
+                            appearance: "none",
+                            backgroundImage: "none",
+                            paddingRight: "40px"
+                          }}
+                        >
+                          {PILOT_COURTS.map((court) => <option key={court.id} value={court.id}>{court.label}</option>)}
+                        </select>
+                        <div style={{
+                          position: "absolute",
+                          right: "16px",
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          pointerEvents: "none",
+                          display: "flex",
+                          alignItems: "center",
+                          color: "var(--text-secondary)"
+                        }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                          </svg>
+                        </div>
+                      </div>
                     </div>
                     <div className="field"><label>Case number</label><input value={matterDraft.rawCaseNumber} onChange={(event) => setMatterDraft({ ...matterDraft, rawCaseNumber: event.target.value })} /></div>
                     <div className="field"><label>Title</label><input value={matterDraft.title} onChange={(event) => setMatterDraft({ ...matterDraft, title: event.target.value })} /></div>
@@ -1806,7 +2096,7 @@ export default function ProductStaffPage() {
               </div>
               <div className="field">
                 <label>Phone Number:</label>
-                <input value={newClient.phone} onChange={(event) => setNewClient({ ...newClient, phone: event.target.value })} placeholder="(+92) 300-0000000" />
+                <input value={newClient.phone} onChange={(event) => setNewClient({ ...newClient, phone: event.target.value })} placeholder="" />
               </div>
               <div className="field">
                 <label>Language:</label>
@@ -1970,41 +2260,225 @@ export default function ProductStaffPage() {
 
       {activeSection === "settings" ? (
         <section>
-          <div className="grid">
-            <div className="panel" style={{ width: "100%" }}>
-              <h2 style={{ marginTop: 0 }}>Profile And Session Settings</h2>
-              <div className="info-list">
-                <div><strong>Name:</strong> {profile.staffUser.displayName}</div>
-                <div><strong>Phone:</strong> {formatPhone(profile.staffUser.phone)}</div>
-                <div><strong>Role:</strong> {toTitleCase(profile.staffMembership.role)}</div>
-                <div><strong>Language:</strong> {profile.staffUser.language === "en" ? "English" : profile.staffUser.language === "ur" ? "Urdu" : profile.staffUser.language}</div>
+          {profile && (profile.staffMembership.role === "owner" || profile.staffMembership.role === "co_owner") && (
+            <div style={{ display: "flex", gap: 12, marginBottom: 24 }}>
+              <button
+                type="button"
+                className={settingsTab === "profile" ? "button" : "button-secondary"}
+                onClick={() => setSettingsTab("profile")}
+                style={{ flex: 1 }}
+              >
+                My Profile & Preferences
+              </button>
+              <button
+                type="button"
+                className={settingsTab === "workspace" ? "button" : "button-secondary"}
+                onClick={() => setSettingsTab("workspace")}
+                style={{ flex: 1 }}
+              >
+                Workspace Settings & Members
+              </button>
+            </div>
+          )}
+
+          {settingsTab === "profile" || (profile?.staffMembership.role !== "owner" && profile?.staffMembership.role !== "co_owner") ? (
+            <div className="grid">
+              <div className="panel" style={{ width: "100%" }}>
+                <h2 style={{ marginTop: 0 }}>Profile And Session Settings</h2>
+                <div className="info-list">
+                  <div><strong>Name:</strong> {profile.staffUser.displayName}</div>
+                  <div><strong>Phone:</strong> {formatPhone(profile.staffUser.phone)}</div>
+                  <div><strong>Role:</strong> {formatRole(profile.staffMembership.role)}</div>
+                  <div><strong>Language:</strong> {profile.staffUser.language === "en" ? "English" : profile.staffUser.language === "ur" ? "Urdu" : profile.staffUser.language}</div>
+                </div>
+              </div>
+              <div className="panel" style={{ width: "100%" }}>
+                <h2 style={{ marginTop: 0 }}>Notification Preferences</h2>
+                {notificationPreference ? (
+                  <div className="grid">
+                    <label className="checkbox-field">
+                      <input type="checkbox" checked={notificationPreference.emailEnabled} onChange={(event) => setNotificationPreference({ ...notificationPreference, emailEnabled: event.target.checked })} />
+                      Receive Lawyer Agenda Emails
+                    </label>
+                    <label className="checkbox-field">
+                      <input type="checkbox" checked={notificationPreference.smsEnabled} onChange={(event) => setNotificationPreference({ ...notificationPreference, smsEnabled: event.target.checked })} />
+                      Receive Lawyer Agenda SMS
+                    </label>
+                    <label className="checkbox-field">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(notificationPreference.optedOutAt)}
+                        onChange={(event) => setNotificationPreference({ ...notificationPreference, optedOutAt: event.target.checked ? new Date().toISOString() : null })}
+                      />
+                      Pause All Notifications
+                    </label>
+                    <button className="button" type="button" onClick={() => void saveNotificationPreference()}>Save Preferences</button>
+                  </div>
+                ) : <div className="muted">Notification preferences are unavailable.</div>}
               </div>
             </div>
-            <div className="panel" style={{ width: "100%" }}>
-              <h2 style={{ marginTop: 0 }}>Notification Preferences</h2>
-              {notificationPreference ? (
-                <div className="grid">
-                  <label className="checkbox-field">
-                    <input type="checkbox" checked={notificationPreference.emailEnabled} onChange={(event) => setNotificationPreference({ ...notificationPreference, emailEnabled: event.target.checked })} />
-                    Receive Lawyer Agenda Emails
-                  </label>
-                  <label className="checkbox-field">
-                    <input type="checkbox" checked={notificationPreference.smsEnabled} onChange={(event) => setNotificationPreference({ ...notificationPreference, smsEnabled: event.target.checked })} />
-                    Receive Lawyer Agenda SMS
-                  </label>
-                  <label className="checkbox-field">
+          ) : (
+            <div className="grid">
+              <div className="panel" style={{ width: "100%" }}>
+                <h2 style={{ marginTop: 0 }}>Workspace / Firm Details</h2>
+                {profile?.firm ? (
+                  <div className="info-list" style={{ marginBottom: 20 }}>
+                    <div><strong>Firm Name:</strong> {profile.firm.name}</div>
+                    <div><strong>City:</strong> {profile.firm.primaryCity}</div>
+                    <div><strong>Timezone:</strong> {profile.firm.timezone}</div>
+                    <div><strong>Billing Plan:</strong> {profile.firm.billingPlan}</div>
+                    <div><strong>Status:</strong> <span className="badge live">{profile.firm.status}</span></div>
+                  </div>
+                ) : (
+                  <div className="muted">No workspace details found.</div>
+                )}
+                
+                <h3 style={{ marginTop: 24, marginBottom: 12 }}>Invite New Member</h3>
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <div className="field" style={{ margin: 0 }}>
+                    <label>Phone Number (e.g. 03001234567)</label>
                     <input
-                      type="checkbox"
-                      checked={Boolean(notificationPreference.optedOutAt)}
-                      onChange={(event) => setNotificationPreference({ ...notificationPreference, optedOutAt: event.target.checked ? new Date().toISOString() : null })}
+                      type="tel"
+                      value={invitePhone}
+                      onChange={(e) => setInvitePhone(e.target.value)}
+                      placeholder=""
                     />
-                    Pause All Notifications
-                  </label>
-                  <button className="button" type="button" onClick={() => void saveNotificationPreference()}>Save Preferences</button>
+                  </div>
+                  <div className="field" style={{ margin: 0 }}>
+                    <label>Email Address (Optional)</label>
+                    <input
+                      type="email"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      placeholder=""
+                    />
+                  </div>
+                  <div className="field" style={{ margin: 0 }}>
+                    <label>Role</label>
+                    <select
+                      value={inviteRole}
+                      onChange={(e) => setInviteRole(e.target.value as any)}
+                      style={{ width: "100%" }}
+                    >
+                      <option value="lawyer">Lawyer</option>
+                      <option value="assistant">Assistant</option>
+                      <option value="billing">Billing Officer</option>
+                      <option value="co_owner">Co-Owner</option>
+                      <option value="owner">Owner</option>
+                    </select>
+                  </div>
+                  <div className="field" style={{ margin: 0 }}>
+                    <label>Office Label (e.g. Islamabad HQ)</label>
+                    <input
+                      type="text"
+                      value={inviteOfficeLabel}
+                      onChange={(e) => setInviteOfficeLabel(e.target.value)}
+                      placeholder=""
+                    />
+                  </div>
+                  <button className="button" type="button" onClick={() => void handleSendInvite()} style={{ marginTop: 8 }}>
+                    Send Invitation
+                  </button>
                 </div>
-              ) : <div className="muted">Notification preferences are unavailable.</div>}
+              </div>
+
+              <div className="panel" style={{ width: "100%" }}>
+                <h2 style={{ marginTop: 0 }}>Manage Employees / Staff</h2>
+                <p className="muted" style={{ fontSize: 13, marginBottom: 16 }}>
+                  Total Members: {teamMembers.length}
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  {teamMembers.map((member) => (
+                    <div
+                      key={member.id}
+                      style={{
+                        padding: "12px",
+                        borderRadius: "10px",
+                        border: "1px solid var(--border)",
+                        background: "rgba(255, 255, 255, 0.4)",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "8px"
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                        <div>
+                          <strong style={{ fontSize: "14px" }}>
+                            {member.displayName === member.phone ? formatPhone(member.phone) : member.displayName}
+                          </strong>
+                          {member.email && (
+                            <div className="muted" style={{ fontSize: "12px", marginTop: "2px" }}>
+                              {member.email}
+                            </div>
+                          )}
+                          <div className="muted" style={{ fontSize: "12px", marginTop: "2px" }}>
+                            Phone: {formatPhone(member.phone)}
+                          </div>
+                          <div className="muted" style={{ fontSize: "12px", marginTop: "2px" }}>
+                            Role: {formatRole(member.membership.role)}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
+                          <span className={`badge ${member.status === "active" ? "live" : "secondary"}`}>
+                            {toTitleCase(member.status)}
+                          </span>
+                          {member.membership.officeLabel && (
+                            <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>
+                              {member.membership.officeLabel}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Modify role / actions if not current user */}
+                      {member.id !== profile.staffUser.id && (
+                        <div style={{ display: "flex", gap: "8px", marginTop: "4px", alignItems: "center" }}>
+                          <span style={{ fontSize: "12px", fontWeight: 600 }}>Role:</span>
+                          <select
+                            value={member.membership.role}
+                            onChange={(e) => void handleUpdateMembership(member.membership.id, e.target.value, member.membership.officeLabel)}
+                            style={{ padding: "4px 8px", fontSize: "12px", height: "auto", width: "auto" }}
+                          >
+                            <option value="owner">Owner</option>
+                            <option value="co_owner">Co-Owner</option>
+                            <option value="lawyer">Lawyer</option>
+                            <option value="assistant">Assistant</option>
+                            <option value="billing">Billing Officer</option>
+                          </select>
+                          
+                          <input
+                            type="text"
+                            value={member.membership.officeLabel || ""}
+                            placeholder="Office Label"
+                            onChange={(e) => {
+                              const newLabel = e.target.value;
+                              setTeamMembers(prev => prev.map(m => m.id === member.id ? { ...m, membership: { ...m.membership, officeLabel: newLabel } } : m));
+                            }}
+                            onBlur={(e) => {
+                              void handleUpdateMembership(member.membership.id, member.membership.role, e.target.value || null);
+                            }}
+                            style={{
+                              padding: "4px 8px",
+                              fontSize: "12px",
+                              height: "auto",
+                              flex: 1,
+                              minWidth: 80
+                            }}
+                          />
+                        </div>
+                      )}
+                      
+                      {member.id === profile.staffUser.id && (
+                        <div className="muted" style={{ fontSize: "11px", fontStyle: "italic", marginTop: "4px" }}>
+                          You (Current User) — Role cannot be modified here.
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
+          )}
         </section>
       ) : null}
 
