@@ -388,11 +388,6 @@ export function registerProductRoutes(app: FastifyInstance, store: ProductStoreC
       if (!isClient) {
         return { ok: true, expiresAt: null };
       }
-
-      const isStaff = await store.findStaffByPhone(normalizedPhone);
-      if (isStaff) {
-        return { error: "This phone number is registered as a lawyer. Please sign in through the Lawyer Portal." };
-      }
     }
 
     const isTesting =

@@ -1030,10 +1030,29 @@ export default function ProductStaffPage() {
 
   async function saveMatter(patch = matterDraft) {
     if (!auth || !selectedMatter) return;
+
+    // Validate fields
+    const courtId = patch.courtId;
+    const rawCaseNumber = patch.rawCaseNumber ? patch.rawCaseNumber.trim() : "";
+    const title = patch.title ? patch.title.trim() : "";
+
+    if (!courtId || !rawCaseNumber || !title) {
+      setOperationStatus("Court, Case number, and Title are required.");
+      return;
+    }
+
+    const caseNumberRegex = /^[A-Za-z .&()'-]+\s*\d+\s*\/\s*\d{4}$/;
+    if (!caseNumberRegex.test(rawCaseNumber)) {
+      setOperationStatus("Case number must be in format: Type Number/Year (e.g., WP 123/2026 or C.R. 45/2025).");
+      return;
+    }
+
     const response = await authedRequest<{ matter: MatterListItem }>(`/v1/matters/${selectedMatter.id}`, {
       method: "PATCH",
       body: JSON.stringify({
         ...patch,
+        rawCaseNumber,
+        title,
         nextHearingAt: patch.nextHearingAt || null,
       }),
     }, auth);
@@ -1260,9 +1279,6 @@ export default function ProductStaffPage() {
           </p>
         </div>
         <div className="actions">
-          <Link className="button-secondary" href="/client">
-            Client Workspace
-          </Link>
           <button className="button" type="button" onClick={() => void signOut()}>
             Sign Out
           </button>
@@ -1323,28 +1339,34 @@ export default function ProductStaffPage() {
                   const isLive = source.status === "live";
                   const isFailed = source.status === "failed";
                   const bg = isLive 
-                    ? "rgba(15, 110, 86, 0.05)" 
+                    ? "rgba(15, 110, 86, 0.15)" 
                     : isFailed 
-                      ? "rgba(216, 90, 48, 0.05)" 
-                      : "rgba(235, 160, 40, 0.05)";
+                      ? "rgba(216, 90, 48, 0.15)" 
+                      : "rgba(235, 160, 40, 0.15)";
                   const border = isLive 
-                    ? "1px solid rgba(15, 110, 86, 0.15)" 
+                    ? "1px solid rgba(15, 110, 86, 0.4)" 
                     : isFailed 
-                      ? "1px solid rgba(216, 90, 48, 0.15)" 
-                      : "1px solid rgba(235, 160, 40, 0.15)";
+                      ? "1px solid rgba(216, 90, 48, 0.4)" 
+                      : "1px solid rgba(235, 160, 40, 0.4)";
                   
                   return (
                     <div key={source.id} className="case-card" style={{ padding: "12px", border, borderRadius: "8px", backgroundColor: bg }}>
-                      <strong>{courtLabel(source.courtId)}</strong>
-                      <p className="muted" style={{ marginBottom: 6 }}>
-                        {source.ingestionMode === "automation" ? "Automation" : source.ingestionMode} • Fetched {source.metrics.fetched ?? 0} • Matched {source.metrics.matched ?? 0}
-                      </p>
-                      <p className="muted" style={{ width: '100%', marginBottom: 0 }}>Last sync {formatDateTime(source.lastSuccessfulSyncAt)}</p>
-                      <div style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
-                        {source.officialUrl ? (
-                          <a className="muted" href={source.officialUrl} target="_blank" rel="noreferrer">Official Source</a>
-                        ) : <span />}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+                        <strong style={{ fontSize: "14px", color: "var(--text-primary)" }}>{courtLabel(source.courtId)}</strong>
+                        <span style={{ 
+                          fontSize: "11px", 
+                          fontWeight: 700, 
+                          padding: "2px 8px", 
+                          borderRadius: "4px", 
+                          backgroundColor: isLive ? "rgba(15, 110, 86, 0.2)" : isFailed ? "rgba(216, 90, 48, 0.2)" : "rgba(235, 160, 40, 0.2)",
+                          color: isLive ? "rgb(10, 80, 62)" : isFailed ? "rgb(160, 50, 20)" : "rgb(180, 110, 10)"
+                        }}>
+                          {isLive ? "Working well" : isFailed ? "Sync failed" : "Needs attention"}
+                        </span>
                       </div>
+                      <p className="muted" style={{ width: '100%', marginBottom: 0, fontSize: "12px" }}>
+                        Sync time: {source.lastSuccessfulSyncAt ? formatDateTime(source.lastSuccessfulSyncAt) : "Never"}
+                      </p>
                     </div>
                   );
                 })}
@@ -1357,7 +1379,7 @@ export default function ProductStaffPage() {
               <h2 style={{ marginTop: 0 }}>Priority Alerts</h2>
               <div className="grid">
                 {alerts.length === 0 ? (
-                  <p className="muted" style={{ margin: 0, padding: "12px 0", fontSize: "14px", fontStyle: "italic", textAlign: "center" }}>No priority alerts.</p>
+                  <div style={{ padding: "20px 0", textAlign: "center", color: "var(--text-secondary)", fontSize: "14px", fontWeight: 500 }}>Nothing present</div>
                 ) : (
                   alerts.map((alert) => (
                     <div key={alert.id} className="case-card" style={{ padding: 14, borderLeftColor: "var(--accent)" }}>
@@ -1374,10 +1396,10 @@ export default function ProductStaffPage() {
 
             <div className="detail-grid">
               <div className="panel">
-                <h2 style={{ marginTop: 0 }}>Matter Stages</h2>
+                <h2 style={{ marginTop: 0 }}>Matters</h2>
                 <div className="grid">
                   {!report?.mattersByStage || report.mattersByStage.length === 0 ? (
-                    <p className="muted" style={{ margin: 0, padding: "12px 0", fontSize: "14px", fontStyle: "italic", textAlign: "center" }}>No matters in pipeline.</p>
+                    <div style={{ padding: "20px 0", textAlign: "center", color: "var(--text-secondary)", fontSize: "14px", fontWeight: 500 }}>Nothing present</div>
                   ) : (
                     report.mattersByStage.map((entry) => (
                       <div key={entry.stage} className="case-card" style={{ padding: 14 }}>
@@ -1394,7 +1416,7 @@ export default function ProductStaffPage() {
                   <h2 style={{ marginTop: 0 }}>Client Threads</h2>
                   <div className="grid">
                     {threads.length === 0 ? (
-                      <p className="muted" style={{ margin: 0, padding: "12px 0", fontSize: "14px", fontStyle: "italic", textAlign: "center" }}>No active client threads.</p>
+                      <div style={{ padding: "20px 0", textAlign: "center", color: "var(--text-secondary)", fontSize: "14px", fontWeight: 500 }}>Nothing present</div>
                     ) : (
                       threads.map((thread) => (
                         <button key={thread.id} className="case-card" onClick={() => { router.push("/matters"); openMatter(thread.matter.id); }} style={{ padding: 14, textAlign: "left", cursor: "pointer" }}>

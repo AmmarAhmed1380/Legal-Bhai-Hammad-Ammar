@@ -177,21 +177,12 @@
   "personalDocuments": [],
   "clients": [
     {
-      "id": "client-redtone",
-      "phone": "03005550001",
-      "displayName": "Ahmed Zubair",
+      "id": "client-mrm",
+      "phone": "+16012109282",
+      "displayName": "MRM",
       "language": "en",
       "status": "active",
-      "createdAt": "2026-06-14T01:10:34.664Z",
-      "notes": []
-    },
-    {
-      "id": "client-farooq",
-      "phone": "03005550002",
-      "displayName": "Farooq Traders",
-      "language": "ur",
-      "status": "active",
-      "createdAt": "2026-06-14T01:10:34.664Z",
+      "createdAt": "2026-06-20T18:02:49.989Z",
       "notes": []
     }
   ]

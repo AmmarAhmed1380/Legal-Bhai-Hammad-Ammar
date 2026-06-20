@@ -1,50 +1,5 @@
 [
   {
-    "workspaceId": "firm-hassan-co",
-    "name": "Hassan & Co. Law Associates",
-    "primaryCity": "Islamabad",
-    "billingPlan": "solo_plus",
-    "timezone": "Asia/Karachi",
-    "status": "trial",
-    "createdAt": "2026-06-14T01:10:34.664Z",
-    "owner": {
-      "id": "staff-owner",
-      "phone": "03001234567",
-      "displayName": "Ahmed Hassan",
-      "email": "ahmed@hassanco.pk",
-      "status": "active"
-    },
-    "employees": [
-      {
-        "id": "staff-owner",
-        "phone": "03001234567",
-        "displayName": "Ahmed Hassan",
-        "email": "ahmed@hassanco.pk",
-        "role": "owner",
-        "officeLabel": "Islamabad HQ",
-        "status": "active"
-      },
-      {
-        "id": "staff-lawyer",
-        "phone": "03007654321",
-        "displayName": "Ayesha Khan",
-        "email": "ayesha@hassanco.pk",
-        "role": "lawyer",
-        "officeLabel": "Islamabad HQ",
-        "status": "active"
-      },
-      {
-        "id": "staff-assistant",
-        "phone": "03001112222",
-        "displayName": "Hamza Sheikh",
-        "email": "hamza@hassanco.pk",
-        "role": "assistant",
-        "officeLabel": "Rawalpindi Desk",
-        "status": "active"
-      }
-    ]
-  },
-  {
     "workspaceId": "5f6f7937-388a-4eaa-ab10-55453f3c3bf8",
     "name": "IRS Co. Ltd",
     "primaryCity": "Islamabad",
@@ -65,33 +20,6 @@
         "phone": "+16012109282",
         "displayName": "Barrister Ammar Ahmed",
         "email": "ammarzaigham1970@gmail.com",
-        "role": "owner",
-        "officeLabel": "Islamabad",
-        "status": "active"
-      }
-    ]
-  },
-  {
-    "workspaceId": "855d278f-fe10-4d36-b123-dc3a13a161a7",
-    "name": "IRS Co. Ltd",
-    "primaryCity": "Islamabad",
-    "billingPlan": "solo_plus",
-    "timezone": "Asia/Karachi",
-    "status": "trial",
-    "createdAt": "2026-06-20T03:50:15.005Z",
-    "owner": {
-      "id": "93999b24-eb08-4fc2-aab2-c9a42c7b53c3",
-      "phone": "+16012109283",
-      "displayName": "Barrister Ammar Ahmed",
-      "email": "ammarzaigham1971@gmail.com",
-      "status": "active"
-    },
-    "employees": [
-      {
-        "id": "93999b24-eb08-4fc2-aab2-c9a42c7b53c3",
-        "phone": "+16012109283",
-        "displayName": "Barrister Ammar Ahmed",
-        "email": "ammarzaigham1971@gmail.com",
         "role": "owner",
         "officeLabel": "Islamabad",
         "status": "active"
