@@ -43,7 +43,19 @@ export function registerDocumentRoutes(ctx: ProductRouteContext): void {
 
   app.post("/v1/documents", async (request, reply) => {
     const session = await requireProductSession(request, reply, store);
-    if (!requirePermission(session, reply, "documents.write") || !session.firmId) {
+    if (!session) {
+      reply.code(401);
+      return { error: "Unauthorized" };
+    }
+    const isStaff = session.actorType === "staff";
+    const isClient = session.actorType === "client";
+
+    if (!isStaff && !isClient) {
+      reply.code(403);
+      return { error: "Forbidden" };
+    }
+
+    if (isStaff && (!requirePermission(session, reply, "documents.write") || !session.firmId)) {
       return { error: "Forbidden" };
     }
     const multipartPayload = await parseMultipartFields(request);
@@ -51,12 +63,34 @@ export function registerDocumentRoutes(ctx: ProductRouteContext): void {
       matterId?: string | null;
       folderId?: string | null;
       type?: ProductDocument["type"];
+      documentType?: string;
       title?: string;
       mimeType?: string;
       searchText?: string | null;
       portalVisible?: boolean;
     };
     const body = { ...requestBody, ...multipartPayload.fields };
+
+    body.type = (body.documentType ?? body.type) as ProductDocument["type"];
+    if (isClient) {
+      if (!body.matterId) {
+        reply.code(400);
+        return { error: "matterId is required for client uploads" };
+      }
+      const matter = await store.getMatter(session, body.matterId);
+      if (!matter) {
+        reply.code(403);
+        return { error: "Access denied to target matter" };
+      }
+      body.portalVisible = true;
+      if (!body.type) {
+        body.type = "General";
+      }
+      if (body.type.toLowerCase() === "vakalatnama") {
+        reply.code(400);
+        return { error: "Vakalatnama is a lawyer-managed document and cannot be uploaded by clients" };
+      }
+    }
     if (!body.type || !body.title || !body.mimeType) {
       if (!multipartPayload.fileName || !multipartPayload.mimeType || !body.type) {
         reply.code(400);
@@ -101,7 +135,7 @@ export function registerDocumentRoutes(ctx: ProductRouteContext): void {
         ? await runOcr(multipartPayload.bytes, multipartPayload.mimeType)
         : { status: "pending_config" as const, text: null };
     const document = await store.createDocument(session, {
-      firmId: session.firmId,
+      firmId: session.firmId ?? "",
       matterId: body.matterId ?? null,
       folderId: body.folderId ?? null,
       type: body.type,

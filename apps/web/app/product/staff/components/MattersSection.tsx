@@ -714,21 +714,28 @@ export default function MattersSection({
                           {document.title}
                         </div>
 
+                        <div style={{
+                          fontSize: "11px",
+                          fontWeight: 500,
+                          color: "var(--text-secondary)",
+                          marginTop: "-2px",
+                          marginBottom: "2px",
+                        }}>
+                          Uploaded by: {document.uploaderType === "client" ? "Client" : "Lawyer"}
+                        </div>
+
                         <span
                           style={{
-                            fontSize: document.type === "hearing_order" ? "10px" : "8.5px",
-                            fontWeight: 800,
-                            textTransform: "uppercase",
-                            letterSpacing: "0.06em",
-                            padding: document.type === "hearing_order" ? "4px 8px" : "3px 6px",
-                            borderRadius: "6px",
-                            background: "rgba(255, 255, 255, 0.95)",
-                            backdropFilter: "blur(4px)",
-                            border: "1px solid rgba(15, 110, 86, 0.15)",
-                            color: "var(--primary-dark)",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            padding: "4px 10px",
+                            borderRadius: "20px",
+                            background: "#f3f4f6",
+                            color: "#374151",
+                            border: "1px solid #e5e7eb",
                             display: "inline-flex",
                             alignItems: "center",
-                            boxShadow: "0 2px 6px rgba(0, 0, 0, 0.05)",
+                            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.02)",
                           }}
                         >
                           {toTitleCase(document.type)}

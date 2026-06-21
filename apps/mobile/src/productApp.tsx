@@ -11,12 +11,21 @@ import {
   Text,
   TextInput,
   View,
+  ActivityIndicator,
+  Modal,
+  LayoutAnimation,
+  UIManager,
 } from "react-native";
+
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import { StatusBar } from "expo-status-bar";
 import * as FileSystem from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
 import * as SecureStore from "expo-secure-store";
 import * as Sharing from "expo-sharing";
+import * as DocumentPicker from "expo-document-picker";
 
 import { API_BASE_URL, ApiRequestError, apiRequest } from "./api";
 import { theme } from "./theme";
@@ -56,6 +65,7 @@ interface MatterDetail extends MatterListItem {
     type: string;
     ocrStatus: string;
     mimeType?: string;
+    uploaderType?: string;
   }>;
   thread: { id: string } | null;
 }
@@ -87,6 +97,7 @@ const spacing = {
 
 const AUTH_STORAGE_KEY = "legalbahi-mobile-auth";
 const CLIENT_STORAGE_KEY = "legalbahi-mobile-client-auth";
+const OTP_ERROR_MESSAGE = "Invalid OTP. Please try again.";
 
 function formatPhoneNumber(value: string): string {
   const digits = value.replace(/\D/g, "").slice(0, 11);
@@ -97,6 +108,16 @@ function formatPhoneNumber(value: string): string {
 function toPakistanPhoneSubmit(phone: string): string {
   const cleanPhone = phone.replace(/\D/g, "");
   return cleanPhone.startsWith("0") ? cleanPhone : `0${cleanPhone}`;
+}
+
+function userFacingOtpError(error: unknown): string {
+  if (error instanceof ApiRequestError && (error.status === 400 || error.status === 401)) {
+    return OTP_ERROR_MESSAGE;
+  }
+  if (error instanceof Error && /invalid\s+otp|verification code|code/i.test(error.message)) {
+    return OTP_ERROR_MESSAGE;
+  }
+  return "Authentication failed. Please try again.";
 }
 
 interface ClientProfile {
@@ -122,13 +143,24 @@ function formatDateTime(value: string | null): string {
   if (!value) {
     return "TBC";
   }
-  return new Date(value).toLocaleString([], {
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return value;
+
+  const dateStr = d.toLocaleDateString("en-US", {
+    timeZone: "Asia/Karachi",
     month: "short",
     day: "numeric",
     year: "numeric",
+  });
+
+  const timeStr = d.toLocaleTimeString("en-US", {
+    timeZone: "Asia/Karachi",
     hour: "numeric",
     minute: "2-digit",
   });
+
+  if (value.length <= 10) return dateStr;
+  return `${dateStr} • ${timeStr} PKT`;
 }
 
 function documentExtension(document: { title: string; mimeType?: string; type?: string }): string {
@@ -148,6 +180,37 @@ function documentExtension(document: { title: string; mimeType?: string; type?: 
   return document.type?.toLowerCase() || "file";
 }
 
+function toTitleCase(str: string): string {
+  if (!str) return str;
+  return str.split(/[\s_]+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+}
+
+function formatTwoLineLabel(value: string, limit = 32): string {
+  if (value.length <= limit || value.includes("\n")) {
+    return value;
+  }
+  const words = value.split(/\s+/);
+  const midpoint = value.length / 2;
+  let bestIndex = -1;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  let cursor = 0;
+
+  for (let index = 0; index < words.length - 1; index += 1) {
+    cursor += words[index].length;
+    const distance = Math.abs(cursor - midpoint);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = index;
+    }
+    cursor += 1;
+  }
+
+  if (bestIndex < 0) {
+    return value;
+  }
+  return `${words.slice(0, bestIndex + 1).join(" ")}\n${words.slice(bestIndex + 1).join(" ")}`;
+}
+
 function documentIcon(document: { title: string; mimeType?: string; type?: string }): string {
   const extension = documentExtension(document);
   if (extension === "pdf") return "PDF";
@@ -161,12 +224,32 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
   const [phone, setPhone] = useState("");
   const [auth, setAuth] = useState<{ token: string; refreshToken: string | null } | null>(null);
   const [clientAuth, setClientAuth] = useState<{ token: string; refreshToken: string | null } | null>(null);
+
+  const authRef = useRef<{ token: string; refreshToken: string | null } | null>(null);
+  const clientAuthRef = useRef<{ token: string; refreshToken: string | null } | null>(null);
+
+  useEffect(() => {
+    authRef.current = auth;
+  }, [auth]);
+
+  useEffect(() => {
+    clientAuthRef.current = clientAuth;
+  }, [clientAuth]);
+
+  const phoneInputRef = useRef<TextInput | null>(null);
+  const loginScrollRef = useRef<ScrollView | null>(null);
+  const clientFlatListRef = useRef<FlatList | null>(null);
   const [clientProfile, setClientProfile] = useState<ClientProfile | null>(null);
   const [clientMatters, setClientMatters] = useState<MatterListItem[]>([]);
   const [clientSelectedMatter, setClientSelectedMatter] = useState<MatterDetail | null>(null);
   const [clientMessages, setClientMessages] = useState<MessageRecord[]>([]);
   const [clientWorkspaceTab, setClientWorkspaceTab] = useState<ClientWorkspaceTab>("timeline");
+  const [clientDocumentFilter, setClientDocumentFilter] = useState<string>("All");
   const [clientMessageDraft, setClientMessageDraft] = useState("");
+  const [clientUploading, setClientUploading] = useState(false);
+  const [isTypeModalVisible, setIsTypeModalVisible] = useState(false);
+  const [selectedTypeForPicker, setSelectedTypeForPicker] = useState<string | null>(null);
+  const [isUploadOptionsModalVisible, setIsUploadOptionsModalVisible] = useState(false);
   const [authHydrated, setAuthHydrated] = useState(false);
   const [profile, setProfile] = useState<StaffProfile | null>(null);
   const [tab, setTab] = useState<ProductTab>("home");
@@ -185,6 +268,8 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
   const [otpDigits, setOtpDigits] = useState<string[]>(Array(6).fill(""));
   const [otpRequested, setOtpRequested] = useState(false);
   const [operationStatus, setOperationStatus] = useState<string | null>(null);
+  const [authErrorText, setAuthErrorText] = useState<string | null>(null);
+  const [clientWorkspaceLoading, setClientWorkspaceLoading] = useState(false);
   const [registrationMode, setRegistrationMode] = useState(false);
   const [registration, setRegistration] = useState({
     displayName: "",
@@ -194,6 +279,79 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
   });
   const otpInputRefs = useRef<Array<TextInput | null>>(Array(6).fill(null));
   const [offlineQueueSize, setOfflineQueueSize] = useState(0);
+
+  const renderClientHeader = () => {
+    if (!clientProfile) return null;
+    return (
+      <View style={styles.clientHeader}>
+        <View style={styles.flexShrink}>
+          <Text style={styles.eyebrow}>Client Portal</Text>
+          <Text style={styles.clientTitle}>
+            <Text style={styles.clientTitleIntro}>Welcome, </Text>
+            <Text style={styles.clientTitleName}>{clientProfile.clientAccount.displayName}</Text>
+          </Text>
+          <Text style={styles.smallText}>{clientProfile.firm?.name ?? "Your lawyer workspace"}</Text>
+        </View>
+        <Pressable style={styles.headerSignOutButton} onPress={() => void signOutClient()}>
+          <Text style={styles.headerSignOutText}>Sign out</Text>
+        </Pressable>
+      </View>
+    );
+  };
+
+  const renderMatterSwitcher = () => {
+    return (
+      <View>
+        <Text style={styles.fieldLabel}>Active Matter</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.matterSwitcher}
+          keyboardShouldPersistTaps="handled"
+        >
+          {clientMatters.map((matter) => {
+            const active = clientSelectedMatter?.id === matter.id;
+            return (
+              <Pressable
+                key={matter.id}
+                style={[styles.matterPill, active ? styles.matterPillActive : null]}
+                onPress={() => void openClientMatter(matter.id)}
+              >
+                <Text style={active ? styles.matterPillActiveText : styles.matterPillText}>
+                  {matter.rawCaseNumber}
+                </Text>
+                <Text style={active ? styles.matterPillActiveSubText : styles.matterPillSubText}>
+                  {toTitleCase(matter.stage)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+    );
+  };
+
+  const renderClientTabBar = () => {
+    return (
+      <View style={[styles.tabRow, { marginVertical: 0 }]}>
+        {(["timeline", "hearings", "documents", "chat"] as const).map((tabKey) => (
+          <Pressable
+            key={tabKey}
+            style={[styles.pill, clientWorkspaceTab === tabKey ? styles.pillActive : null]}
+            onPress={() => {
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              setClientWorkspaceTab(tabKey);
+              if (tabKey === "documents") {
+                setClientDocumentFilter("All");
+              }
+            }}
+          >
+            <Text style={clientWorkspaceTab === tabKey ? styles.pillActiveText : styles.pillText}>{tabKey}</Text>
+          </Pressable>
+        ))}
+      </View>
+    );
+  };
 
   useEffect(() => {
     if (!auth?.token) {
@@ -231,6 +389,24 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
   }, [otpDigits, activeTab, otpRequested]);
 
   useEffect(() => {
+    if (otpRequested) {
+      const timer = setTimeout(() => {
+        otpInputRefs.current[0]?.focus();
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [otpRequested]);
+
+  useEffect(() => {
+    if (!otpRequested) {
+      const timer = setTimeout(() => {
+        phoneInputRef.current?.focus();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [otpRequested, activeTab, registrationMode]);
+
+  useEffect(() => {
     if (!authHydrated) {
       return;
     }
@@ -240,23 +416,30 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
       setClientMatters([]);
       setClientSelectedMatter(null);
       setClientMessages([]);
+      setClientWorkspaceLoading(false);
       return;
     }
     void SecureStore.setItemAsync(CLIENT_STORAGE_KEY, JSON.stringify(clientAuth));
-    void apiRequest<{ profile: ClientProfile }>("/v1/me", {}, clientAuth.token)
-      .then(async (payload) => {
-        setClientProfile(payload.profile);
-        await loadClientWorkspace(clientAuth);
-      })
-      .catch((error) => {
-        setClientAuth(null);
-        setClientProfile(null);
-        setClientMatters([]);
-        setClientSelectedMatter(null);
-        setClientMessages([]);
-        Alert.alert("Client workspace unavailable", error instanceof Error ? error.message : "Sign in again to continue.");
-      });
-  }, [clientAuth, authHydrated]);
+    if (!clientProfile) {
+      setClientWorkspaceLoading(true);
+      void apiRequest<{ profile: ClientProfile }>("/v1/me", {}, clientAuth.token)
+        .then(async (payload) => {
+          await loadClientWorkspace(clientAuth);
+          setClientProfile(payload.profile);
+        })
+        .catch((error) => {
+          setClientAuth(null);
+          setClientProfile(null);
+          setClientMatters([]);
+          setClientSelectedMatter(null);
+          setClientMessages([]);
+          Alert.alert("Client workspace unavailable", error instanceof Error ? error.message : "Sign in again to continue.");
+        })
+        .finally(() => {
+          setClientWorkspaceLoading(false);
+        });
+    }
+  }, [clientAuth, authHydrated, clientProfile]);
 
   useEffect(() => {
     if (!authHydrated) {
@@ -267,21 +450,23 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
       return;
     }
     void SecureStore.setItemAsync(AUTH_STORAGE_KEY, JSON.stringify(auth));
-    void loadWorkspace(auth).catch((error) => {
-      if (error instanceof ApiRequestError && error.status === 401) {
-        setAuth(null);
-        setProfile(null);
-        Alert.alert("Session expired", "Sign in again to continue.");
-        return;
-      }
-      Alert.alert("Workspace load failed", error instanceof Error ? error.message : "Unknown error");
-    });
-  }, [auth, authHydrated]);
+    if (!profile) {
+      void loadWorkspace(auth).catch((error) => {
+        if (error instanceof ApiRequestError && error.status === 401) {
+          setAuth(null);
+          setProfile(null);
+          Alert.alert("Session expired", "Sign in again to continue.");
+          return;
+        }
+        Alert.alert("Workspace load failed", error instanceof Error ? error.message : "Unknown error");
+      });
+    }
+  }, [auth, authHydrated, profile]);
 
   async function authedRequest<T>(
     path: string,
     options: RequestInit = {},
-    activeAuth = auth,
+    activeAuth = authRef.current,
   ): Promise<{ data: T; auth: { token: string; refreshToken: string | null } }> {
     if (!activeAuth) {
       throw new Error("Authentication required");
@@ -302,6 +487,8 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
         body: JSON.stringify({ refreshToken: activeAuth.refreshToken }),
       });
       const nextAuth = { token: refreshed.token, refreshToken: refreshed.refreshToken };
+      authRef.current = nextAuth;
+      void SecureStore.setItemAsync(AUTH_STORAGE_KEY, JSON.stringify(nextAuth));
       setAuth(nextAuth);
 
       return {
@@ -314,7 +501,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
   async function clientAuthedRequest<T>(
     path: string,
     options: RequestInit = {},
-    activeClientAuth = clientAuth,
+    activeClientAuth = clientAuthRef.current,
   ): Promise<{ data: T; auth: { token: string; refreshToken: string | null } }> {
     if (!activeClientAuth) {
       throw new Error("Client authentication required");
@@ -335,6 +522,8 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
         body: JSON.stringify({ refreshToken: activeClientAuth.refreshToken }),
       });
       const nextAuth = { token: refreshed.token, refreshToken: refreshed.refreshToken };
+      clientAuthRef.current = nextAuth;
+      void SecureStore.setItemAsync(CLIENT_STORAGE_KEY, JSON.stringify(nextAuth));
       setClientAuth(nextAuth);
 
       return {
@@ -346,6 +535,11 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
 
   function focusFirstOtpInput() {
     setTimeout(() => otpInputRefs.current[0]?.focus(), 80);
+  }
+
+  function transitionOtpRequested(nextValue: boolean) {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setOtpRequested(nextValue);
   }
 
   async function loadWorkspace(activeAuth: { token: string; refreshToken: string | null }) {
@@ -373,7 +567,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
 
     const firstMatterId = clientSelectedMatter?.id ?? matterPayload.matters[0]?.id;
     if (firstMatterId) {
-      await openClientMatter(firstMatterId, matterResponse.auth);
+      await openClientMatter(firstMatterId, matterResponse.auth, { animate: false });
       return;
     }
     setClientSelectedMatter(null);
@@ -381,9 +575,10 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
   }
 
   function resetAuthFlow() {
-    setOtpRequested(false);
+    transitionOtpRequested(false);
     setOtpDigits(Array(6).fill(""));
     setOperationStatus(null);
+    setAuthErrorText(null);
   }
 
   function handleTabChange(tab: "lawyer" | "client") {
@@ -400,6 +595,8 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
   }
 
   async function startLawyerLogin(options?: { resend?: boolean }) {
+    setOperationStatus(null);
+    setAuthErrorText(null);
     if (registrationMode) {
       if (!registration.displayName.trim() || !registration.firmName.trim() || !registration.primaryCity.trim()) {
         setOperationStatus("Please fill in all required fields to create a workspace.");
@@ -423,7 +620,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
           ? "A new verification code has been sent to your phone number."
           : "A verification code has been sent to your phone number.",
       );
-      setOtpRequested(true);
+      transitionOtpRequested(true);
       focusFirstOtpInput();
     } catch (error) {
       setOperationStatus(error instanceof Error ? error.message : "Failed to request OTP.");
@@ -432,6 +629,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
 
   async function verifyLawyerLogin(codeOverride?: string) {
     const codeToUse = codeOverride ?? otpDigits.join("");
+    setAuthErrorText(null);
     setOperationStatus(registrationMode ? "Creating workspace..." : "Verifying OTP...");
     try {
       const formattedPhone = toPakistanPhoneSubmit(phone);
@@ -453,14 +651,18 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
       });
       setClientAuth(null);
       setClientProfile(null);
+      setClientWorkspaceLoading(false);
       setAuth({ token: payload.token, refreshToken: payload.refreshToken });
       setOperationStatus("Authentication successful.");
     } catch (error) {
-      setOperationStatus(error instanceof Error ? error.message : "Authentication failed.");
+      setOperationStatus(null);
+      setAuthErrorText(userFacingOtpError(error));
     }
   }
 
   async function startClientLogin(options?: { resend?: boolean }) {
+    setOperationStatus(null);
+    setAuthErrorText(null);
     setOperationStatus(options?.resend ? "Sending a new verification code..." : "Requesting client OTP...");
     try {
       const formattedPhone = toPakistanPhoneSubmit(phone);
@@ -482,7 +684,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
           ? "A new verification code has been sent to your phone number."
           : "A verification code has been sent to your phone number.",
       );
-      setOtpRequested(true);
+      transitionOtpRequested(true);
       focusFirstOtpInput();
     } catch (error) {
       setOperationStatus(error instanceof Error ? error.message : "Failed to request OTP.");
@@ -491,6 +693,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
 
   async function verifyClientLogin(codeOverride?: string) {
     const codeToUse = codeOverride ?? otpDigits.join("");
+    setAuthErrorText(null);
     setOperationStatus("Verifying client OTP...");
     try {
       const formattedPhone = toPakistanPhoneSubmit(phone);
@@ -500,10 +703,12 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
       });
       setAuth(null);
       setProfile(null);
+      setClientWorkspaceLoading(true);
       setClientAuth({ token: payload.token, refreshToken: payload.refreshToken });
       setOperationStatus("Authentication successful.");
     } catch (error) {
-      setOperationStatus(error instanceof Error ? error.message : "Authentication failed.");
+      setOperationStatus(null);
+      setAuthErrorText(userFacingOtpError(error));
     }
   }
 
@@ -557,19 +762,31 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
     }
   }
 
-  async function openClientMatter(matterId: string, activeClientAuth = clientAuth) {
+  async function openClientMatter(
+    matterId: string,
+    activeClientAuth = clientAuth,
+    options: { animate?: boolean } = {},
+  ) {
     if (!activeClientAuth) {
       return;
     }
+    const shouldAnimate = options.animate ?? true;
     try {
       if (clientSelectedMatter?.id !== matterId) {
+        if (shouldAnimate) {
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        }
         setClientWorkspaceTab("timeline");
+        setClientDocumentFilter("All");
       }
       const { data: payload, auth: resolvedAuth } = await clientAuthedRequest<{ matter: MatterDetail }>(
         `/v1/clients/me/matters/${matterId}`,
         {},
         activeClientAuth,
       );
+      if (shouldAnimate) {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      }
       setClientSelectedMatter(payload.matter);
       if (payload.matter.thread?.id) {
         const threadPayload = await clientAuthedRequest<{ messages: MessageRecord[] }>(
@@ -613,7 +830,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
   }
 
   async function openClientDocument(document: MatterDetail["documents"][number]) {
-    if (!clientAuth) {
+    if (!clientAuthRef.current) {
       return;
     }
     try {
@@ -621,11 +838,47 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
       const safeTitle = document.title.replace(/[^a-zA-Z0-9._-]+/g, "_");
       const filename = safeTitle.includes(".") ? safeTitle : `${safeTitle}.${extension}`;
       const destination = new FileSystem.File(FileSystem.Paths.cache, filename);
-      const result = await FileSystem.File.downloadFileAsync(
-        `${API_BASE_URL}/v1/documents/${document.id}/download`,
-        destination,
-        { headers: { authorization: `Bearer ${clientAuth.token}` }, idempotent: true },
-      );
+      
+      let token = clientAuthRef.current.token;
+      let result;
+      try {
+        result = await FileSystem.File.downloadFileAsync(
+          `${API_BASE_URL}/v1/documents/${document.id}/download`,
+          destination,
+          { headers: { authorization: `Bearer ${token}` }, idempotent: true },
+        );
+      } catch (error) {
+        const is401 = error instanceof Error && (
+          error.message.includes("401") ||
+          error.message.includes("status 401") ||
+          error.message.includes("status: 401")
+        );
+        if (is401 && clientAuthRef.current.refreshToken) {
+          const refreshed = await apiRequest<{ token: string; refreshToken: string | null }>("/v1/auth/refresh", {
+            method: "POST",
+            body: JSON.stringify({ refreshToken: clientAuthRef.current.refreshToken }),
+          });
+          const nextAuth = { token: refreshed.token, refreshToken: refreshed.refreshToken };
+          clientAuthRef.current = nextAuth;
+          void SecureStore.setItemAsync(CLIENT_STORAGE_KEY, JSON.stringify(nextAuth));
+          setClientAuth(nextAuth);
+          
+          result = await FileSystem.File.downloadFileAsync(
+            `${API_BASE_URL}/v1/documents/${document.id}/download`,
+            destination,
+            { headers: { authorization: `Bearer ${refreshed.token}` }, idempotent: true },
+          );
+        } else {
+          if (error instanceof Error && (
+            error.message.includes("404") ||
+            error.message.includes("status: 404") ||
+            error.message.includes("status 404")
+          )) {
+            throw new Error("Document not found");
+          }
+          throw error;
+        }
+      }
 
       const sharingAvailable = await Sharing.isAvailableAsync();
       if (!sharingAvailable) {
@@ -638,6 +891,142 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
       });
     } catch (error) {
       Alert.alert("Document unavailable", error instanceof Error ? error.message : "Could not open this document.");
+    }
+  }
+
+  function uploadClientDocument() {
+    setIsTypeModalVisible(true);
+  }
+
+  async function executeClientUpload(fileObj: { uri: string; name: string; type: string }, docType: string) {
+    if (!clientAuth || !clientSelectedMatter) {
+      return;
+    }
+    try {
+      setClientUploading(true);
+
+      const form = new FormData();
+      form.append("matterId", clientSelectedMatter.id);
+      form.append("type", docType);
+      form.append("documentType", docType);
+      form.append("title", fileObj.name);
+      form.append("portalVisible", "true");
+      form.append("file", {
+        uri: fileObj.uri,
+        name: fileObj.name,
+        type: fileObj.type,
+      } as unknown as Blob);
+
+      const response = await clientAuthedRequest<{ document: any }>("/v1/documents", {
+        method: "POST",
+        body: form,
+      }, clientAuth);
+
+      await openClientMatter(clientSelectedMatter.id, response.auth);
+      Alert.alert("Success", "Document uploaded successfully.");
+    } catch (error) {
+      Alert.alert("Upload failed", error instanceof Error ? error.message : "Unknown error");
+    } finally {
+      setClientUploading(false);
+      setSelectedTypeForPicker(null);
+    }
+  }
+
+  async function clientPickCameraPhoto() {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setIsUploadOptionsModalVisible(false);
+    if (!selectedTypeForPicker) {
+      Alert.alert("Error", "No document category selected.");
+      return;
+    }
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Camera permission required", "Legal Bhai needs camera access to take document photos.");
+        return;
+      }
+      const image = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.8 });
+      if (image.canceled) {
+        setSelectedTypeForPicker(null);
+        return;
+      }
+      const asset = image.assets[0];
+      const fileObj = {
+        uri: asset.uri,
+        name: asset.fileName || `camera_photo_${Date.now()}.jpg`,
+        type: "image/jpeg",
+      };
+      void executeClientUpload(fileObj, selectedTypeForPicker);
+    } catch (error) {
+      Alert.alert("Camera error", error instanceof Error ? error.message : "Could not open camera.");
+      setSelectedTypeForPicker(null);
+    }
+  }
+
+  async function clientPickLibraryPhoto() {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setIsUploadOptionsModalVisible(false);
+    if (!selectedTypeForPicker) {
+      Alert.alert("Error", "No document category selected.");
+      return;
+    }
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Photo permission required", "Legal Bhai needs photos access to select document images.");
+        return;
+      }
+      const image = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.8, selectionLimit: 1 });
+      if (image.canceled) {
+        setSelectedTypeForPicker(null);
+        return;
+      }
+      const asset = image.assets[0];
+      const fileObj = {
+        uri: asset.uri,
+        name: asset.fileName || `library_photo_${Date.now()}.jpg`,
+        type: "image/jpeg",
+      };
+      void executeClientUpload(fileObj, selectedTypeForPicker);
+    } catch (error) {
+      Alert.alert("Library error", error instanceof Error ? error.message : "Could not open library.");
+      setSelectedTypeForPicker(null);
+    }
+  }
+
+  async function clientPickDocumentFile() {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setIsUploadOptionsModalVisible(false);
+    if (!selectedTypeForPicker) {
+      Alert.alert("Error", "No document category selected.");
+      return;
+    }
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          "application/pdf",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "application/msword",
+          "image/*"
+        ],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) {
+        setSelectedTypeForPicker(null);
+        return;
+      }
+
+      const asset = result.assets[0];
+      const fileObj = {
+        uri: asset.uri,
+        name: asset.name,
+        type: asset.mimeType ?? "application/octet-stream",
+      };
+      void executeClientUpload(fileObj, selectedTypeForPicker);
+    } catch (error) {
+      Alert.alert("File picker error", error instanceof Error ? error.message : "Could not pick file.");
+      setSelectedTypeForPicker(null);
     }
   }
 
@@ -768,7 +1157,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
       setDocumentTitle("");
       setDocumentImageUri(null);
       await openMatter(selectedMatter.id, payload.auth);
-      Alert.alert("Document uploaded", "The photo is stored privately on this matter.");
+      Alert.alert("Success", "Document uploaded successfully.");
     } catch (error) {
       Alert.alert("Upload failed", error instanceof Error ? error.message : "Unknown error");
     }
@@ -802,7 +1191,21 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
     setClientSelectedMatter(null);
     setClientMessages([]);
     setClientMessageDraft("");
+    setClientWorkspaceLoading(false);
     resetAuthFlow();
+  }
+
+  if (clientAuth && (clientWorkspaceLoading || !clientProfile)) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <StatusBar style="dark" />
+        <View style={styles.emptyState}>
+          <ActivityIndicator size="small" color={theme.primary} />
+          <Text style={styles.sectionTitle}>Loading client workspace</Text>
+          <Text style={[styles.copy, styles.centerText]}>Checking your shared matters and preparing the latest workspace.</Text>
+        </View>
+      </SafeAreaView>
+    );
   }
 
   if (clientAuth && clientProfile) {
@@ -814,18 +1217,15 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           keyboardVerticalOffset={16}
         >
-          <View style={styles.clientHeader}>
-            <View style={styles.flexShrink}>
-              <Text style={styles.eyebrow}>Client Portal</Text>
-              <Text style={styles.clientTitle}>Welcome, {clientProfile.clientAccount.displayName}</Text>
-              <Text style={styles.smallText}>{clientProfile.firm?.name ?? "Your lawyer workspace"}</Text>
-            </View>
-            <Pressable style={styles.headerSignOutButton} onPress={() => void signOutClient()}>
-              <Text style={styles.headerSignOutText}>Sign out</Text>
-            </Pressable>
-          </View>
+          {renderClientHeader()}
 
-          {clientMatters.length === 0 ? (
+          {clientWorkspaceLoading ? (
+            <View style={styles.emptyState}>
+              <ActivityIndicator size="small" color={theme.primary} />
+              <Text style={styles.sectionTitle}>Loading client workspace</Text>
+              <Text style={[styles.copy, styles.centerText]}>Checking your shared matters and preparing the latest workspace.</Text>
+            </View>
+          ) : clientMatters.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyStateIcon}>LB</Text>
               <Text style={styles.sectionTitle}>No shared matters yet</Text>
@@ -833,68 +1233,109 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
                 Your lawyer has not shared a matter with this client account. Once a matter is linked, it will appear here automatically.
               </Text>
             </View>
-          ) : (
-            <ScrollView contentContainerStyle={styles.clientScreen} keyboardShouldPersistTaps="handled">
-              <View>
-                <Text style={styles.fieldLabel}>Active Matter</Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.matterSwitcher}
-                >
-                  {clientMatters.map((matter) => {
-                    const active = clientSelectedMatter?.id === matter.id;
-                    return (
-                      <Pressable
-                        key={matter.id}
-                        style={[styles.matterPill, active ? styles.matterPillActive : null]}
-                        onPress={() => void openClientMatter(matter.id)}
-                      >
-                        <Text style={active ? styles.matterPillActiveText : styles.matterPillText}>
-                          {matter.rawCaseNumber}
-                        </Text>
-                        <Text style={active ? styles.matterPillActiveSubText : styles.matterPillSubText}>
-                          {matter.stage}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </ScrollView>
+          ) : clientWorkspaceTab === "chat" && clientSelectedMatter ? (
+            // Chat Tab Layout: Fixed header/switcher/tabs + Auto-scrolling FlatList + bottom input row
+            <>
+              <View style={{ paddingHorizontal: spacing.lg, marginBottom: 14 }}>
+                {renderMatterSwitcher()}
               </View>
 
-              {clientSelectedMatter ? (
-                <>
-                  <View style={styles.overviewCard}>
+              <View style={[styles.stickyTabWrapper, { paddingHorizontal: spacing.lg }]}>
+                {renderClientTabBar()}
+              </View>
+
+              <FlatList
+                ref={clientFlatListRef}
+                data={[...clientMessages].reverse()}
+                keyExtractor={(item) => item.id}
+                inverted={true}
+                contentContainerStyle={{
+                  flexGrow: 1,
+                  justifyContent: "flex-end",
+                  paddingHorizontal: spacing.lg,
+                  paddingBottom: 24,
+                  paddingTop: 12,
+                }}
+                keyboardShouldPersistTaps="handled"
+                ListEmptyComponent={<Text style={[styles.copy, { textAlign: "center", marginVertical: 20 }]}>No messages yet.</Text>}
+                renderItem={({ item }) => (
+                  <View
+                    style={[
+                      styles.messageBubble,
+                      item.senderType === "client" ? styles.clientBubble : styles.counselBubble,
+                    ]}
+                  >
+                    <Text style={styles.messageSender}>{item.senderType === "client" ? "You" : "Counsel"}</Text>
+                    <Text style={styles.messageText}>{item.body}</Text>
+                    <Text style={styles.messageTime}>{formatDateTime(item.createdAt)}</Text>
+                  </View>
+                )}
+              />
+
+              <View style={{ paddingHorizontal: spacing.lg, paddingBottom: Platform.OS === 'ios' ? 10 : 16, backgroundColor: theme.background }}>
+                <TextInput
+                  style={[styles.input, { minHeight: 48, maxHeight: 100, marginBottom: 10 }]}
+                  multiline
+                  placeholder="Type your message here..."
+                  value={clientMessageDraft}
+                  onChangeText={setClientMessageDraft}
+                />
+                <Pressable style={styles.primaryButton} onPress={() => void sendClientMessage()}>
+                  <Text style={styles.primaryButtonText}>Send message</Text>
+                </Pressable>
+              </View>
+            </>
+          ) : (
+            // Non-Chat Layout: ScrollView with sticky Tab Bar
+            <ScrollView
+              contentContainerStyle={styles.clientScreen}
+              keyboardShouldPersistTaps="handled"
+              stickyHeaderIndices={clientSelectedMatter ? [1] : undefined}
+            >
+              {/* Child 0 */}
+              <View style={{ marginBottom: 14 }}>
+                {renderMatterSwitcher()}
+
+                {clientSelectedMatter ? (
+                  <View style={[styles.overviewCard, { marginTop: 14 }]}>
                     <Text style={styles.eyebrow}>{clientSelectedMatter.rawCaseNumber}</Text>
-                    <Text style={styles.clientMatterTitle}>{clientSelectedMatter.title}</Text>
+                    <Text style={[styles.clientMatterTitle, styles.prewrappedText]}>
+                      {formatTwoLineLabel(clientSelectedMatter.title, 34)}
+                    </Text>
                     <View style={styles.overviewGrid}>
                       <View style={styles.overviewCell}>
                         <Text style={styles.smallText}>Court</Text>
-                        <Text style={styles.metaLabel}>{courtLabel(clientSelectedMatter.courtId)}</Text>
+                        <Text style={[styles.metaLabel, styles.overviewValue]}>
+                          {formatTwoLineLabel(courtLabel(clientSelectedMatter.courtId), 26)}
+                        </Text>
                       </View>
                       <View style={styles.overviewCell}>
                         <Text style={styles.smallText}>Stage</Text>
-                        <Text style={styles.metaLabel}>{clientSelectedMatter.stage}</Text>
+                        <Text style={[styles.metaLabel, styles.overviewValue]}>
+                          {toTitleCase(clientSelectedMatter.stage)}
+                        </Text>
                       </View>
                       <View style={styles.overviewCellFull}>
                         <Text style={styles.smallText}>Next Hearing</Text>
-                        <Text style={styles.metaLabel}>{formatDateTime(clientSelectedMatter.nextHearingAt)}</Text>
+                        <Text style={[styles.metaLabel, styles.overviewValue]}>
+                          {formatDateTime(clientSelectedMatter.nextHearingAt)}
+                        </Text>
                       </View>
                     </View>
                   </View>
+                ) : null}
+              </View>
 
-                  <View style={styles.tabRow}>
-                    {(["timeline", "hearings", "documents", "chat"] as const).map((tabKey) => (
-                      <Pressable
-                        key={tabKey}
-                        style={[styles.pill, clientWorkspaceTab === tabKey ? styles.pillActive : null]}
-                        onPress={() => setClientWorkspaceTab(tabKey)}
-                      >
-                        <Text style={clientWorkspaceTab === tabKey ? styles.pillActiveText : styles.pillText}>{tabKey}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
+              {/* Child 1 */}
+              {clientSelectedMatter ? (
+                <View style={styles.stickyTabWrapper}>
+                  {renderClientTabBar()}
+                </View>
+              ) : null}
 
+              {/* Child 2 */}
+              {clientSelectedMatter ? (
+                <View style={{ marginTop: 14 }}>
                   {clientWorkspaceTab === "timeline" ? (
                     <View style={styles.cardWithShadow}>
                       <Text style={styles.sectionTitle}>Timeline Overview</Text>
@@ -929,8 +1370,55 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
                   {clientWorkspaceTab === "documents" ? (
                     <View style={styles.cardWithShadow}>
                       <Text style={styles.sectionTitle}>Document Vault</Text>
-                      {(clientSelectedMatter.documents ?? []).length > 0 ? (
-                        clientSelectedMatter.documents.map((document) => (
+                      {clientUploading ? (
+                        <View style={{ paddingVertical: 14, alignItems: "center" }}>
+                          <ActivityIndicator size="small" color={theme.primary} />
+                          <Text style={[styles.smallText, { marginTop: 6, color: theme.primary, fontWeight: "600" }]}>Uploading document...</Text>
+                        </View>
+                      ) : (
+                        <Pressable style={[styles.primaryButton, { marginBottom: 12 }]} onPress={() => void uploadClientDocument()}>
+                          <Text style={styles.primaryButtonText}>Upload File</Text>
+                        </Pressable>
+                      )}
+
+                      {/* Filter Row */}
+                      {(clientSelectedMatter.documents ?? []).length > 0 && (
+                        <View style={styles.filterContainer}>
+                          {["All", ...Array.from(new Set((clientSelectedMatter.documents ?? []).map(d => toTitleCase(d.type))))].map((cat) => {
+                            const active = clientDocumentFilter === cat;
+                            return (
+                              <Pressable
+                                key={cat}
+                                style={[styles.filterPill, active ? styles.filterPillActive : null]}
+                                onPress={() => {
+                                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                  setClientDocumentFilter(cat);
+                                }}
+                              >
+                                <Text style={active ? styles.filterPillActiveText : styles.filterPillText}>{cat}</Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      )}
+
+                      {(() => {
+                        const filteredDocs = (clientSelectedMatter.documents ?? []).filter(doc => {
+                          if (clientDocumentFilter === "All") return true;
+                          return toTitleCase(doc.type) === clientDocumentFilter;
+                        });
+
+                        if (filteredDocs.length === 0) {
+                          return (
+                            <Text style={styles.copy}>
+                              {clientSelectedMatter.documents.length === 0
+                                ? "No shared documents for this matter yet."
+                                : `No documents matching "${clientDocumentFilter}".`}
+                            </Text>
+                          );
+                        }
+
+                        return filteredDocs.map((document) => (
                           <Pressable
                             key={document.id}
                             style={styles.documentCard}
@@ -941,52 +1429,24 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
                             </View>
                             <View style={styles.flexShrink}>
                               <Text style={styles.metaLabel}>{document.title}</Text>
-                              <Text style={styles.smallText}>
-                                {documentExtension(document).toUpperCase()} · OCR {document.ocrStatus}
+                              <Text style={[styles.smallText, { marginTop: 2 }]}>
+                                Uploaded by: {document.uploaderType === "client" ? "Client" : "Lawyer"}
                               </Text>
+                              <View style={styles.documentSubRow}>
+                                <Text style={styles.smallText}>
+                                  {documentExtension(document).toUpperCase()}
+                                </Text>
+                                <View style={styles.documentBadgeContainer}>
+                                  <Text style={styles.documentBadgeText}>{toTitleCase(document.type)}</Text>
+                                </View>
+                              </View>
                             </View>
                           </Pressable>
-                        ))
-                      ) : (
-                        <Text style={styles.copy}>No documents are shared for this matter yet.</Text>
-                      )}
+                        ));
+                      })()}
                     </View>
                   ) : null}
-
-                  {clientWorkspaceTab === "chat" ? (
-                    <View style={styles.cardWithShadow}>
-                      <Text style={styles.sectionTitle}>Counsel Chat</Text>
-                      <FlatList
-                        data={clientMessages}
-                        keyExtractor={(item) => item.id}
-                        scrollEnabled={false}
-                        ListEmptyComponent={<Text style={styles.copy}>No messages yet.</Text>}
-                        renderItem={({ item }) => (
-                          <View
-                            style={[
-                              styles.messageBubble,
-                              item.senderType === "client" ? styles.clientBubble : styles.counselBubble,
-                            ]}
-                          >
-                            <Text style={styles.messageSender}>{item.senderType === "client" ? "You" : "Counsel"}</Text>
-                            <Text style={styles.messageText}>{item.body}</Text>
-                            <Text style={styles.messageTime}>{formatDateTime(item.createdAt)}</Text>
-                          </View>
-                        )}
-                      />
-                      <TextInput
-                        style={[styles.input, styles.textArea]}
-                        multiline
-                        placeholder="Type your message here..."
-                        value={clientMessageDraft}
-                        onChangeText={setClientMessageDraft}
-                      />
-                      <Pressable style={styles.primaryButton} onPress={() => void sendClientMessage()}>
-                        <Text style={styles.primaryButtonText}>Send message</Text>
-                      </Pressable>
-                    </View>
-                  ) : null}
-                </>
+                </View>
               ) : (
                 <View style={styles.emptyState}>
                   <Text style={styles.sectionTitle}>Loading matter details...</Text>
@@ -996,6 +1456,102 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
             </ScrollView>
           )}
         </KeyboardAvoidingView>
+        {isTypeModalVisible && (
+          <View style={[StyleSheet.absoluteFill, { zIndex: 1000 }]}>
+            <Pressable
+              style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(15, 23, 42, 0.4)" }]}
+              onPress={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setIsTypeModalVisible(false);
+                setSelectedTypeForPicker(null);
+              }}
+            />
+            <View style={[styles.modalContent, { position: "absolute", bottom: 0, left: 0, right: 0 }]}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Select Document Type</Text>
+                <Text style={styles.modalSubtitle}>Categorize this upload so counsel can identify it instantly</Text>
+              </View>
+              {[
+                { value: "Identity Document", label: "Identity Document (CNIC, Passport)" },
+                { value: "Evidence", label: "Evidence / Proof (Receipts, Photos)" },
+                { value: "Affidavit", label: "Affidavit (Bayan-e-Halfi)" },
+                { value: "Agreement / Contract", label: "Agreement / Contract (Deeds, Iqrar)" },
+                { value: "Court Notice", label: "Court Notice / Summons" },
+                { value: "General", label: "General / Other" }
+              ].map((cat) => (
+                <Pressable
+                  key={cat.value}
+                  style={[styles.modalOption, { alignItems: "flex-start", paddingVertical: 12 }]}
+                  onPress={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setIsTypeModalVisible(false);
+                    setSelectedTypeForPicker(cat.value);
+                    setIsUploadOptionsModalVisible(true);
+                  }}
+                >
+                  <Text style={styles.modalOptionText}>{cat.label}</Text>
+                </Pressable>
+              ))}
+              <Pressable
+                style={styles.modalCancelButton}
+                onPress={() => {
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  setIsTypeModalVisible(false);
+                  setSelectedTypeForPicker(null);
+                }}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+
+        {isUploadOptionsModalVisible && (
+          <View style={[StyleSheet.absoluteFill, { zIndex: 1000 }]}>
+            <Pressable
+              style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(15, 23, 42, 0.4)" }]}
+              onPress={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setIsUploadOptionsModalVisible(false);
+                setSelectedTypeForPicker(null);
+              }}
+            />
+            <View style={[styles.modalContent, { position: "absolute", bottom: 0, left: 0, right: 0 }]}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Upload Document</Text>
+                <Text style={styles.modalSubtitle}>Select how you want to get the document file</Text>
+              </View>
+              <Pressable
+                style={styles.modalOption}
+                onPress={() => void clientPickCameraPhoto()}
+              >
+                <Text style={styles.modalOptionText}>📷 Take a Photo</Text>
+              </Pressable>
+              <Pressable
+                style={styles.modalOption}
+                onPress={() => void clientPickLibraryPhoto()}
+              >
+                <Text style={styles.modalOptionText}>🖼️ Choose a Photo</Text>
+              </Pressable>
+              <Pressable
+                style={styles.modalOption}
+                onPress={() => void clientPickDocumentFile()}
+              >
+                <Text style={styles.modalOptionText}>📄 Choose a File</Text>
+              </Pressable>
+              <Pressable
+                style={styles.modalCancelButton}
+                onPress={() => {
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  setIsUploadOptionsModalVisible(false);
+                  setSelectedTypeForPicker(null);
+                }}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
       </SafeAreaView>
     );
   }
@@ -1004,7 +1560,15 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
     return (
       <SafeAreaView style={styles.safe}>
         <StatusBar style="dark" />
-        <ScrollView contentContainerStyle={styles.loginScroll}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1 }}
+        >
+          <ScrollView
+            ref={loginScrollRef}
+            contentContainerStyle={styles.loginScroll}
+            keyboardShouldPersistTaps="handled"
+          >
           <View style={styles.headerBlock}>
             <Text style={styles.heroTitle}>Legal Bhai</Text>
             <Text style={styles.copy}>
@@ -1039,6 +1603,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
                     <Text style={styles.countryPrefixText}>PK +92</Text>
                   </View>
                   <TextInput
+                    ref={phoneInputRef}
                     accessibilityLabel="Phone"
                     value={phone}
                     onChangeText={(value) => setPhone(formatPhoneNumber(value))}
@@ -1056,6 +1621,11 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
                   accessibilityLabel="Your name"
                   value={registration.displayName}
                   onChangeText={(displayName) => setRegistration({ ...registration, displayName })}
+                  onFocus={() => {
+                    setTimeout(() => {
+                      loginScrollRef.current?.scrollTo({ y: 120, animated: true });
+                    }, 100);
+                  }}
                   style={styles.input}
                 />
                 <Text style={styles.fieldLabel}>Firm / Chamber Name</Text>
@@ -1063,6 +1633,11 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
                   accessibilityLabel="Practice name"
                   value={registration.firmName}
                   onChangeText={(firmName) => setRegistration({ ...registration, firmName })}
+                  onFocus={() => {
+                    setTimeout(() => {
+                      loginScrollRef.current?.scrollTo({ y: 180, animated: true });
+                    }, 100);
+                  }}
                   style={styles.input}
                 />
                 <Text style={styles.fieldLabel}>Email Address</Text>
@@ -1072,6 +1647,11 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
                   onChangeText={(email) => setRegistration({ ...registration, email })}
                   keyboardType="email-address"
                   autoCapitalize="none"
+                  onFocus={() => {
+                    setTimeout(() => {
+                      loginScrollRef.current?.scrollTo({ y: 240, animated: true });
+                    }, 100);
+                  }}
                   style={styles.input}
                 />
                 <Text style={styles.fieldLabel}>Primary City</Text>
@@ -1079,6 +1659,11 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
                   accessibilityLabel="City"
                   value={registration.primaryCity}
                   onChangeText={(primaryCity) => setRegistration({ ...registration, primaryCity })}
+                  onFocus={() => {
+                    setTimeout(() => {
+                      loginScrollRef.current?.scrollTo({ y: 300, animated: true });
+                    }, 100);
+                  }}
                   style={styles.input}
                 />
               </>
@@ -1106,6 +1691,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
                     />
                   ))}
                 </View>
+                {authErrorText ? <Text style={styles.errorBanner}>{authErrorText}</Text> : null}
                 <View style={styles.otpActions}>
                   <Pressable onPress={() => void (activeTab === "lawyer" ? startLawyerLogin({ resend: true }) : startClientLogin({ resend: true }))}>
                     <Text style={styles.linkText}>Resend OTP</Text>
@@ -1138,8 +1724,14 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
                 accessibilityLabel={registrationMode ? "Use existing lawyer login" : "Create workspace"}
                 style={styles.secondaryButton}
                 onPress={() => {
-                  setRegistrationMode(!registrationMode);
+                  const nextMode = !registrationMode;
+                  setRegistrationMode(nextMode);
                   resetAuthFlow();
+                  if (nextMode) {
+                    setTimeout(() => {
+                      loginScrollRef.current?.scrollTo({ y: 120, animated: true });
+                    }, 120);
+                  }
                 }}
               >
                 <Text style={styles.secondaryButtonText}>
@@ -1149,6 +1741,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
             ) : null}
           </View>
         </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -1157,7 +1750,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
     return (
       <SafeAreaView style={styles.safe}>
         <StatusBar style="dark" />
-        <ScrollView contentContainerStyle={styles.screen}>
+        <ScrollView contentContainerStyle={styles.screen} keyboardShouldPersistTaps="handled">
           <Pressable onPress={() => setSelectedMatter(null)}>
             <Text style={styles.eyebrow}>Back to workspace</Text>
           </Pressable>
@@ -1165,15 +1758,15 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
           <Text style={styles.copy}>{selectedMatter.title}</Text>
           <View style={styles.card}>
             <Text style={styles.meta}><Text style={styles.metaLabel}>Court:</Text> {courtLabel(selectedMatter.courtId)}</Text>
-            <Text style={styles.meta}><Text style={styles.metaLabel}>Stage:</Text> {selectedMatter.stage}</Text>
-            <Text style={styles.meta}><Text style={styles.metaLabel}>Next Hearing:</Text> {selectedMatter.nextHearingAt ?? "TBC"}</Text>
+            <Text style={styles.meta}><Text style={styles.metaLabel}>Stage:</Text> {toTitleCase(selectedMatter.stage)}</Text>
+            <Text style={styles.meta}><Text style={styles.metaLabel}>Next Hearing:</Text> {formatDateTime(selectedMatter.nextHearingAt)}</Text>
           </View>
 
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Hearings</Text>
             {(selectedMatter.hearings ?? []).map((hearing) => (
               <View key={hearing.id} style={styles.timelineItem}>
-                <Text style={styles.metaLabel}>{new Date(hearing.listedAt).toLocaleString()}</Text>
+                <Text style={styles.metaLabel}>{formatDateTime(hearing.listedAt)}</Text>
                 <Text style={styles.meta}>{hearing.outcome}</Text>
                 <Text style={styles.copy}>{hearing.notes}</Text>
               </View>
@@ -1185,7 +1778,15 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
             {(selectedMatter.documents ?? []).map((document) => (
               <View key={document.id} style={styles.timelineItem}>
                 <Text style={styles.metaLabel}>{document.title}</Text>
-                <Text style={styles.smallText}>{document.type} · OCR {document.ocrStatus}</Text>
+                <Text style={[styles.smallText, { marginVertical: 2 }]}>
+                  Uploaded by: {document.uploaderType === "client" ? "Client" : "Lawyer"}
+                </Text>
+                <View style={styles.documentSubRow}>
+                  <View style={styles.documentBadgeContainer}>
+                    <Text style={styles.documentBadgeText}>{toTitleCase(document.type)}</Text>
+                  </View>
+                  <Text style={styles.smallText}>OCR {document.ocrStatus}</Text>
+                </View>
               </View>
             ))}
             <TextInput
@@ -1287,7 +1888,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
         </View>
 
         {tab === "home" ? (
-          <ScrollView contentContainerStyle={{ gap: 14, paddingBottom: 140 }}>
+          <ScrollView contentContainerStyle={{ gap: 14, paddingBottom: 140 }} keyboardShouldPersistTaps="handled">
             <View style={styles.cardRow}>
               {homeCards.map((card) => (
                 <View key={card.label} style={styles.statCard}>
@@ -1303,7 +1904,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
                   <Text style={styles.metaLabel}>{entry.matter.rawCaseNumber}</Text>
                   <Text style={styles.copy}>{entry.matter.title}</Text>
                   <Text style={styles.smallText}>
-                    {new Date(entry.listedAt).toLocaleString()} · {entry.sourceType} · {entry.conflictState}
+                    {formatDateTime(entry.listedAt)} · {entry.sourceType} · {entry.conflictState}
                   </Text>
                 </Pressable>
               ))}
@@ -1316,18 +1917,19 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
             data={matters}
             keyExtractor={(item) => item.id}
             contentContainerStyle={{ gap: 12, paddingBottom: 140 }}
+            keyboardShouldPersistTaps="handled"
             renderItem={({ item }) => (
               <Pressable style={styles.caseCard} onPress={() => void openMatter(item.id)}>
                 <Text style={styles.metaLabel}>{item.rawCaseNumber}</Text>
                 <Text style={styles.copy}>{item.title}</Text>
-                <Text style={styles.smallText}>{courtLabel(item.courtId)} · {item.stage}</Text>
+                <Text style={styles.smallText}>{courtLabel(item.courtId)} · {toTitleCase(item.stage)}</Text>
               </Pressable>
             )}
           />
         ) : null}
 
         {tab === "alerts" ? (
-          <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 140 }}>
+          <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 140 }} keyboardShouldPersistTaps="handled">
             {alerts.map((alert) => (
               <View key={alert.id} style={styles.caseCard}>
                 <Text style={styles.metaLabel}>{alert.title}</Text>
@@ -1338,7 +1940,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
         ) : null}
 
         {tab === "more" ? (
-          <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 140 }}>
+          <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 140 }} keyboardShouldPersistTaps="handled">
             <Pressable style={styles.secondaryButton} onPress={() => void signOut()}>
               <Text style={styles.secondaryButtonText}>Sign out</Text>
             </Pressable>
@@ -1353,6 +1955,7 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: theme.background,
+    paddingTop: Platform.OS === "ios" ? 8 : 0,
   },
   flex: {
     flex: 1,
@@ -1369,21 +1972,33 @@ const styles = StyleSheet.create({
   clientScreen: {
     paddingHorizontal: spacing.lg,
     paddingBottom: 48,
-    gap: 14,
+    flexGrow: 1,
+  },
+  stickyTabWrapper: {
+    backgroundColor: theme.background,
+    paddingVertical: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
   },
   clientHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: spacing.lg,
-    paddingTop: 12,
+    paddingTop: Platform.OS === "ios" ? 16 : 12,
     paddingBottom: 14,
     gap: 12,
   },
   clientTitle: {
-    color: theme.textPrimary,
     fontSize: 22,
     fontWeight: "700",
+  },
+  clientTitleIntro: {
+    color: theme.textSecondary,
+  },
+  clientTitleName: {
+    color: theme.primaryDark,
+    fontWeight: "800",
   },
   headerSignOutButton: {
     borderRadius: 999,
@@ -1410,9 +2025,10 @@ const styles = StyleSheet.create({
   },
   heroTitle: {
     fontSize: 36,
-    fontWeight: "700",
-    color: theme.textPrimary,
+    fontWeight: "800",
+    color: theme.primary,
     textAlign: "center",
+    letterSpacing: -0.72,
   },
   loginCard: {
     backgroundColor: theme.surface,
@@ -1447,24 +2063,28 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   phoneRow: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
   },
   countryPrefix: {
-    alignSelf: "flex-start",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: theme.primary,
     backgroundColor: theme.primaryLight,
+    justifyContent: "center",
+    alignItems: "center",
   },
   countryPrefixText: {
     color: theme.textPrimary,
     fontWeight: "600",
-    fontSize: 12,
+    fontSize: 14,
   },
   phoneInput: {
     marginTop: 0,
+    flex: 1,
   },
   statusBanner: {
     padding: 12,
@@ -1475,6 +2095,17 @@ const styles = StyleSheet.create({
     color: theme.primaryDark,
     fontSize: 13,
     fontWeight: "600",
+    textAlign: "center",
+  },
+  errorBanner: {
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: theme.accentLight,
+    borderWidth: 1,
+    borderColor: "rgba(216, 90, 48, 0.2)",
+    color: theme.accent,
+    fontSize: 13,
+    fontWeight: "700",
     textAlign: "center",
   },
   emptyState: {
@@ -1572,36 +2203,37 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: theme.border,
-    backgroundColor: "#fff",
+    backgroundColor: "#ffffff",
     paddingHorizontal: 14,
     paddingVertical: 10,
     minWidth: 148,
     gap: 3,
   },
   matterPillActive: {
-    backgroundColor: theme.primary,
+    backgroundColor: theme.primaryLight,
+    borderWidth: 2,
     borderColor: theme.primary,
     shadowColor: "#0F172A",
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.1,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },
     elevation: 3,
   },
   matterPillText: {
-    color: theme.textPrimary,
-    fontWeight: "800",
+    color: theme.textSecondary,
+    fontWeight: "500",
   },
   matterPillActiveText: {
-    color: "#fff",
+    color: theme.primaryDark,
     fontWeight: "800",
   },
   matterPillSubText: {
     color: theme.textTertiary,
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "400",
   },
   matterPillActiveSubText: {
-    color: "rgba(255,255,255,0.78)",
+    color: theme.primary,
     fontSize: 12,
     fontWeight: "600",
   },
@@ -1689,6 +2321,8 @@ const styles = StyleSheet.create({
     borderColor: theme.border,
     padding: 18,
     gap: 12,
+    width: "100%",
+    alignSelf: "stretch",
     shadowColor: "#0F172A",
     shadowOpacity: 0.1,
     shadowRadius: 18,
@@ -1701,24 +2335,38 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 26,
   },
+  prewrappedText: {
+    width: "100%",
+    minWidth: 0,
+    flexShrink: 1,
+    flexWrap: "wrap",
+  },
   overviewGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 10,
   },
   overviewCell: {
-    flexBasis: "47%",
+    width: "47%",
+    minWidth: 0,
     borderRadius: 14,
     backgroundColor: theme.background,
     padding: 12,
     gap: 3,
   },
   overviewCellFull: {
-    flexBasis: "100%",
+    width: "100%",
+    minWidth: 0,
     borderRadius: 14,
     backgroundColor: theme.primaryLight,
     padding: 12,
     gap: 3,
+  },
+  overviewValue: {
+    width: "100%",
+    minWidth: 0,
+    flexShrink: 1,
+    flexWrap: "wrap",
   },
   cardRow: {
     flexDirection: "row",
@@ -1805,7 +2453,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   messageBubble: {
-    maxWidth: "86%",
+    maxWidth: "80%",
     borderRadius: 18,
     padding: 12,
     marginVertical: 5,
@@ -1820,11 +2468,15 @@ const styles = StyleSheet.create({
     alignSelf: "flex-end",
     backgroundColor: "#D8F5E8",
     borderTopRightRadius: 6,
+    marginRight: 16,
+    marginLeft: 0,
   },
   counselBubble: {
     alignSelf: "flex-start",
     backgroundColor: "#F8FAFC",
     borderTopLeftRadius: 6,
+    marginLeft: 16,
+    marginRight: 0,
   },
   messageSender: {
     color: theme.textPrimary,
@@ -1839,5 +2491,112 @@ const styles = StyleSheet.create({
   messageTime: {
     color: theme.textTertiary,
     fontSize: 11,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.4)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: "#ffffff",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: Platform.OS === "ios" ? 40 : 24,
+    gap: 10,
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.15,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: -10 },
+    elevation: 10,
+  },
+  modalHeader: {
+    marginBottom: 10,
+    gap: 4,
+  },
+  modalTitle: {
+    color: theme.textPrimary,
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  modalSubtitle: {
+    color: theme.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  modalOption: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: "#fcfbfa",
+    alignItems: "center",
+  },
+  modalOptionText: {
+    color: theme.textPrimary,
+    fontWeight: "600",
+    fontSize: 15,
+  },
+  modalCancelButton: {
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: 8,
+  },
+  modalCancelText: {
+    color: theme.accent || "#ef4444",
+    fontWeight: "700",
+    fontSize: 15,
+  },
+  documentSubRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 4,
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  documentBadgeContainer: {
+    backgroundColor: "#f3f4f6",
+    borderColor: "#e5e7eb",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  documentBadgeText: {
+    color: "#374151",
+    fontSize: 10,
+    fontWeight: "600",
+  },
+  filterContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  filterPill: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterPillActive: {
+    borderColor: theme.primary,
+    backgroundColor: theme.primary,
+  },
+  filterPillText: {
+    color: theme.textSecondary,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  filterPillActiveText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "700",
   },
 });

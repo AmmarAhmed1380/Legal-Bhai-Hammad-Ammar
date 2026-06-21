@@ -386,3 +386,41 @@ img.preview {
     grid-template-columns: 1fr;
   }
 }
+
+/* Client Sidebar Matter Cards */
+.client-case-card {
+  transition: background-color 200ms ease, border-color 200ms ease, transform 200ms ease, box-shadow 200ms ease !important;
+}
+
+.client-case-card.active {
+  background: #ecfdf5 !important; /* bg-emerald-50 */
+  border: 2px solid #047857 !important; /* border-emerald-700 */
+  box-shadow: 0 10px 24px rgba(4, 120, 87, 0.15) !important;
+}
+
+.client-case-card.active:hover {
+  border: 2px solid #047857 !important;
+  transform: translateX(4px) !important;
+}
+
+.client-case-card.inactive {
+  background: #ffffff !important;
+  border: 1px solid #e5e7eb !important;
+  box-shadow: none !important;
+}
+
+.client-case-card.inactive:hover {
+  background: #f9fafb !important; /* hover:bg-gray-50 */
+  border: 1px solid #e5e7eb !important;
+  transform: translateX(4px) !important;
+}
+
+/* Spinner Animation */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}

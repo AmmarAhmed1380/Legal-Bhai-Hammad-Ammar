@@ -4,7 +4,24 @@ export const PRODUCT_MEMBERSHIP_ROLES = ["owner", "lawyer", "assistant", "billin
 export const PRODUCT_MATTER_TYPES = ["litigation", "advisory", "arbitration"] as const;
 export const PRODUCT_MATTER_STATUSES = ["open", "on_hold", "closed"] as const;
 export const PRODUCT_ACCESS_LEVELS = ["read", "message"] as const;
-export const PRODUCT_DOCUMENT_TYPES = ["hearing_order", "pleading", "invoice", "evidence", "notice", "cnic", "vakalatnama", "receipt", "cause_list", "note", "general"] as const;
+export const PRODUCT_DOCUMENT_TYPES = [
+  "hearing_order",
+  "pleading",
+  "invoice",
+  "evidence",
+  "notice",
+  "cnic",
+  "receipt",
+  "cause_list",
+  "note",
+  "general",
+  "Identity Document",
+  "Evidence",
+  "Affidavit",
+  "Agreement / Contract",
+  "Court Notice",
+  "General",
+] as const;
 export const PRODUCT_OCR_STATUSES = ["completed", "pending", "failed", "missing_file"] as const;
 export const PRODUCT_THREAD_STATUSES = ["open", "archived"] as const;
 export const PRODUCT_DELIVERY_CHANNELS = ["in_app", "sms"] as const;
@@ -140,6 +157,7 @@ export interface ProductDocument {
   ocrText: string | null;
   searchText: string | null;
   portalVisible: boolean;
+  uploaderType?: "client" | "lawyer";
 }
 
 export interface DocumentLink {

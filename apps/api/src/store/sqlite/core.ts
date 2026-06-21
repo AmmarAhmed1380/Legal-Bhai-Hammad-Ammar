@@ -263,7 +263,8 @@ export const coreMethods: Pick<
           ocr_status AS ocrStatus,
           ocr_text AS ocrText,
           search_text AS searchText,
-          portal_visible AS portalVisible
+          portal_visible AS portalVisible,
+          (SELECT 1 FROM client_accounts WHERE id = uploaded_by) AS uploadedByClient
         FROM documents
         WHERE (? IS NULL OR matter_id = ?)
         ORDER BY created_at DESC
@@ -272,6 +273,7 @@ export const coreMethods: Pick<
       .map((row) => ({
         ...(row as unknown as ProductDocument),
         portalVisible: Boolean((row as { portalVisible: number }).portalVisible),
+        uploaderType: (row as { uploadedByClient: number }).uploadedByClient ? "client" : "lawyer",
       })) as ProductDocument[];
 
     return rows.filter((document) => this.canAccessDocument(session, document));
@@ -293,19 +295,21 @@ export const coreMethods: Pick<
           ocr_status AS ocrStatus,
           ocr_text AS ocrText,
           search_text AS searchText,
-          portal_visible AS portalVisible
+          portal_visible AS portalVisible,
+          (SELECT 1 FROM client_accounts WHERE id = uploaded_by) AS uploadedByClient
         FROM documents
         WHERE id = ?
       `)
-      .get(id) as StoredDocumentRow | undefined;
+      .get(id) as (StoredDocumentRow & { uploadedByClient: number }) | undefined;
     if (!row) {
       return null;
     }
-    const document = { ...row, portalVisible: Boolean(row.portalVisible) };
-    if (!this.canAccessDocument(session, document)) {
-      return null;
-    }
-    return document;
+    const document: ProductDocument = {
+      ...row,
+      portalVisible: Boolean(row.portalVisible),
+      uploaderType: row.uploadedByClient ? "client" : "lawyer",
+    };
+    return this.canAccessDocument(session, document) ? document : null;
   },
 
   listThreads(this: SqliteStoreCore, session: ProductSession): Array<MessageThread & { matter: Matter; lastMessage: Message | null }> {

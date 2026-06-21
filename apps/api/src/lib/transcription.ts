@@ -17,7 +17,7 @@ export async function transcribeCourtroomAudio(input: {
   }
 
   const form = new FormData();
-  form.append("file", new Blob([input.bytes], { type: input.mimeType }), input.fileName);
+  form.append("file", new Blob([new Uint8Array(input.bytes)], { type: input.mimeType }), input.fileName);
   form.append("model", process.env.OPENAI_WHISPER_MODEL ?? "whisper-1");
   form.append(
     "prompt",

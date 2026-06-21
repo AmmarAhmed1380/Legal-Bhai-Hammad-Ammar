@@ -63,7 +63,7 @@ export default function ClientSidebar({
               return (
                 <button
                   key={matter.id}
-                  className="case-card"
+                  className={`case-card client-case-card ${isActive ? "active" : "inactive"}`}
                   type="button"
                   onClick={() => {
                     if (incomingPortalToken) {
@@ -75,16 +75,13 @@ export default function ClientSidebar({
                   style={{
                     textAlign: "left",
                     cursor: "pointer",
-                    border: isActive ? "1px solid var(--primary)" : undefined,
-                    background: isActive ? "rgba(15, 110, 86, 0.04)" : undefined,
-                    boxShadow: isActive ? "0 10px 24px rgba(15, 110, 86, 0.10)" : undefined,
                   }}
                 >
                   <div className="top-bar" style={{ marginBottom: 10 }}>
                     <strong>{matter.rawCaseNumber}</strong>
                     <span className="badge live">{toTitleCase(matter.stage)}</span>
                   </div>
-                  <div>{matter.title}</div>
+                  <div className="case-title" style={{ fontWeight: isActive ? 800 : 500, color: isActive ? "#064e3b" : "inherit" }}>{matter.title}</div>
                   <p className="muted" style={{ marginBottom: 0, marginTop: 6 }}>
                     {formatCourtId(matter.courtId)} · Next {formatDateTime(matter.nextHearingAt)}
                   </p>

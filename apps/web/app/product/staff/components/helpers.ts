@@ -67,11 +67,11 @@ export function formatDateTime(value: string | null): string {
   const d = new Date(value);
   if (isNaN(d.getTime())) return value;
   
-  const dateStr = d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-  const timeStr = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+  const dateStr = d.toLocaleDateString("en-GB", { timeZone: "Asia/Karachi", day: "2-digit", month: "short", year: "numeric" });
+  const timeStr = d.toLocaleTimeString("en-US", { timeZone: "Asia/Karachi", hour: "2-digit", minute: "2-digit", hour12: true });
   
   if (value.length <= 10) return dateStr; // If it's just YYYY-MM-DD
-  return `${dateStr} • ${timeStr}`;
+  return `${dateStr} • ${timeStr} PKT`;
 }
 
 export function formatRole(role: string): string {

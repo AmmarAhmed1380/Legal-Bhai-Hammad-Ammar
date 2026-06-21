@@ -6,11 +6,11 @@ export function formatDateTime(value: string | null): string {
   const d = new Date(value);
   if (isNaN(d.getTime())) return value;
   
-  const dateStr = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  const timeStr = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+  const dateStr = d.toLocaleDateString("en-US", { timeZone: "Asia/Karachi", month: "short", day: "numeric", year: "numeric" });
+  const timeStr = d.toLocaleTimeString("en-US", { timeZone: "Asia/Karachi", hour: "2-digit", minute: "2-digit", hour12: true });
   
   if (value.length <= 10) return dateStr;
-  return `${dateStr} • ${timeStr}`;
+  return `${dateStr} • ${timeStr} PKT`;
 }
 
 export function toTitleCase(str: string): string {
@@ -25,9 +25,21 @@ export function formatMimeType(mime: string): string {
   return mime.split("/")[1]?.toUpperCase() || mime;
 }
 
+export const PILOT_COURTS = [
+  { id: "ihc", label: "Islamabad High Court" },
+  { id: "lhc-rawalpindi-bench", label: "Lahore High Court Rawalpindi Bench" },
+  { id: "rwp-district-sessions", label: "Rawalpindi District & Sessions Court" },
+  { id: "rwp-civil-courts", label: "Rawalpindi Civil Courts" },
+  { id: "rwp-family-courts", label: "Rawalpindi Family Courts" },
+  { id: "rwp-criminal-magisterial", label: "Rawalpindi Criminal & Magisterial Courts" },
+] as const;
+
 export function formatCourtId(courtId: string): string {
   if (!courtId) return "";
-  if (courtId.toLowerCase() === "ihc") return "IHC";
+  const found = PILOT_COURTS.find((court) => court.id === courtId.toLowerCase());
+  if (found) return found.label;
+  if (courtId.toLowerCase() === "ihc") return "Islamabad High Court";
+  if (courtId.toLowerCase() === "rwp-district-sessions") return "Rawalpindi District & Sessions Court";
   return courtId.toUpperCase();
 }
 

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   PRODUCT_API_BASE_URL,
@@ -102,6 +102,7 @@ export interface MatterDetail extends MatterListItem {
     ocrStatus: string;
     portalVisible?: boolean;
     matterId?: string | null;
+    uploaderType?: string;
   }>;
   thread: { id: string } | null;
 }
@@ -234,6 +235,7 @@ export interface DocumentRecord {
   ocrStatus: string;
   portalVisible: boolean;
   matterId: string | null;
+  uploaderType?: string;
 }
 
 export interface CsvImportPreview {
@@ -407,6 +409,12 @@ export default function ProductStaffPage() {
   const [inviteRole, setInviteRole] = useState<"owner" | "lawyer" | "assistant" | "billing" | "co_owner">("lawyer");
   const [inviteOfficeLabel, setInviteOfficeLabel] = useState("");
 
+  const authRef = useRef<ProductAuthState | null>(null);
+
+  useEffect(() => {
+    authRef.current = auth;
+  }, [auth]);
+
   useEffect(() => {
     setAuth(readStoredProductAuth(STORAGE_KEY));
     setAuthHydrated(true);
@@ -417,10 +425,10 @@ export default function ProductStaffPage() {
       return;
     }
     writeStoredProductAuth(STORAGE_KEY, auth);
-    if (auth) {
+    if (auth && !profile) {
       void loadWorkspace(auth).catch(handleWorkspaceLoadError);
     }
-  }, [auth, authHydrated]);
+  }, [auth, authHydrated, profile]);
 
   useEffect(() => {
     if (authHydrated && !auth) {
@@ -457,7 +465,7 @@ export default function ProductStaffPage() {
   async function authedRequest<T>(
     path: string,
     options: RequestInit = {},
-    activeAuth = auth,
+    activeAuth = authRef.current,
   ): Promise<{ data: T; auth: ProductAuthState }> {
     if (!activeAuth) {
       throw new Error("Authentication required");
@@ -474,6 +482,8 @@ export default function ProductStaffPage() {
       }
 
       const refreshed = await refreshProductAuth(activeAuth.refreshToken);
+      authRef.current = refreshed;
+      writeStoredProductAuth(STORAGE_KEY, refreshed);
       setAuth(refreshed);
 
       return {
@@ -703,18 +713,20 @@ export default function ProductStaffPage() {
     setIsCloseHovered(false);
   };
 
-  async function openDocument(documentId: string, activeAuth = auth) {
-    if (!activeAuth) {
+  async function openDocument(documentId: string, activeAuthOverride?: ProductAuthState | null) {
+    let resolvedAuth = activeAuthOverride !== undefined ? activeAuthOverride : authRef.current;
+    if (!resolvedAuth) {
       return;
     }
 
-    let resolvedAuth = activeAuth;
     let response = await fetch(productDocumentDownloadUrl(documentId), {
       headers: { authorization: `Bearer ${resolvedAuth.token}` },
     });
 
     if (response.status === 401 && resolvedAuth.refreshToken) {
       resolvedAuth = await refreshProductAuth(resolvedAuth.refreshToken);
+      authRef.current = resolvedAuth;
+      writeStoredProductAuth(STORAGE_KEY, resolvedAuth);
       setAuth(resolvedAuth);
       response = await fetch(productDocumentDownloadUrl(documentId), {
         headers: { authorization: `Bearer ${resolvedAuth.token}` },
@@ -722,7 +734,14 @@ export default function ProductStaffPage() {
     }
 
     if (!response.ok) {
-      throw new Error(await response.text());
+      let errorMessage = "Could not download this document.";
+      try {
+        const body = await response.text();
+        const parsed = JSON.parse(body);
+        if (parsed.error) errorMessage = parsed.error;
+        else errorMessage = body;
+      } catch {}
+      throw new Error(errorMessage);
     }
 
     const blob = await response.blob();
@@ -965,7 +984,7 @@ export default function ProductStaffPage() {
     const response = await authedRequest("/v1/documents", { method: "POST", body: form }, auth);
     setDocumentUpload({ title: "", type: "hearing_order", portalVisible: false });
     setDocumentFile(null);
-    setOperationStatus("Private document uploaded.");
+    setOperationStatus("Document uploaded successfully.");
     await loadWorkspace(response.auth);
   }
 
@@ -1106,13 +1125,14 @@ export default function ProductStaffPage() {
 
   async function signOut() {
     try {
-      if (auth) {
-        await productJsonRequest("/v1/auth/logout", { method: "POST" }, auth.token);
+      if (authRef.current) {
+        await productJsonRequest("/v1/auth/logout", { method: "POST" }, authRef.current.token);
       }
     } catch {
       // Clear the local session even when the API is unavailable.
     }
     writeStoredProductAuth(STORAGE_KEY, null);
+    authRef.current = null;
     setAuth(null);
     setProfile(null);
     setSelectedMatter(null);

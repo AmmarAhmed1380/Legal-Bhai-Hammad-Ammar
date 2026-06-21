@@ -22,6 +22,15 @@ const toPakistanPhoneSubmit = (value: string) => {
   return clean.startsWith("0") ? clean : `0${clean}`;
 };
 
+const OTP_ERROR_MESSAGE = "Invalid OTP. Please try again.";
+
+const userFacingOtpError = (err: unknown) => {
+  if (err instanceof Error && /invalid\s+otp|verification code|code/i.test(err.message)) {
+    return OTP_ERROR_MESSAGE;
+  }
+  return err instanceof Error ? err.message : "Authentication failed. Please try again.";
+};
+
 export default function HomePage() {
   const router = useRouter();
 
@@ -29,6 +38,7 @@ export default function HomePage() {
   const [authHydrated, setAuthHydrated] = useState(false);
   const [activeTab, setActiveTab] = useState<"lawyer" | "client">("lawyer");
   const [registrationMode, setRegistrationMode] = useState(false);
+  const [errorText, setErrorText] = useState<string | null>(null);
 
   // Form fields
   const [phone, setPhone] = useState("");
@@ -110,6 +120,28 @@ export default function HomePage() {
   const [otpRequested, setOtpRequested] = useState(false);
   const [operationStatus, setOperationStatus] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (otpRequested) {
+      const prefix = activeTab === "lawyer" ? "otp-input" : "client-otp-input";
+      const timer = setTimeout(() => {
+        focusOtpInput(prefix, 0);
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [otpRequested, activeTab]);
+
+  useEffect(() => {
+    if (!otpRequested) {
+      const timer = setTimeout(() => {
+        const input = document.getElementById("phone-input");
+        if (input) {
+          input.focus();
+        }
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [otpRequested, activeTab, registrationMode]);
+
   // Check active sessions on load
   useEffect(() => {
     const staffAuth = readStoredProductAuth(STAFF_STORAGE_KEY);
@@ -132,6 +164,7 @@ export default function HomePage() {
     setLoginCode("");
     setOtpDigits(Array(6).fill(""));
     setOperationStatus(null);
+    setErrorText(null);
     setRegistrationMode(false);
     setEmail("");
     setPrimaryCity("");
@@ -143,12 +176,14 @@ export default function HomePage() {
     setLoginCode("");
     setOtpDigits(Array(6).fill(""));
     setOperationStatus(null);
+    setErrorText(null);
     setEmail("");
     setPrimaryCity("");
   };
 
   // 1. Lawyer Workspace OTP Request
   const startLawyerLogin = async (options?: { resend?: boolean }) => {
+    setErrorText(null);
     if (registrationMode) {
       if (!displayName.trim() || !firmName.trim() || !primaryCity.trim()) {
         setOperationStatus("Please fill in all required fields (Full Name, Firm/Chamber Name, and Primary City) to create a workspace.");
@@ -186,10 +221,12 @@ export default function HomePage() {
     setOtpDigits(Array(6).fill(""));
     setLoginCode("");
     setOperationStatus(null);
+    setErrorText(null);
   };
 
   // 2. Lawyer Workspace OTP Verification (Login or Register)
   const verifyLawyerLogin = async (codeOverride?: string) => {
+    setErrorText(null);
     const codeToUse = codeOverride || loginCode;
     setOperationStatus(registrationMode ? "Creating workspace..." : "Verifying OTP...");
     try {
@@ -216,12 +253,14 @@ export default function HomePage() {
       setOperationStatus("Authentication successful! Redirecting...");
       router.replace("/overview");
     } catch (err: any) {
-      setOperationStatus(err.message || "Authentication failed. Please check the code.");
+      setErrorText(userFacingOtpError(err));
+      setOperationStatus(null);
     }
   };
 
   // 3. Client OTP Request
   const startClientLogin = async (options?: { resend?: boolean }) => {
+    setErrorText(null);
     setOperationStatus(options?.resend ? "Sending a new verification code..." : "Requesting client OTP...");
     try {
       const formattedPhone = toPakistanPhoneSubmit(phone);
@@ -255,6 +294,7 @@ export default function HomePage() {
 
   // 4. Client OTP Verification
   const verifyClientLogin = async (codeOverride?: string) => {
+    setErrorText(null);
     const codeToUse = codeOverride || loginCode;
     setOperationStatus("Verifying client OTP...");
     try {
@@ -269,7 +309,8 @@ export default function HomePage() {
       setOperationStatus("Authentication successful! Redirecting...");
       router.replace("/client");
     } catch (err: any) {
-      setOperationStatus(err.message || "Authentication failed. Please check the code.");
+      setErrorText(userFacingOtpError(err));
+      setOperationStatus(null);
     }
   };
 
@@ -377,6 +418,7 @@ export default function HomePage() {
                     }} />
                   </div>
                   <input
+                    id="phone-input"
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(formatPhoneNumber(e.target.value))}
@@ -473,6 +515,21 @@ export default function HomePage() {
                     />
                   ))}
                 </div>
+                {errorText && (
+                  <div style={{
+                    color: "var(--danger)",
+                    background: "var(--accent-light)",
+                    border: "1px solid rgba(216, 90, 48, 0.2)",
+                    borderRadius: 8,
+                    padding: "10px 12px",
+                    fontSize: "14px",
+                    textAlign: "center",
+                    marginBottom: 16,
+                    fontWeight: 600
+                  }}>
+                    {errorText}
+                  </div>
+                )}
               </div>
             )}
 
@@ -616,6 +673,7 @@ export default function HomePage() {
                     }} />
                   </div>
                   <input
+                    id="phone-input"
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(formatPhoneNumber(e.target.value))}
@@ -666,6 +724,21 @@ export default function HomePage() {
                     />
                   ))}
                 </div>
+                {errorText && (
+                  <div style={{
+                    color: "var(--danger)",
+                    background: "var(--accent-light)",
+                    border: "1px solid rgba(216, 90, 48, 0.2)",
+                    borderRadius: 8,
+                    padding: "10px 12px",
+                    fontSize: "14px",
+                    textAlign: "center",
+                    marginBottom: 16,
+                    fontWeight: 600
+                  }}>
+                    {errorText}
+                  </div>
+                )}
               </div>
             )}
 

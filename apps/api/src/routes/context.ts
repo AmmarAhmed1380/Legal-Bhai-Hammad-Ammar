@@ -395,7 +395,12 @@ export function createProductRouteContext(app: FastifyInstance, store: ProductSt
     return store.verifyOtp(actorType, phone, code);
   }
 
-  async function issueOtp(actorType: "staff" | "client", phone: string, clientAccountId?: string, purpose?: string) {
+  async function issueOtp(
+    actorType: "staff" | "client",
+    phone: string,
+    clientAccountId?: string,
+    purpose?: string,
+  ): Promise<{ error: string } | { ok: true; expiresAt: string | null; devCode?: string }> {
     try {
     const normalizedPhone = normalizePakistanPhone(phone);
     if (!normalizedPhone) {
@@ -452,7 +457,7 @@ export function createProductRouteContext(app: FastifyInstance, store: ProductSt
       return {
         ok: true,
         expiresAt: requestRecord.expiresAt,
-        devCode: requestRecord.devCode,
+        devCode: requestRecord.devCode ?? undefined,
       };
     }
 
@@ -494,15 +499,10 @@ export function createProductRouteContext(app: FastifyInstance, store: ProductSt
       return reply.send(readFileSync(filePath));
     }
 
-    const localObject = objectStorage.read(document.storageKey);
+    const localObject = await objectStorage.read(document.storageKey);
     if (localObject) {
       reply.header("content-type", localObject.contentType ?? document.mimeType);
       return reply.send(localObject.bytes);
-    }
-
-    const signedDownloadUrl = await objectStorage.signedDownloadUrl(document.storageKey);
-    if (signedDownloadUrl) {
-      return reply.redirect(signedDownloadUrl);
     }
 
     reply.code(404);

@@ -9,7 +9,6 @@ import {
   stripHtml,
   tableRows,
   todayInPakistanIso,
-  type CourtListType,
 } from "./court-html.js";
 import {
   fetchCourtHtml,
@@ -18,7 +17,7 @@ import {
   readCourtFixture,
   withCourtFixtureFallback,
 } from "./court-fetch.js";
-import type { CourtCauseListEntry } from "./court-types.js";
+import type { CourtCauseListEntry, CourtListType } from "./court-types.js";
 
 const RWP_DISTRICT_CAUSE_LIST_URL = "https://rawalpindi.dc.lhc.gov.pk/PublicPages/CauseList.aspx";
 const RWP_DISTRICT_RESULT_URL = "https://rawalpindi.dc.lhc.gov.pk/PublicPages/CauseListResult.aspx";

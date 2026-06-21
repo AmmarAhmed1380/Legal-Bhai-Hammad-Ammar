@@ -143,15 +143,21 @@ export function registerPortalRoutes(ctx: ProductRouteContext): void {
       reply.code(404);
       return { error: "Portal link not found" };
     }
-    const session = await resolveOtpSession(
-      "client",
-      access.clientAccount.phone,
-      body.code,
-      access.clientAccount.id,
-    );
+    let session;
+    try {
+      session = await resolveOtpSession(
+        "client",
+        access.clientAccount.phone,
+        body.code,
+        access.clientAccount.id,
+      );
+    } catch (error) {
+      reply.code(400);
+      return { error: "Invalid OTP. Please try again." };
+    }
     if (!session) {
       reply.code(401);
-      return { error: "Invalid OTP" };
+      return { error: "Invalid OTP. Please try again." };
     }
     await store.recordSecurityEvent(
       session,

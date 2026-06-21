@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { basename } from "node:path";
 
 import { shouldUsePostgresProductStore } from "./runtime-product-store.js";
 import {

@@ -66,19 +66,24 @@ export function registerAuthRoutes(ctx: ProductRouteContext): void {
         return { error: "Phone and code are required" };
       }
 
-      const session = await resolveOtpSession(actorType, body.phone, body.code);
-      if (!session) {
-        reply.code(401);
-        return { error: "Invalid OTP" };
-      }
+      try {
+        const session = await resolveOtpSession(actorType, body.phone, body.code);
+        if (!session) {
+          reply.code(401);
+          return { error: "Invalid OTP. Please try again." };
+        }
 
-      const issued = await issueSessionToken(session, authMethod);
-      if (!issued) {
-        reply.code(401);
-        return { error: "Profile not found" };
-      }
+        const issued = await issueSessionToken(session, authMethod);
+        if (!issued) {
+          reply.code(401);
+          return { error: "Profile not found" };
+        }
 
-      return issued;
+        return issued;
+      } catch (error) {
+        reply.code(400);
+        return { error: "Invalid OTP. Please try again." };
+      }
     });
   }
 
@@ -171,18 +176,23 @@ export function registerAuthRoutes(ctx: ProductRouteContext): void {
       return { error: "A valid phone, code, and actorType are required" };
     }
 
-    const session = await resolveOtpSession(body.actorType, body.phone, body.code);
-    if (!session) {
-      reply.code(401);
-      return { error: "Invalid OTP" };
-    }
+    try {
+      const session = await resolveOtpSession(body.actorType, body.phone, body.code);
+      if (!session) {
+        reply.code(401);
+        return { error: "Invalid OTP. Please try again." };
+      }
 
-    const issued = await issueSessionToken(session, body.actorType === "staff" ? "staff_otp" : "client_otp");
-    if (!issued) {
-      reply.code(401);
-      return { error: "Profile not found" };
+      const issued = await issueSessionToken(session, body.actorType === "staff" ? "staff_otp" : "client_otp");
+      if (!issued) {
+        reply.code(401);
+        return { error: "Profile not found" };
+      }
+      return issued;
+    } catch (error) {
+      reply.code(400);
+      return { error: "Invalid OTP. Please try again." };
     }
-    return issued;
   });
 
   app.post("/v1/pilot/invites", { schema: { body: bodyPilotInvite } }, async (request, reply) => {
@@ -224,31 +234,36 @@ export function registerAuthRoutes(ctx: ProductRouteContext): void {
       reply.code(400);
       return { error: "Invalid registration fields" };
     }
-    const session = await store.registerInvitedSoloLawyer({
-      phone: body.phone,
-      code: body.code!,
-      displayName: body.displayName,
-      email: body.email ?? null,
-      firmName: body.firmName,
-      primaryCity: body.primaryCity,
-    });
-    if (!session) {
-      reply.code(401);
-      return { error: "Invalid or uninvited registration" };
+    try {
+      const session = await store.registerInvitedSoloLawyer({
+        phone: body.phone,
+        code: body.code!,
+        displayName: body.displayName,
+        email: body.email ?? null,
+        firmName: body.firmName,
+        primaryCity: body.primaryCity,
+      });
+      if (!session) {
+        reply.code(401);
+        return { error: "Invalid OTP. Please try again." };
+      }
+      const issued = await issueSessionToken(session, "staff_otp");
+      if (!issued) {
+        reply.code(500);
+        return { error: "Could not create workspace session" };
+      }
+      await store.recordSecurityEvent(
+        session,
+        "workspace.registered",
+        "firm",
+        session.firmId!,
+        { primaryCity: body.primaryCity },
+      );
+      return issued;
+    } catch (error) {
+      reply.code(400);
+      return { error: "Invalid OTP. Please try again." };
     }
-    const issued = await issueSessionToken(session, "staff_otp");
-    if (!issued) {
-      reply.code(500);
-      return { error: "Could not create workspace session" };
-    }
-    await store.recordSecurityEvent(
-      session,
-      "workspace.registered",
-      "firm",
-      session.firmId!,
-      { primaryCity: body.primaryCity },
-    );
-    return issued;
   });
 
   app.post("/auth/logout", async (request, reply) => {

@@ -9,7 +9,7 @@ import { isProduction } from "./config.js";
 
 export interface PrivateObjectStorage {
   put(input: { fileName: string; bytes: Buffer; contentType: string }): Promise<string>;
-  read(storageKey: string): { bytes: Buffer; contentType: string | null } | null;
+  read(storageKey: string): Promise<{ bytes: Buffer; contentType: string | null } | null>;
   signedDownloadUrl(storageKey: string): Promise<string | null>;
 }
 
@@ -23,7 +23,7 @@ class LocalPrivateObjectStorage implements PrivateObjectStorage {
     return `local:${fileName}:${encodeURIComponent(input.contentType)}`;
   }
 
-  read(storageKey: string): { bytes: Buffer; contentType: string | null } | null {
+  async read(storageKey: string): Promise<{ bytes: Buffer; contentType: string | null } | null> {
     if (!storageKey.startsWith("local:")) {
       return null;
     }
@@ -53,8 +53,22 @@ class R2PrivateObjectStorage implements PrivateObjectStorage {
     return `r2:${key}`;
   }
 
-  read(): null {
-    return null;
+  async read(storageKey: string): Promise<{ bytes: Buffer; contentType: string | null } | null> {
+    if (!storageKey.startsWith("r2:")) {
+      return null;
+    }
+    try {
+      const key = storageKey.slice(3);
+      const response = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+      if (!response.Body) {
+        return null;
+      }
+      const byteArray = await response.Body.transformToByteArray();
+      return { bytes: Buffer.from(byteArray), contentType: response.ContentType ?? null };
+    } catch (error) {
+      console.error("[r2-storage] read failed", error);
+      return null;
+    }
   }
 
   async signedDownloadUrl(storageKey: string): Promise<string | null> {

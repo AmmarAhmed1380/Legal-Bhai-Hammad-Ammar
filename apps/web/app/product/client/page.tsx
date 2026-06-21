@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { CSSProperties } from "react";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   type ProductAuthState,
@@ -53,6 +53,7 @@ export interface ClientMatterDetail extends ClientMatter {
     type: string;
     mimeType: string;
     ocrStatus: string;
+    uploaderType?: string;
   }>;
   thread: { id: string } | null;
 }
@@ -80,6 +81,15 @@ import DocumentsTab from "./components/DocumentsTab";
 import ChatTab from "./components/ChatTab";
 import DocumentViewerModal from "./components/DocumentViewerModal";
 
+const UPLOAD_CATEGORIES = [
+  { value: "Identity Document", label: "Identity Document (CNIC, Passport)" },
+  { value: "Evidence", label: "Evidence / Proof (Receipts, Photos)" },
+  { value: "Affidavit", label: "Affidavit (Bayan-e-Halfi)" },
+  { value: "Agreement / Contract", label: "Agreement / Contract (Deeds, Iqrar)" },
+  { value: "Court Notice", label: "Court Notice / Summons" },
+  { value: "General", label: "General / Other" }
+];
+
 export default function ProductClientPage() {
   return (
     <Suspense fallback={<main className="page-shell"><section className="auth-card"><p className="muted">Loading client workspace…</p></section></main>}>
@@ -104,10 +114,22 @@ function ProductClientWorkspace() {
   const [phone, setPhone] = useState<string>(CLIENT_PHONES[0].phone);
   const [auth, setAuth] = useState<ProductAuthState | null>(null);
   const [portalAuth, setPortalAuth] = useState<ProductAuthState | null>(null);
+  const [portalLoaded, setPortalLoaded] = useState(false);
   const [authHydrated, setAuthHydrated] = useState(false);
   const [profile, setProfile] = useState<ClientProfile | null>(null);
   const [matters, setMatters] = useState<ClientMatter[]>([]);
   const [selectedMatter, setSelectedMatter] = useState<ClientMatterDetail | null>(null);
+
+  const authRef = useRef<ProductAuthState | null>(null);
+  const portalAuthRef = useRef<ProductAuthState | null>(null);
+
+  useEffect(() => {
+    authRef.current = auth;
+  }, [auth]);
+
+  useEffect(() => {
+    portalAuthRef.current = portalAuth;
+  }, [portalAuth]);
   const [messages, setMessages] = useState<MessageRecord[]>([]);
   const [draft, setDraft] = useState("");
   const [loginCode, setLoginCode] = useState<string | null>(null);
@@ -123,6 +145,15 @@ function ProductClientWorkspace() {
       void verifyPortalReplyAccess(code);
     }
   }, [portalOtpDigits]);
+
+  useEffect(() => {
+    if (portalMaskedPhone) {
+      const timer = setTimeout(() => {
+        focusPortalOtpInput(0);
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [portalMaskedPhone]);
 
   const focusPortalOtpInput = (index: number) => {
     const input = document.getElementById(`portal-otp-input-${index}`);
@@ -173,11 +204,15 @@ function ProductClientWorkspace() {
   };
 
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [workspaceSuccess, setWorkspaceSuccess] = useState<string | null>(null);
   const [activeSubTab, setActiveSubTab] = useState<"hearings" | "documents" | "chat">("hearings");
+  const [isUploading, setIsUploading] = useState(false);
   const [viewingDocument, setViewingDocument] = useState<{ id: string; title: string; mimeType?: string } | null>(null);
   const [viewingDocumentUrl, setViewingDocumentUrl] = useState<string | null>(null);
   const [zoomScale, setZoomScale] = useState(1);
   const [isCloseHovered, setIsCloseHovered] = useState(false);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [selectedUploadType, setSelectedUploadType] = useState<string>("General");
 
   useEffect(() => {
     setAuth(readStoredProductAuth(STORAGE_KEY));
@@ -189,10 +224,10 @@ function ProductClientWorkspace() {
       return;
     }
     writeStoredProductAuth(STORAGE_KEY, auth);
-    if (auth && !incomingPortalToken) {
+    if (auth && !incomingPortalToken && !profile) {
       void loadWorkspace(auth).catch(handleWorkspaceLoadError);
     }
-  }, [auth, authHydrated, incomingPortalToken]);
+  }, [auth, authHydrated, incomingPortalToken, profile]);
 
   useEffect(() => {
     if (authHydrated && !incomingPortalToken && !auth) {
@@ -201,11 +236,11 @@ function ProductClientWorkspace() {
   }, [authHydrated, incomingPortalToken, auth, router]);
 
   useEffect(() => {
-    if (!portalAuth || !incomingPortalToken) {
+    if (!portalAuth || !incomingPortalToken || portalLoaded) {
       return;
     }
     void loadPortal(incomingPortalToken, portalAuth).catch(handleWorkspaceLoadError);
-  }, [incomingPortalToken, portalAuth]);
+  }, [incomingPortalToken, portalAuth, portalLoaded]);
 
   function handleWorkspaceLoadError(error: unknown) {
     if (error instanceof ProductRequestError && (error.status === 401 || error.status === 403)) {
@@ -219,7 +254,7 @@ function ProductClientWorkspace() {
   async function authedRequest<T>(
     path: string,
     options: RequestInit = {},
-    activeAuth = auth,
+    activeAuth = authRef.current,
   ): Promise<{ data: T; auth: ProductAuthState }> {
     if (!activeAuth) {
       throw new Error("Authentication required");
@@ -236,6 +271,8 @@ function ProductClientWorkspace() {
       }
 
       const refreshed = await refreshProductAuth(activeAuth.refreshToken);
+      authRef.current = refreshed;
+      writeStoredProductAuth(STORAGE_KEY, refreshed);
       setAuth(refreshed);
 
       return {
@@ -268,6 +305,7 @@ function ProductClientWorkspace() {
       activePortalAuth.token,
     );
     setMatters(matterPayload.cases);
+    setPortalLoaded(true);
     const firstMatterId = selectedMatter?.id ?? matterPayload.cases[0]?.id;
     if (firstMatterId) {
       await openPortalMatter(firstMatterId, portalToken, activePortalAuth);
@@ -371,6 +409,73 @@ function ProductClientWorkspace() {
     await openMatter(selectedMatter.id, payload.auth);
   }
 
+  const handleUploadSuccess = (newDoc: any) => {
+    setSelectedMatter((prev) => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        documents: [newDoc, ...prev.documents],
+      };
+    });
+  };
+
+  async function uploadDocument(file: File, documentType: string = "General") {
+    if (!selectedMatter) return;
+    let activeAuth = authRef.current ?? portalAuthRef.current;
+    if (!activeAuth) return;
+
+    setIsUploading(true);
+    setWorkspaceError(null);
+    setWorkspaceSuccess(null);
+
+    const formData = new FormData();
+    formData.append("matterId", selectedMatter.id);
+    formData.append("type", documentType);
+    formData.append("documentType", documentType);
+    formData.append("file", file);
+
+    try {
+      let token = activeAuth.token;
+      let response;
+      try {
+        response = await productJsonRequest<{ document: any }>("/v1/documents", {
+          method: "POST",
+          body: formData,
+        }, token);
+      } catch (error) {
+        if (error instanceof ProductRequestError && error.status === 401 && activeAuth.refreshToken) {
+          const refreshed = await refreshProductAuth(activeAuth.refreshToken);
+          if (incomingPortalToken) {
+            portalAuthRef.current = refreshed;
+            setPortalAuth(refreshed);
+          } else {
+            authRef.current = refreshed;
+            writeStoredProductAuth(STORAGE_KEY, refreshed);
+            setAuth(refreshed);
+          }
+          activeAuth = refreshed;
+          token = refreshed.token;
+          response = await productJsonRequest<{ document: any }>("/v1/documents", {
+            method: "POST",
+            body: formData,
+          }, token);
+        } else {
+          throw error;
+        }
+      }
+
+      if (response && response.document) {
+        handleUploadSuccess(response.document);
+        setWorkspaceSuccess("Document uploaded successfully.");
+        setTimeout(() => setWorkspaceSuccess(null), 5000);
+      }
+    } catch (error) {
+      setWorkspaceError(error instanceof Error ? error.message : "Failed to upload document.");
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
   async function requestPortalReplyAccess() {
     if (!incomingPortalToken) {
       return;
@@ -398,6 +503,7 @@ function ProductClientWorkspace() {
       token: payload.token,
       refreshToken: payload.refreshToken,
     };
+    portalAuthRef.current = nextAuth;
     setPortalAuth(nextAuth);
   }
 
@@ -411,7 +517,8 @@ function ProductClientWorkspace() {
     setIsCloseHovered(false);
   };
 
-  async function openDocument(documentId: string, portalToken?: string | null, activeAuth = auth) {
+  async function openDocument(documentId: string, portalToken?: string | null, activeAuthOverride?: ProductAuthState | null) {
+    let activeAuth = activeAuthOverride !== undefined ? activeAuthOverride : (portalToken ? portalAuthRef.current : authRef.current);
     try {
       let response = await fetch(productDocumentDownloadUrl(documentId, portalToken ?? undefined), {
         headers: activeAuth ? { authorization: `Bearer ${activeAuth.token}` } : undefined,
@@ -419,7 +526,14 @@ function ProductClientWorkspace() {
 
       if (response.status === 401 && activeAuth?.refreshToken) {
         const refreshed = await refreshProductAuth(activeAuth.refreshToken);
-        setAuth(refreshed);
+        if (portalToken) {
+          portalAuthRef.current = refreshed;
+          setPortalAuth(refreshed);
+        } else {
+          authRef.current = refreshed;
+          writeStoredProductAuth(STORAGE_KEY, refreshed);
+          setAuth(refreshed);
+        }
         response = await fetch(productDocumentDownloadUrl(documentId, portalToken ?? undefined), {
           headers: { authorization: `Bearer ${refreshed.token}` },
         });
@@ -427,7 +541,9 @@ function ProductClientWorkspace() {
 
       if (response.status === 401 || response.status === 403) {
         if (portalToken) {
+          portalAuthRef.current = null;
           setPortalAuth(null);
+          setPortalLoaded(false);
           setWorkspaceError("Your portal access expired. Please verify OTP again.");
         } else {
           void signOut();
@@ -437,7 +553,14 @@ function ProductClientWorkspace() {
       }
 
       if (!response.ok) {
-        throw new Error(await response.text());
+        let errorMessage = "Could not download this document.";
+        try {
+          const body = await response.text();
+          const parsed = JSON.parse(body);
+          if (parsed.error) errorMessage = parsed.error;
+          else errorMessage = body;
+        } catch {}
+        throw new Error(errorMessage);
       }
 
       const blob = await response.blob();
@@ -452,7 +575,7 @@ function ProductClientWorkspace() {
       setWorkspaceError(null);
     } catch (error) {
       setWorkspaceError(error instanceof TypeError
-        ? "Could not reach the API. Please make sure the API server is running on port 3001."
+        ? "Could not reach API."
         : error instanceof Error
           ? error.message
           : "Could not download this document.");
@@ -461,17 +584,21 @@ function ProductClientWorkspace() {
 
   async function signOut() {
     try {
-      if (auth) {
-        await productJsonRequest("/v1/auth/logout", { method: "POST" }, auth.token);
+      if (authRef.current) {
+        await productJsonRequest("/v1/auth/logout", { method: "POST" }, authRef.current.token);
       }
     } catch {
       // Clear the local session even when the API is unavailable.
     }
     writeStoredProductAuth(STORAGE_KEY, null);
+    authRef.current = null;
+    portalAuthRef.current = null;
     setAuth(null);
     setPortalAuth(null);
+    setPortalLoaded(false);
     setProfile(null);
     setSelectedMatter(null);
+    setMatters([]);
     setMessages([]);
   }
 
@@ -518,6 +645,11 @@ function ProductClientWorkspace() {
               {workspaceError ? (
                 <div className="panel" style={{ borderColor: "rgba(185, 28, 28, 0.25)", color: "#991b1b" }}>
                   {workspaceError}
+                </div>
+              ) : null}
+              {workspaceSuccess ? (
+                <div className="panel" style={{ borderColor: "rgba(16, 185, 129, 0.25)", color: "#065f46", backgroundColor: "#ecfdf5" }}>
+                  {workspaceSuccess}
                 </div>
               ) : null}
               <div className="panel" style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -567,6 +699,8 @@ function ProductClientWorkspace() {
                 <DocumentsTab
                   selectedMatter={selectedMatter}
                   openDocument={(docId) => void openDocument(docId, incomingPortalToken, portalAuth)}
+                  onInitiateUpload={() => setIsUploadModalOpen(true)}
+                  isUploading={isUploading}
                 />
               )}
 
@@ -593,6 +727,112 @@ function ProductClientWorkspace() {
             setIsCloseHovered={setIsCloseHovered}
           />
         )}
+
+        {/* Upload Category Selection Modal */}
+        {isUploadModalOpen && (
+          <div style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(15, 23, 42, 0.4)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 10000,
+            padding: "20px"
+          }} onClick={() => setIsUploadModalOpen(false)}>
+            <div style={{
+              backgroundColor: "var(--surface)",
+              borderRadius: "18px",
+              border: "1px solid var(--border)",
+              padding: "24px",
+              maxWidth: "480px",
+              width: "100%",
+              boxShadow: "0 20px 50px rgba(15, 23, 42, 0.15)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "16px"
+            }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "var(--text-primary)" }}>Select Document Type</h3>
+                <p style={{ margin: 0, fontSize: "13px", color: "var(--text-secondary)", lineHeight: "1.4" }}>
+                  Categorize this upload so counsel can identify it instantly
+                </p>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {UPLOAD_CATEGORIES.map((cat) => (
+                  <button
+                    key={cat.value}
+                    type="button"
+                    onClick={() => {
+                      setSelectedUploadType(cat.value);
+                      setIsUploadModalOpen(false);
+                      setTimeout(() => {
+                        document.getElementById("client-file-upload")?.click();
+                      }, 80);
+                    }}
+                    style={{
+                      padding: "12px 16px",
+                      borderRadius: "12px",
+                      border: "1px solid var(--border)",
+                      background: "var(--background)",
+                      color: "var(--text-primary)",
+                      fontSize: "13.5px",
+                      fontWeight: 600,
+                      textAlign: "left",
+                      cursor: "pointer",
+                      transition: "all 0.2s ease",
+                      lineHeight: "1.3"
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = "var(--primary)";
+                      e.currentTarget.style.background = "rgba(15, 110, 86, 0.04)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = "var(--border)";
+                      e.currentTarget.style.background = "var(--background)";
+                    }}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsUploadModalOpen(false)}
+                style={{
+                  background: "none",
+                  border: 0,
+                  color: "#ef4444",
+                  fontWeight: 700,
+                  fontSize: "14px",
+                  cursor: "pointer",
+                  padding: "8px",
+                  marginTop: "4px"
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        <input
+          id="client-file-upload"
+          type="file"
+          accept=".pdf,.docx,.jpg,.jpeg,.png"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) {
+              void uploadDocument(file, selectedUploadType);
+            }
+          }}
+          disabled={isUploading}
+          style={{ display: "none" }}
+        />
       </main>
     );
   }
@@ -663,6 +903,11 @@ function ProductClientWorkspace() {
                 {workspaceError}
               </div>
             ) : null}
+            {workspaceSuccess ? (
+              <div className="panel" style={{ borderColor: "rgba(16, 185, 129, 0.25)", color: "#065f46", backgroundColor: "#ecfdf5" }}>
+                {workspaceSuccess}
+              </div>
+            ) : null}
             <div className="panel" style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "8px" }}>
               <div className="eyebrow" style={{ margin: 0 }}>Matter timeline</div>
               <h2 style={{ margin: 0, fontSize: "24px", fontWeight: 800 }}>{selectedMatter.rawCaseNumber}</h2>
@@ -710,6 +955,8 @@ function ProductClientWorkspace() {
               <DocumentsTab
                 selectedMatter={selectedMatter}
                 openDocument={(docId) => void openDocument(docId)}
+                onInitiateUpload={() => setIsUploadModalOpen(true)}
+                isUploading={isUploading}
               />
             )}
 
@@ -737,6 +984,112 @@ function ProductClientWorkspace() {
           setIsCloseHovered={setIsCloseHovered}
         />
       )}
+
+      {/* Upload Category Selection Modal */}
+      {isUploadModalOpen && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: "rgba(15, 23, 42, 0.4)",
+          backdropFilter: "blur(4px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 10000,
+          padding: "20px"
+        }} onClick={() => setIsUploadModalOpen(false)}>
+          <div style={{
+            backgroundColor: "var(--surface)",
+            borderRadius: "18px",
+            border: "1px solid var(--border)",
+            padding: "24px",
+            maxWidth: "480px",
+            width: "100%",
+            boxShadow: "0 20px 50px rgba(15, 23, 42, 0.15)",
+            display: "flex",
+            flexDirection: "column",
+            gap: "16px"
+          }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <h3 style={{ margin: 0, fontSize: "18px", fontWeight: 800, color: "var(--text-primary)" }}>Select Document Type</h3>
+              <p style={{ margin: 0, fontSize: "13px", color: "var(--text-secondary)", lineHeight: "1.4" }}>
+                Categorize this upload so counsel can identify it instantly
+              </p>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {UPLOAD_CATEGORIES.map((cat) => (
+                <button
+                  key={cat.value}
+                  type="button"
+                  onClick={() => {
+                    setSelectedUploadType(cat.value);
+                    setIsUploadModalOpen(false);
+                    setTimeout(() => {
+                      document.getElementById("client-file-upload")?.click();
+                    }, 80);
+                  }}
+                  style={{
+                    padding: "12px 16px",
+                    borderRadius: "12px",
+                    border: "1px solid var(--border)",
+                    background: "var(--background)",
+                    color: "var(--text-primary)",
+                    fontSize: "13.5px",
+                    fontWeight: 600,
+                    textAlign: "left",
+                    cursor: "pointer",
+                    transition: "all 0.2s ease",
+                    lineHeight: "1.3"
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = "var(--primary)";
+                    e.currentTarget.style.background = "rgba(15, 110, 86, 0.04)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = "var(--border)";
+                    e.currentTarget.style.background = "var(--background)";
+                  }}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsUploadModalOpen(false)}
+              style={{
+                background: "none",
+                border: 0,
+                color: "#ef4444",
+                fontWeight: 700,
+                fontSize: "14px",
+                cursor: "pointer",
+                padding: "8px",
+                marginTop: "4px"
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      <input
+        id="client-file-upload"
+        type="file"
+        accept=".pdf,.docx,.jpg,.jpeg,.png"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) {
+            void uploadDocument(file, selectedUploadType);
+          }
+        }}
+        disabled={isUploading}
+        style={{ display: "none" }}
+      />
     </main>
   );
 }
