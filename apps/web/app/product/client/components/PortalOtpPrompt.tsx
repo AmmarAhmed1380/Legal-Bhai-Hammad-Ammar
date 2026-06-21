@@ -3,14 +3,12 @@ import { type KeyboardEvent, type ClipboardEvent } from "react";
 interface PortalOtpPromptProps {
   portalMaskedPhone: string | null;
   portalOtpDigits: string[];
-  portalDevCode: string | null;
   requestPortalReplyAccess: () => void;
   verifyPortalReplyAccess: (codeOverride?: string) => void;
   handlePortalOtpChange: (index: number, value: string) => void;
   handlePortalOtpKeyDown: (index: number, e: KeyboardEvent<HTMLInputElement>) => void;
   handlePortalOtpPaste: (e: ClipboardEvent<HTMLInputElement>) => void;
   setPortalMaskedPhone: (val: string | null) => void;
-  setPortalDevCode: (val: string | null) => void;
   setPortalOtpCode: (val: string) => void;
   setPortalOtpDigits: (val: string[]) => void;
   workspaceError: string | null;
@@ -19,14 +17,12 @@ interface PortalOtpPromptProps {
 export default function PortalOtpPrompt({
   portalMaskedPhone,
   portalOtpDigits,
-  portalDevCode,
   requestPortalReplyAccess,
   verifyPortalReplyAccess,
   handlePortalOtpChange,
   handlePortalOtpKeyDown,
   handlePortalOtpPaste,
   setPortalMaskedPhone,
-  setPortalDevCode,
   setPortalOtpCode,
   setPortalOtpDigits,
   workspaceError,
@@ -50,7 +46,6 @@ export default function PortalOtpPrompt({
               type="button"
               onClick={() => {
                 setPortalMaskedPhone(null);
-                setPortalDevCode(null);
                 setPortalOtpCode("");
                 setPortalOtpDigits(Array(6).fill(""));
               }}
@@ -102,11 +97,6 @@ export default function PortalOtpPrompt({
               />
             ))}
           </div>
-          {portalDevCode ? (
-            <p className="muted" style={{ textAlign: "center" }}>
-              Development OTP: <strong>{portalDevCode}</strong>
-            </p>
-          ) : null}
           
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
             <button

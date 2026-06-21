@@ -1,10 +1,12 @@
-import { spawn } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { networkInterfaces } from "node:os";
 import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
+const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const apiPort = Number(process.env.BROTHER_API_PORT ?? 3001);
 const webPort = Number(process.env.BROTHER_WEB_PORT ?? 3000);
+const metroPort = Number(process.env.BROTHER_METRO_PORT ?? 8081);
 const startMobile = process.argv.includes("--mobile");
 const pilotAdminSecret = "legalbahi-brother-test-admin-secret";
 const testDatabase = resolve(root, "data", "legalbahi-brother-test.sqlite");
@@ -30,11 +32,43 @@ function findLanAddress() {
   return "127.0.0.1";
 }
 
+function freePort(port) {
+  if (!Number.isInteger(port) || port <= 0) {
+    return;
+  }
+  try {
+    if (process.platform === "win32") {
+      execSync(
+        `powershell -NoProfile -Command "Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue | ForEach-Object { if ($_.OwningProcess -gt 0) { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue } }"`,
+        { stdio: "ignore" },
+      );
+      return;
+    }
+    execSync(`lsof -ti tcp:${port} | xargs kill -9 2>/dev/null || true`, { stdio: "ignore", shell: true });
+  } catch {
+    // Port was already free.
+  }
+}
+
+function freeDevPorts() {
+  const ports = new Set([apiPort, webPort]);
+  if (startMobile) {
+    ports.add(metroPort);
+  }
+  for (const port of ports) {
+    freePort(port);
+  }
+}
+
 function startProcess(label, command, args, env, inheritOutput = false) {
-  const child = spawn(command, args, {
+  const useWindowsCmd = process.platform === "win32";
+  const spawnCommand = useWindowsCmd ? "cmd.exe" : command;
+  const spawnArgs = useWindowsCmd ? ["/d", "/s", "/c", command, ...args] : args;
+  const child = spawn(spawnCommand, spawnArgs, {
     cwd: root,
     env: { ...process.env, ...env },
     stdio: inheritOutput ? ["ignore", "inherit", "inherit"] : ["inherit", "pipe", "pipe"],
+    shell: false,
   });
   if (!inheritOutput) {
     const prefix = (chunk, stream) => {
@@ -132,21 +166,29 @@ const commonEnvironment = {
 };
 
 try {
-  startProcess("api", "npm", ["--workspace", "@wakeel/api", "run", "start"], {
+  freeDevPorts();
+  await new Promise((resolvePromise) => setTimeout(resolvePromise, 750));
+
+  startProcess("api", npmCommand, ["--workspace", "@wakeel/api", "run", "start"], {
     ...commonEnvironment,
     HOST: "0.0.0.0",
     PORT: String(apiPort),
     CORS_ORIGINS: [
       webUrl,
+      apiUrl,
       `http://localhost:${webPort}`,
       `http://127.0.0.1:${webPort}`,
+      `http://localhost:${apiPort}`,
+      `http://127.0.0.1:${apiPort}`,
+      "http://localhost:8081",
+      "http://127.0.0.1:8081",
     ].join(","),
   });
   await waitFor(`${apiUrl}/health/ready`, "API");
 
   const invitedPhone = await inviteBrother(apiUrl);
 
-  startProcess("web", "npm", ["--workspace", "@wakeel/web", "run", "dev", "--", "--hostname", "0.0.0.0", "--port", String(webPort)], {
+  startProcess("web", npmCommand, ["--workspace", "@wakeel/web", "run", "dev", "--", "--hostname", "0.0.0.0", "--port", String(webPort)], {
     ...commonEnvironment,
     NEXT_PUBLIC_API_URL: apiUrl,
     NEXT_PUBLIC_ENABLE_DEMO_SURFACES: "false",
@@ -154,7 +196,8 @@ try {
   await waitFor(`${webUrl}/overview`, "Web app");
 
   if (startMobile) {
-    startProcess("mobile", "npm", ["--workspace", "@wakeel/mobile", "exec", "expo", "start", "--", "--lan"], {
+    execSync("node scripts/sync-vendor.mjs", { cwd: resolve(root, "apps/mobile"), stdio: "inherit" });
+    startProcess("mobile", npmCommand, ["--workspace", "@wakeel/mobile", "exec", "expo", "start", "--", "--lan", "--port", String(metroPort)], {
       ...commonEnvironment,
       EXPO_PUBLIC_API_URL: apiUrl,
       EXPO_PUBLIC_ENABLE_DEMO_SURFACES: "false",

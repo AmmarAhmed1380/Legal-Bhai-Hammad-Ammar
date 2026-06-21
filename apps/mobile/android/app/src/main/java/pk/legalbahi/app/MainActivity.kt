@@ -1,4 +1,4 @@
-package com.legalbhai
+package pk.legalbahi.app
 
 import android.os.Build
 import android.os.Bundle

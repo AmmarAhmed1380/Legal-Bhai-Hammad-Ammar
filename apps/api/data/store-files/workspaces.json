@@ -1,25 +1,25 @@
 [
   {
-    "workspaceId": "59502b8c-42b7-4b93-a7c9-e4fcadb660e6",
-    "name": "E2E Chambers 9142895",
+    "workspaceId": "5f6f7937-388a-4eaa-ab10-55453f3c3bf8",
+    "name": "IRS Co. Ltd",
     "primaryCity": "Islamabad",
     "billingPlan": "solo_plus",
     "timezone": "Asia/Karachi",
     "status": "trial",
-    "createdAt": "2026-06-20T20:59:07.136Z",
+    "createdAt": "2026-06-20T03:40:55.843Z",
     "owner": {
-      "id": "f296138a-b166-4b3c-911f-1f8c259f5ddc",
-      "phone": "03009142895",
-      "displayName": "E2E Lawyer 9142895",
-      "email": "lawyer-9142895@example.test",
+      "id": "5b6ddf10-c0b6-4db2-bd83-134c3ab13c34",
+      "phone": "+16012109282",
+      "displayName": "Barrister Ammar Ahmed",
+      "email": "ammarzaigham1970@gmail.com",
       "status": "active"
     },
     "employees": [
       {
-        "id": "f296138a-b166-4b3c-911f-1f8c259f5ddc",
-        "phone": "03009142895",
-        "displayName": "E2E Lawyer 9142895",
-        "email": "lawyer-9142895@example.test",
+        "id": "5b6ddf10-c0b6-4db2-bd83-134c3ab13c34",
+        "phone": "+16012109282",
+        "displayName": "Barrister Ammar Ahmed",
+        "email": "ammarzaigham1970@gmail.com",
         "role": "owner",
         "officeLabel": "Islamabad",
         "status": "active"

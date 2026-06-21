@@ -12,14 +12,11 @@ const STAFF_STORAGE_KEY = "legalbahi-staff-auth";
 const CLIENT_STORAGE_KEY = "legalbahi-client-auth";
 
 const MOCK_STAFF = [
-  { label: "Owner", phone: "3001234567" },
-  { label: "Lawyer", phone: "3007654321" },
-  { label: "Assistant", phone: "3001112222" },
+  { label: "Demo Lawyer", phone: "6012109282" },
 ];
 
 const MOCK_CLIENTS = [
-  { label: "Ahmed Zubair", phone: "3005550001" },
-  { label: "Farooq Traders", phone: "3005550002" },
+  { label: "Demo Client", phone: "6012109282" },
 ];
 
 const formatPhoneNumber = (value: string) => {
@@ -47,7 +44,7 @@ export default function HomePage() {
 
   // Form fields
   const [phone, setPhone] = useState("");
-  const [countryCode, setCountryCode] = useState("+92");
+  const [countryCode, setCountryCode] = useState("+1");
   const [isCountryDropdownOpen, setIsCountryDropdownOpen] = useState(false);
 
   const [displayName, setDisplayName] = useState("");
@@ -144,7 +141,7 @@ export default function HomePage() {
   const handleTabChange = (tab: "lawyer" | "client") => {
     setActiveTab(tab);
     setPhone("");
-    setCountryCode("+92");
+    setCountryCode("+1");
     setOtpRequested(false);
     setLoginCode("");
     setOtpDigits(Array(6).fill(""));
@@ -187,15 +184,9 @@ export default function HomePage() {
         }),
       });
       
-      if (response.devCode) {
-        setLoginCode(response.devCode);
-        setOtpDigits(response.devCode.split(""));
-        setOperationStatus(`OTP Sent. (Development OTP: ${response.devCode} autofilled)`);
-      } else {
-        setLoginCode("");
-        setOtpDigits(Array(6).fill(""));
-        setOperationStatus("OTP code sent to your phone number.");
-      }
+      setLoginCode("");
+      setOtpDigits(Array(6).fill(""));
+      setOperationStatus("OTP code sent to your phone number.");
       setOtpRequested(true);
     } catch (err: any) {
       setOperationStatus(err.message || "Failed to request OTP.");
@@ -259,15 +250,9 @@ export default function HomePage() {
         return;
       }
       
-      if (response.devCode) {
-        setLoginCode(response.devCode);
-        setOtpDigits(response.devCode.split(""));
-        setOperationStatus(`OTP Sent. (Development OTP: ${response.devCode} autofilled)`);
-      } else {
-        setLoginCode("");
-        setOtpDigits(Array(6).fill(""));
-        setOperationStatus("OTP code sent to your phone number.");
-      }
+      setLoginCode("");
+      setOtpDigits(Array(6).fill(""));
+      setOperationStatus("OTP code sent to your phone number.");
       setOtpRequested(true);
     } catch (err: any) {
       setOperationStatus(err.message || "Failed to request OTP.");

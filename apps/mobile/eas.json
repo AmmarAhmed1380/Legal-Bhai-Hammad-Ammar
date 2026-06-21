@@ -10,7 +10,8 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_ENABLE_DEMO_SURFACES": "false"
+        "EXPO_PUBLIC_ENABLE_DEMO_SURFACES": "false",
+        "EXPO_PUBLIC_API_URL": "https://api-64-235-61-6.sslip.io"
       }
     }
   }

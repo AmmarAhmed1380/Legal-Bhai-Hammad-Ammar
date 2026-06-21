@@ -28,10 +28,10 @@ import { normalizePakistanPhone } from "./validation.js";
 import { runOcr } from "./ocr.js";
 import { createSmsProvider } from "./providers.js";
 import { createPrivateObjectStorage } from "./storage.js";
+import { captureError } from "./telemetry.js";
 import { type ProductStore } from "./product-store.js";
 import { type PostgresProductStore } from "./postgres-product-store.js";
 
-const DEV_OTP_CODE = process.env.WAKEEL_DEV_OTP_CODE ?? "246810";
 const ACCESS_TOKEN_TTL_SECONDS = 60 * 15;
 const REFRESH_TOKEN_TTL_DAYS = 30;
 type ProductStoreContract = ProductStore | PostgresProductStore;
@@ -349,7 +349,16 @@ export function registerProductRoutes(app: FastifyInstance, store: ProductStoreC
     return issued;
   }
 
+  function logOtpFailure(stage: string, error: unknown, context: Record<string, unknown>): void {
+    console.error("[otp] failure", {
+      stage,
+      ...context,
+      error: error instanceof Error ? { message: error.message, stack: error.stack } : error,
+    });
+  }
+
   async function issueOtp(actorType: "staff" | "client", phone: string, clientAccountId?: string, purpose?: string) {
+    try {
     const normalizedPhone = normalizePakistanPhone(phone);
     if (!normalizedPhone) {
       return { error: "Invalid phone number format. Please check the format and try again." };
@@ -390,14 +399,16 @@ export function registerProductRoutes(app: FastifyInstance, store: ProductStoreC
       }
     }
 
+    const productDbPath = process.env.WAKEEL_PRODUCT_DB_PATH ?? "";
     const isTesting =
       process.env.NODE_ENV === "test" ||
       process.env.WAKEEL_TESTING === "true" ||
       (process.env.DEMO_DB_PATH ? process.env.DEMO_DB_PATH.includes("wakeel-product-api-") : false) ||
-      (process.env.WAKEEL_PRODUCT_DB_PATH ? process.env.WAKEEL_PRODUCT_DB_PATH.includes("wakeel-product-api-") : false);
+      productDbPath.includes("wakeel-product-api-") ||
+      productDbPath.includes("legalbahi-brother-test");
 
     const code = isTesting
-      ? DEV_OTP_CODE
+      ? (process.env.WAKEEL_DEV_OTP_CODE ?? "246810")
       : String(randomInt(100000, 1000000));
 
     const requestRecord = await store.createOtpRequest({ actorType, phone: normalizedPhone, code });
@@ -405,28 +416,30 @@ export function registerProductRoutes(app: FastifyInstance, store: ProductStoreC
       return { error: "Too many OTP requests. Please wait a few minutes before trying again." };
     }
 
-    if (process.env.NODE_ENV !== "production") {
-      console.log(`[DEV OTP] Generated verification code for ${normalizedPhone}: ${code}`);
+    if (isTesting) {
+      console.error("[otp] dev bypass", { actorType, phone: normalizedPhone, purpose: purpose ?? null });
+      return {
+        ok: true,
+        expiresAt: requestRecord.expiresAt,
+        devCode: requestRecord.devCode,
+      };
     }
 
     try {
       await smsProvider.send(normalizedPhone, `Your Legal Bhai verification code is ${code}. It expires in 10 minutes.`);
-    } catch (err: any) {
-      if (process.env.NODE_ENV !== "production") {
-        console.log(`[DEV OTP FALLBACK] Twilio error: ${err.message}. Autofilled code: ${code}`);
-        return {
-          ok: true,
-          expiresAt: requestRecord.expiresAt,
-          devCode: code,
-        };
-      }
-      return { error: `SMS failed to send: ${err.message}` };
+    } catch (err: unknown) {
+      logOtpFailure("sms_send", err, { actorType, phone: normalizedPhone, purpose: purpose ?? null });
+      const message = err instanceof Error ? err.message : "Unknown SMS error";
+      return { error: `SMS failed to send: ${message}` };
     }
     return {
       ok: true,
       expiresAt: requestRecord.expiresAt,
-      ...(isTesting ? { devCode: requestRecord.devCode } : {}),
     };
+    } catch (error) {
+      logOtpFailure("issue_otp", error, { actorType, phone, purpose: purpose ?? null });
+      throw error;
+    }
   }
 
   function registerOtpRequestRoute(path: string, actorType: "staff" | "client"): void {
@@ -436,17 +449,29 @@ export function registerProductRoutes(app: FastifyInstance, store: ProductStoreC
         reply.code(400);
         return { error: "Phone is required" };
       }
-      const response = await issueOtp(actorType, body.phone, undefined, body.purpose);
-      if (!response) {
-        reply.code(400);
-        return { error: "Failed to request OTP" };
+      try {
+        const response = await issueOtp(actorType, body.phone, undefined, body.purpose);
+        if (!response) {
+          reply.code(400);
+          return { error: "Failed to request OTP" };
+        }
+        if ("error" in response && typeof response.error === "string") {
+          const statusCode = response.error.includes("Too many") ? 429 : 400;
+          reply.code(statusCode);
+          return { error: response.error };
+        }
+        return response;
+      } catch (error) {
+        logOtpFailure("route", error, { path, actorType, phone: body.phone, purpose: body.purpose ?? null });
+        reply.code(500);
+        return {
+          error: isProduction()
+            ? "Unexpected server error"
+            : error instanceof Error
+              ? error.message
+              : "Unexpected server error",
+        };
       }
-      if ("error" in response && typeof response.error === "string") {
-        const statusCode = response.error.includes("Too many") ? 429 : 400;
-        reply.code(statusCode);
-        return { error: response.error };
-      }
-      return response;
     });
   }
 
@@ -562,17 +587,34 @@ export function registerProductRoutes(app: FastifyInstance, store: ProductStoreC
       reply.code(400);
       return { error: "A valid phone and actorType are required" };
     }
-    const response = await issueOtp(body.actorType, body.phone, undefined, body.purpose);
-    if (!response) {
-      reply.code(400);
-      return { error: "Failed to request OTP" };
+    try {
+      const response = await issueOtp(body.actorType, body.phone, undefined, body.purpose);
+      if (!response) {
+        reply.code(400);
+        return { error: "Failed to request OTP" };
+      }
+      if ("error" in response && typeof response.error === "string") {
+        const statusCode = response.error.includes("Too many") ? 429 : 400;
+        reply.code(statusCode);
+        return { error: response.error };
+      }
+      return response;
+    } catch (error) {
+      logOtpFailure("route", error, {
+        path: "/v1/auth/otp/request",
+        actorType: body.actorType,
+        phone: body.phone,
+        purpose: body.purpose ?? null,
+      });
+      reply.code(500);
+      return {
+        error: isProduction()
+          ? "Unexpected server error"
+          : error instanceof Error
+            ? error.message
+            : "Unexpected server error",
+      };
     }
-    if ("error" in response && typeof response.error === "string") {
-      const statusCode = response.error.includes("Too many") ? 429 : 400;
-      reply.code(statusCode);
-      return { error: response.error };
-    }
-    return response;
   });
 
   app.post("/v1/auth/otp/verify", async (request, reply) => {

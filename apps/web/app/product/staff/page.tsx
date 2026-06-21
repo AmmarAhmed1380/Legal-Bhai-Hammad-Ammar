@@ -616,7 +616,7 @@ export default function ProductStaffPage() {
         method: "POST",
         body: JSON.stringify({ phone, actorType: "staff" }),
       });
-      setLoginCode(response.devCode ?? "");
+      setLoginCode("");
       setOtpRequested(true);
       setOperationStatus("");
     } catch (err: any) {

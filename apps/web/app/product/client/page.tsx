@@ -115,7 +115,6 @@ function ProductClientWorkspace() {
   const [portalMaskedPhone, setPortalMaskedPhone] = useState<string | null>(null);
   const [portalOtpCode, setPortalOtpCode] = useState<string>("");
   const [portalOtpDigits, setPortalOtpDigits] = useState<string[]>(Array(6).fill(""));
-  const [portalDevCode, setPortalDevCode] = useState<string | null>(null);
 
   useEffect(() => {
     const code = portalOtpDigits.join("");
@@ -281,7 +280,7 @@ function ProductClientWorkspace() {
       method: "POST",
       body: JSON.stringify({ phone, actorType: "client" }),
     });
-    setLoginCode(requestPayload.devCode ?? "");
+    setLoginCode("");
     setOtpRequested(true);
   }
 
@@ -364,13 +363,8 @@ function ProductClientWorkspace() {
       body: JSON.stringify({ token: incomingPortalToken }),
     });
     setPortalMaskedPhone(payload.maskedPhone);
-    setPortalDevCode(payload.devCode);
-    if (payload.devCode) {
-      setPortalOtpCode(payload.devCode);
-      setPortalOtpDigits(payload.devCode.split("").slice(0, 6));
-    } else {
-      setPortalOtpDigits(Array(6).fill(""));
-    }
+    setPortalOtpCode("");
+    setPortalOtpDigits(Array(6).fill(""));
   }
 
   async function verifyPortalReplyAccess(codeOverride?: string) {
@@ -460,14 +454,12 @@ function ProductClientWorkspace() {
               <PortalOtpPrompt
                 portalMaskedPhone={portalMaskedPhone}
                 portalOtpDigits={portalOtpDigits}
-                portalDevCode={portalDevCode}
                 requestPortalReplyAccess={requestPortalReplyAccess}
                 verifyPortalReplyAccess={verifyPortalReplyAccess}
                 handlePortalOtpChange={handlePortalOtpChange}
                 handlePortalOtpKeyDown={handlePortalOtpKeyDown}
                 handlePortalOtpPaste={handlePortalOtpPaste}
                 setPortalMaskedPhone={setPortalMaskedPhone}
-                setPortalDevCode={setPortalDevCode}
                 setPortalOtpCode={setPortalOtpCode}
                 setPortalOtpDigits={setPortalOtpDigits}
                 workspaceError={workspaceError}

@@ -38,3 +38,15 @@ export function toPakistanE164(value: string): string | null {
   }
   return `+92${normalized.slice(1)}`;
 }
+
+export function toSmsE164(value: string): string | null {
+  const normalized = toPakistanE164(value);
+  if (normalized) {
+    return normalized;
+  }
+  const trimmed = value.trim();
+  if (/^\+[1-9]\d{7,14}$/.test(trimmed)) {
+    return trimmed;
+  }
+  return null;
+}

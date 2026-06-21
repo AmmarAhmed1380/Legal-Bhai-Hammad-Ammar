@@ -1,0 +1,10 @@
+{
+  "name": "legalbahi-mobile-vendor",
+  "private": true,
+  "dependencies": {
+    "whatwg-url-without-unicode": "8.0.0-3",
+    "buffer": "5.7.1",
+    "punycode": "2.3.1",
+    "webidl-conversions": "5.0.0"
+  }
+}

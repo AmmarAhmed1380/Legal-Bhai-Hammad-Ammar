@@ -1,5 +1,5 @@
 import { isProduction } from "./config.js";
-import { toPakistanE164 } from "./validation.js";
+import { toSmsE164 } from "./validation.js";
 
 export interface SmsProvider {
   send(to: string, body: string): Promise<{ providerId: string | null }>;
@@ -19,17 +19,27 @@ class TwilioSmsProvider implements SmsProvider {
   async send(to: string, body: string): Promise<{ providerId: string | null }> {
     const accountSid = process.env.TWILIO_ACCOUNT_SID!;
     const authToken = process.env.TWILIO_AUTH_TOKEN!;
-    const from = process.env.TWILIO_SMS_FROM!;
+    const from = toSmsE164(process.env.TWILIO_SMS_FROM!) ?? process.env.TWILIO_SMS_FROM!.trim();
+    const destination = toSmsE164(to);
+    if (!destination) {
+      throw new Error(`Invalid SMS destination phone: ${to}`);
+    }
+    if (!/^\+[1-9]\d{7,14}$/.test(from)) {
+      throw new Error(`Invalid Twilio SMS From number (expected E.164): ${process.env.TWILIO_SMS_FROM}`);
+    }
+    console.error("[twilio] sending SMS", { to: destination, from });
     const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
       method: "POST",
       headers: {
         authorization: `Basic ${Buffer.from(`${accountSid}:${authToken}`).toString("base64")}`,
         "content-type": "application/x-www-form-urlencoded",
       },
-      body: new URLSearchParams({ To: toPakistanE164(to) ?? to, From: from, Body: body }),
+      body: new URLSearchParams({ To: destination, From: from, Body: body }),
     });
     if (!response.ok) {
-      throw new Error(`Twilio SMS failed with status ${response.status}`);
+      const errorBody = await response.text();
+      console.error("[twilio] SMS failed", { status: response.status, body: errorBody, to: destination, from });
+      throw new Error(`Twilio SMS failed with status ${response.status}: ${errorBody}`);
     }
     const payload = (await response.json()) as { sid?: string };
     return { providerId: payload.sid ?? null };

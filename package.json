@@ -27,7 +27,8 @@
     "brother:test": "node scripts/start-brother-test.mjs",
     "brother:test:mobile": "node scripts/start-brother-test.mjs --mobile",
     "brother:test:reset": "node scripts/reset-brother-test.mjs",
-    "reset:demo": "npm --workspace @wakeel/api run reset:demo"
+    "reset:demo": "npm --workspace @wakeel/api run reset:demo",
+    "vps:sync": "node scripts/vps-sync-config.mjs"
   },
   "overrides": {
     "postcss": "8.5.15",

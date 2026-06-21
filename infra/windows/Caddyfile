@@ -1,23 +1,21 @@
-legalbahi.pk {
-  tls internal
-  encode zstd gzip
-  header {
-    Strict-Transport-Security "max-age=31536000; includeSubDomains"
-    X-Content-Type-Options "nosniff"
-    Referrer-Policy "no-referrer"
-    -Server
-  }
-  reverse_proxy 127.0.0.1:3000
+64.235.61.6.sslip.io {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+	reverse_proxy 127.0.0.1:3000
 }
 
-api.legalbahi.pk {
-  tls internal
-  encode zstd gzip
-  header {
-    Strict-Transport-Security "max-age=31536000; includeSubDomains"
-    X-Content-Type-Options "nosniff"
-    Referrer-Policy "no-referrer"
-    -Server
-  }
-  reverse_proxy 127.0.0.1:3001
+api-64-235-61-6.sslip.io {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+	reverse_proxy 127.0.0.1:3001
 }

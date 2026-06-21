@@ -73,11 +73,39 @@ interface MessageRecord {
   createdAt: string;
 }
 
-const STAFF_PHONES = [
-  { label: "Owner", phone: "03001234567" },
-  { label: "Lawyer", phone: "03007654321" },
-  { label: "Assistant", phone: "03001112222" },
-] as const;
+const spacing = {
+  lg: 20,
+};
+
+const AUTH_STORAGE_KEY = "legalbahi-mobile-auth";
+const CLIENT_STORAGE_KEY = "legalbahi-mobile-client-auth";
+
+function formatPhoneNumber(value: string, countryCode: string): string {
+  const clean = value.replace(/\D/g, "");
+  if (countryCode === "+92") {
+    const digits = clean.slice(0, 11);
+    if (digits.length <= 4) return digits;
+    return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+  }
+  const digits = clean.slice(0, 10);
+  if (digits.length === 0) return "";
+  if (digits.length <= 3) return `(${digits}`;
+  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
+function formatFullPhone(countryCode: string, phone: string): string {
+  const cleanPhone = phone.replace(/\D/g, "");
+  return countryCode === "+92"
+    ? (cleanPhone.startsWith("0") ? cleanPhone : `0${cleanPhone}`)
+    : `${countryCode}${cleanPhone}`;
+}
+
+interface ClientProfile {
+  actorType: "client";
+  clientAccount: { id: string; displayName: string; phone: string };
+  firm: { id: string; name: string } | null;
+}
 
 const PILOT_COURTS = [
   { id: "ihc", label: "Islamabad High Court" },
@@ -92,16 +120,13 @@ function courtLabel(courtId: string): string {
   return PILOT_COURTS.find((court) => court.id === courtId)?.label ?? courtId;
 }
 
-const spacing = {
-  lg: 20,
-};
-
-const AUTH_STORAGE_KEY = "legalbahi-mobile-auth";
-const DEMO_SURFACES = process.env.EXPO_PUBLIC_ENABLE_DEMO_SURFACES === "true";
-
 export function ProductApp({ onBack }: { onBack?: () => void }) {
-  const [phone, setPhone] = useState<string>(STAFF_PHONES[0].phone);
+  const [activeTab, setActiveTab] = useState<"lawyer" | "client">("lawyer");
+  const [countryCode, setCountryCode] = useState("+1");
+  const [phone, setPhone] = useState("");
   const [auth, setAuth] = useState<{ token: string; refreshToken: string | null } | null>(null);
+  const [clientAuth, setClientAuth] = useState<{ token: string; refreshToken: string | null } | null>(null);
+  const [clientProfile, setClientProfile] = useState<ClientProfile | null>(null);
   const [authHydrated, setAuthHydrated] = useState(false);
   const [profile, setProfile] = useState<StaffProfile | null>(null);
   const [tab, setTab] = useState<ProductTab>("home");
@@ -117,25 +142,61 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
   const [hearingImageUri, setHearingImageUri] = useState<string | null>(null);
   const [documentTitle, setDocumentTitle] = useState("");
   const [documentImageUri, setDocumentImageUri] = useState<string | null>(null);
-  const [otpCode, setOtpCode] = useState("");
+  const [otpDigits, setOtpDigits] = useState<string[]>(Array(6).fill(""));
   const [otpRequested, setOtpRequested] = useState(false);
+  const [operationStatus, setOperationStatus] = useState<string | null>(null);
   const [registrationMode, setRegistrationMode] = useState(false);
   const [registration, setRegistration] = useState({
     displayName: "",
     email: "",
     firmName: "",
-    primaryCity: "Islamabad",
+    primaryCity: "",
   });
 
   useEffect(() => {
-    void SecureStore.getItemAsync(AUTH_STORAGE_KEY)
-      .then((value) => {
-        if (value) {
-          setAuth(JSON.parse(value) as { token: string; refreshToken: string | null });
+    void Promise.all([
+      SecureStore.getItemAsync(AUTH_STORAGE_KEY),
+      SecureStore.getItemAsync(CLIENT_STORAGE_KEY),
+    ])
+      .then(([staffValue, clientValue]) => {
+        if (staffValue) {
+          setAuth(JSON.parse(staffValue) as { token: string; refreshToken: string | null });
+        }
+        if (clientValue) {
+          setClientAuth(JSON.parse(clientValue) as { token: string; refreshToken: string | null });
         }
       })
       .finally(() => setAuthHydrated(true));
   }, []);
+
+  useEffect(() => {
+    const code = otpDigits.join("");
+    if (code.length === 6 && /^\d{6}$/.test(code) && otpRequested) {
+      if (activeTab === "lawyer") {
+        void verifyLawyerLogin(code);
+      } else {
+        void verifyClientLogin(code);
+      }
+    }
+  }, [otpDigits, activeTab, otpRequested]);
+
+  useEffect(() => {
+    if (!authHydrated) {
+      return;
+    }
+    if (!clientAuth) {
+      void SecureStore.deleteItemAsync(CLIENT_STORAGE_KEY);
+      setClientProfile(null);
+      return;
+    }
+    void SecureStore.setItemAsync(CLIENT_STORAGE_KEY, JSON.stringify(clientAuth));
+    void apiRequest<{ profile: ClientProfile }>("/v1/me", {}, clientAuth.token)
+      .then((payload) => setClientProfile(payload.profile))
+      .catch(() => {
+        setClientAuth(null);
+        setClientProfile(null);
+      });
+  }, [clientAuth, authHydrated]);
 
   useEffect(() => {
     if (!authHydrated) {
@@ -208,33 +269,129 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
     }
   }
 
-  async function requestOtp() {
+  function resetAuthFlow() {
+    setOtpRequested(false);
+    setOtpDigits(Array(6).fill(""));
+    setOperationStatus(null);
+  }
+
+  function handleTabChange(tab: "lawyer" | "client") {
+    setActiveTab(tab);
+    setPhone("");
+    setCountryCode("+1");
+    resetAuthFlow();
+    setRegistrationMode(false);
+    setRegistration({
+      displayName: "",
+      email: "",
+      firmName: "",
+      primaryCity: "",
+    });
+  }
+
+  async function startLawyerLogin() {
+    if (registrationMode) {
+      if (!registration.displayName.trim() || !registration.firmName.trim() || !registration.primaryCity.trim()) {
+        setOperationStatus("Please fill in all required fields to create a workspace.");
+        return;
+      }
+    }
+    setOperationStatus("Requesting OTP...");
     try {
-      const otp = await apiRequest<{ devCode: string | null }>("/v1/auth/otp/request", {
+      const formattedPhone = formatFullPhone(countryCode, phone);
+      await apiRequest<{ devCode: string | null }>("/v1/auth/otp/request", {
         method: "POST",
-        body: JSON.stringify({ phone, actorType: "staff" }),
+        body: JSON.stringify({
+          phone: formattedPhone,
+          actorType: "staff",
+          purpose: registrationMode ? "register" : "login",
+        }),
       });
-      setOtpCode(otp.devCode ?? "");
+      setOtpDigits(Array(6).fill(""));
+      setOperationStatus("OTP code sent to your phone number.");
       setOtpRequested(true);
     } catch (error) {
-      Alert.alert("OTP request failed", error instanceof Error ? error.message : "Unknown error");
+      setOperationStatus(error instanceof Error ? error.message : "Failed to request OTP.");
     }
   }
 
-  async function login() {
+  async function verifyLawyerLogin(codeOverride?: string) {
+    const codeToUse = codeOverride ?? otpDigits.join("");
+    setOperationStatus(registrationMode ? "Creating workspace..." : "Verifying OTP...");
     try {
-      const payload = await apiRequest<{ token: string; refreshToken: string | null }>(
-        registrationMode ? "/v1/auth/staff/register" : "/v1/auth/otp/verify",
-        {
+      const formattedPhone = formatFullPhone(countryCode, phone);
+      const path = registrationMode ? "/v1/auth/staff/register" : "/v1/auth/otp/verify";
+      const bodyPayload = registrationMode
+        ? {
+            phone: formattedPhone,
+            code: codeToUse,
+            displayName: registration.displayName.trim(),
+            firmName: registration.firmName,
+            email: registration.email.trim() ? registration.email.trim() : null,
+            primaryCity: registration.primaryCity,
+          }
+        : { phone: formattedPhone, actorType: "staff", code: codeToUse };
+
+      const payload = await apiRequest<{ token: string; refreshToken: string | null }>(path, {
         method: "POST",
-        body: JSON.stringify(registrationMode
-          ? { phone, code: otpCode, ...registration }
-          : { phone, actorType: "staff", code: otpCode }),
+        body: JSON.stringify(bodyPayload),
       });
+      setClientAuth(null);
+      setClientProfile(null);
       setAuth({ token: payload.token, refreshToken: payload.refreshToken });
+      setOperationStatus("Authentication successful.");
     } catch (error) {
-      Alert.alert(registrationMode ? "Registration failed" : "Login failed", error instanceof Error ? error.message : "Unknown error");
+      setOperationStatus(error instanceof Error ? error.message : "Authentication failed.");
     }
+  }
+
+  async function startClientLogin() {
+    setOperationStatus("Requesting client OTP...");
+    try {
+      const formattedPhone = formatFullPhone(countryCode, phone);
+      const response = await apiRequest<{ devCode: string | null; expiresAt: string | null }>("/v1/auth/otp/request", {
+        method: "POST",
+        body: JSON.stringify({
+          phone: formattedPhone,
+          actorType: "client",
+          purpose: "login",
+        }),
+      });
+      if (response.expiresAt === null) {
+        setOperationStatus("Client account not found. Please contact your lawyer.");
+        return;
+      }
+      setOtpDigits(Array(6).fill(""));
+      setOperationStatus("OTP code sent to your phone number.");
+      setOtpRequested(true);
+    } catch (error) {
+      setOperationStatus(error instanceof Error ? error.message : "Failed to request OTP.");
+    }
+  }
+
+  async function verifyClientLogin(codeOverride?: string) {
+    const codeToUse = codeOverride ?? otpDigits.join("");
+    setOperationStatus("Verifying client OTP...");
+    try {
+      const formattedPhone = formatFullPhone(countryCode, phone);
+      const payload = await apiRequest<{ token: string; refreshToken: string | null }>("/v1/auth/otp/verify", {
+        method: "POST",
+        body: JSON.stringify({ phone: formattedPhone, actorType: "client", code: codeToUse }),
+      });
+      setAuth(null);
+      setProfile(null);
+      setClientAuth({ token: payload.token, refreshToken: payload.refreshToken });
+      setOperationStatus("Authentication successful.");
+    } catch (error) {
+      setOperationStatus(error instanceof Error ? error.message : "Authentication failed.");
+    }
+  }
+
+  function handleOtpChange(index: number, value: string) {
+    const cleanValue = value.replace(/[^0-9]/g, "").slice(-1);
+    const nextDigits = [...otpDigits];
+    nextDigits[index] = cleanValue;
+    setOtpDigits(nextDigits);
   }
 
   async function openMatter(matterId: string, activeAuth = auth) {
@@ -364,55 +521,193 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
     setMessages([]);
   }
 
-  if (!auth || !profile) {
+  async function signOutClient() {
+    if (clientAuth) {
+      try {
+        await apiRequest("/v1/auth/logout", { method: "POST" }, clientAuth.token);
+      } catch {
+        // Clear local session even if network is unavailable.
+      }
+    }
+    setClientAuth(null);
+    setClientProfile(null);
+    resetAuthFlow();
+  }
+
+  if (clientAuth && clientProfile) {
     return (
       <SafeAreaView style={styles.safe}>
         <StatusBar style="dark" />
         <View style={styles.loginCard}>
-          {onBack ? <Pressable onPress={onBack}>
-            <Text style={styles.eyebrow}>Back to mode select</Text>
-          </Pressable> : null}
-          <Text style={styles.title}>Legal Bhai</Text>
+          <Text style={styles.eyebrow}>Client Portal</Text>
+          <Text style={styles.title}>Welcome, {clientProfile.clientAccount.displayName}</Text>
           <Text style={styles.copy}>
-            Production-line staff workspace with OTP auth, matters, hearing timeline, client thread,
-            alerts, and client updates.
+            {clientProfile.firm?.name ?? "Your lawyer workspace"} · Signed in as client
           </Text>
-          {DEMO_SURFACES ? <View style={styles.tabRow}>
-            {STAFF_PHONES.map((user) => (
-              <Pressable
-                key={user.phone}
-                style={[styles.pill, phone === user.phone ? styles.pillActive : null]}
-                onPress={() => setPhone(user.phone)}
-              >
-              <Text style={phone === user.phone ? styles.pillActiveText : styles.pillText}>
-                  {user.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View> : null}
-          <TextInput accessibilityLabel="Phone" value={phone} onChangeText={setPhone} style={styles.input} />
-          {registrationMode ? <>
-            <TextInput accessibilityLabel="Your name" value={registration.displayName} onChangeText={(displayName) => setRegistration({ ...registration, displayName })} placeholder="Your name" style={styles.input} />
-            <TextInput accessibilityLabel="Email" value={registration.email} onChangeText={(email) => setRegistration({ ...registration, email })} placeholder="Email" keyboardType="email-address" autoCapitalize="none" style={styles.input} />
-            <TextInput accessibilityLabel="Practice name" value={registration.firmName} onChangeText={(firmName) => setRegistration({ ...registration, firmName })} placeholder="Practice name" style={styles.input} />
-            <TextInput accessibilityLabel="City" value={registration.primaryCity} onChangeText={(primaryCity) => setRegistration({ ...registration, primaryCity })} placeholder="City" style={styles.input} />
-          </> : null}
-          {otpRequested ? <TextInput accessibilityLabel="OTP code" value={otpCode} onChangeText={setOtpCode} keyboardType="number-pad" placeholder="OTP code" style={styles.input} /> : null}
-          <Pressable accessibilityLabel={otpRequested ? "Verify OTP and sign in" : "Request OTP"} style={styles.primaryButton} onPress={() => void (otpRequested ? login() : requestOtp())}>
-            <Text style={styles.primaryButtonText}>{otpRequested ? "Verify OTP and sign in" : "Request OTP"}</Text>
-          </Pressable>
-          <Pressable
-            accessibilityLabel={registrationMode ? "Use existing lawyer login" : "Invited lawyer? Create workspace"}
-            style={styles.secondaryButton}
-            onPress={() => {
-              setRegistrationMode(!registrationMode);
-              setOtpRequested(false);
-              setOtpCode("");
-            }}
-          >
-            <Text style={styles.secondaryButtonText}>{registrationMode ? "Use existing lawyer login" : "Invited lawyer? Create workspace"}</Text>
+          {operationStatus ? <Text style={styles.statusBanner}>{operationStatus}</Text> : null}
+          <Pressable style={styles.secondaryButton} onPress={() => void signOutClient()}>
+            <Text style={styles.secondaryButtonText}>Sign out</Text>
           </Pressable>
         </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!auth || !profile) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <StatusBar style="dark" />
+        <ScrollView contentContainerStyle={styles.loginScroll}>
+          <View style={styles.headerBlock}>
+            <Text style={styles.heroTitle}>Legal Bhai</Text>
+            <Text style={styles.copy}>
+              Secure matter hearing dates, client updates, cause-list matching, and private document management.
+            </Text>
+          </View>
+          <View style={styles.loginCard}>
+            {!otpRequested ? (
+              <View style={styles.tabRow}>
+                <Pressable
+                  style={[styles.portalTab, activeTab === "lawyer" ? styles.portalTabActive : null]}
+                  onPress={() => handleTabChange("lawyer")}
+                >
+                  <Text style={activeTab === "lawyer" ? styles.portalTabActiveText : styles.portalTabText}>Lawyer Portal</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.portalTab, activeTab === "client" ? styles.portalTabActive : null]}
+                  onPress={() => handleTabChange("client")}
+                >
+                  <Text style={activeTab === "client" ? styles.portalTabActiveText : styles.portalTabText}>Client Portal</Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            {operationStatus ? <Text style={styles.statusBanner}>{operationStatus}</Text> : null}
+
+            {!otpRequested ? (
+              <>
+                <Text style={styles.fieldLabel}>Phone Number</Text>
+                <View style={styles.phoneRow}>
+                  <View style={styles.countryPicker}>
+                    <Pressable
+                      style={[styles.countryOption, countryCode === "+92" ? styles.countryOptionActive : null]}
+                      onPress={() => setCountryCode("+92")}
+                    >
+                      <Text style={styles.countryOptionText}>PK +92</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.countryOption, countryCode === "+1" ? styles.countryOptionActive : null]}
+                      onPress={() => setCountryCode("+1")}
+                    >
+                      <Text style={styles.countryOptionText}>US +1</Text>
+                    </Pressable>
+                  </View>
+                  <TextInput
+                    accessibilityLabel="Phone"
+                    value={phone}
+                    onChangeText={(value) => setPhone(formatPhoneNumber(value, countryCode))}
+                    keyboardType="phone-pad"
+                    placeholder={countryCode === "+92" ? "0300-1234567" : "(601) 210-9282"}
+                    style={[styles.input, styles.phoneInput]}
+                  />
+                </View>
+              </>
+            ) : null}
+
+            {activeTab === "lawyer" && registrationMode && !otpRequested ? (
+              <>
+                <Text style={styles.fieldLabel}>Full Name</Text>
+                <TextInput
+                  accessibilityLabel="Your name"
+                  value={registration.displayName}
+                  onChangeText={(displayName) => setRegistration({ ...registration, displayName })}
+                  style={styles.input}
+                />
+                <Text style={styles.fieldLabel}>Firm / Chamber Name</Text>
+                <TextInput
+                  accessibilityLabel="Practice name"
+                  value={registration.firmName}
+                  onChangeText={(firmName) => setRegistration({ ...registration, firmName })}
+                  style={styles.input}
+                />
+                <Text style={styles.fieldLabel}>Email Address</Text>
+                <TextInput
+                  accessibilityLabel="Email"
+                  value={registration.email}
+                  onChangeText={(email) => setRegistration({ ...registration, email })}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  style={styles.input}
+                />
+                <Text style={styles.fieldLabel}>Primary City</Text>
+                <TextInput
+                  accessibilityLabel="City"
+                  value={registration.primaryCity}
+                  onChangeText={(primaryCity) => setRegistration({ ...registration, primaryCity })}
+                  style={styles.input}
+                />
+              </>
+            ) : null}
+
+            {otpRequested ? (
+              <>
+                <Text style={styles.fieldLabel}>OTP Verification Code</Text>
+                <View style={styles.otpRow}>
+                  {otpDigits.map((digit, index) => (
+                    <TextInput
+                      key={index}
+                      accessibilityLabel={`OTP digit ${index + 1}`}
+                      value={digit}
+                      onChangeText={(value) => handleOtpChange(index, value)}
+                      keyboardType="number-pad"
+                      maxLength={1}
+                      style={styles.otpInput}
+                    />
+                  ))}
+                </View>
+                <View style={styles.otpActions}>
+                  <Pressable onPress={() => void (activeTab === "lawyer" ? startLawyerLogin() : startClientLogin())}>
+                    <Text style={styles.linkText}>Resend OTP</Text>
+                  </Pressable>
+                  <Pressable onPress={resetAuthFlow}>
+                    <Text style={styles.linkTextAccent}>Change Number</Text>
+                  </Pressable>
+                </View>
+              </>
+            ) : null}
+
+            <Pressable
+              accessibilityLabel={otpRequested ? "Verify OTP" : "Request OTP"}
+              style={styles.primaryButton}
+              onPress={() => void (otpRequested
+                ? (activeTab === "lawyer" ? verifyLawyerLogin() : verifyClientLogin())
+                : (activeTab === "lawyer" ? startLawyerLogin() : startClientLogin()))}
+            >
+              <Text style={styles.primaryButtonText}>
+                {otpRequested
+                  ? (activeTab === "lawyer"
+                    ? (registrationMode ? "Verify & Create Workspace" : "Verify & Sign In")
+                    : "Verify & Sign In")
+                  : "Request OTP"}
+              </Text>
+            </Pressable>
+
+            {activeTab === "lawyer" && !otpRequested ? (
+              <Pressable
+                accessibilityLabel={registrationMode ? "Use existing lawyer login" : "Create workspace"}
+                style={styles.secondaryButton}
+                onPress={() => {
+                  setRegistrationMode(!registrationMode);
+                  resetAuthFlow();
+                }}
+              >
+                <Text style={styles.secondaryButtonText}>
+                  {registrationMode ? "Already have a workspace? Sign in" : "Invited lawyer? Create workspace"}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -600,9 +895,6 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
 
         {tab === "more" ? (
           <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 140 }}>
-            {onBack ? <Pressable style={styles.secondaryButton} onPress={onBack}>
-              <Text style={styles.secondaryButtonText}>Back to mode select</Text>
-            </Pressable> : null}
             <Pressable style={styles.secondaryButton} onPress={() => void signOut()}>
               <Text style={styles.secondaryButtonText}>Sign out</Text>
             </Pressable>
@@ -623,6 +915,22 @@ const styles = StyleSheet.create({
     paddingBottom: 48,
     gap: 12,
   },
+  loginScroll: {
+    paddingBottom: 48,
+  },
+  headerBlock: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: 16,
+    paddingBottom: 8,
+    alignItems: "center",
+    gap: 8,
+  },
+  heroTitle: {
+    fontSize: 36,
+    fontWeight: "700",
+    color: theme.textPrimary,
+    textAlign: "center",
+  },
   loginCard: {
     backgroundColor: theme.surface,
     margin: 20,
@@ -631,6 +939,101 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.border,
     gap: 14,
+  },
+  portalTab: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: theme.background,
+    alignItems: "center",
+  },
+  portalTabActive: {
+    backgroundColor: theme.primary,
+  },
+  portalTabText: {
+    color: theme.textSecondary,
+    fontWeight: "600",
+  },
+  portalTabActiveText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+  },
+  fieldLabel: {
+    color: theme.textSecondary,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  phoneRow: {
+    gap: 10,
+  },
+  countryPicker: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  countryOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: theme.background,
+  },
+  countryOptionActive: {
+    borderColor: theme.primary,
+    backgroundColor: theme.primaryLight,
+  },
+  countryOptionText: {
+    color: theme.textPrimary,
+    fontWeight: "600",
+    fontSize: 12,
+  },
+  phoneInput: {
+    marginTop: 0,
+  },
+  statusBanner: {
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: theme.primaryLight,
+    borderWidth: 1,
+    borderColor: "rgba(15, 110, 86, 0.1)",
+    color: theme.primaryDark,
+    fontSize: 13,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  otpRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 8,
+  },
+  otpInput: {
+    width: 44,
+    height: 48,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: theme.surface,
+    textAlign: "center",
+    fontSize: 20,
+    fontWeight: "700",
+    color: theme.textPrimary,
+  },
+  otpActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  linkText: {
+    color: theme.primary,
+    fontWeight: "700",
+    fontSize: 13,
+    textDecorationLine: "underline",
+  },
+  linkTextAccent: {
+    color: theme.accent,
+    fontWeight: "700",
+    fontSize: 13,
+    textDecorationLine: "underline",
   },
   eyebrow: {
     color: theme.primary,
