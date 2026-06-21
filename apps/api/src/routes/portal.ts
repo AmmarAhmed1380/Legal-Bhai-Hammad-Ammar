@@ -31,14 +31,33 @@ export function registerPortalRoutes(ctx: ProductRouteContext): void {
         return { error: "Portal OTP verification is required" };
       }
       if (!detail) {
-        return { cases: await store.listPortalMattersForAccess(portalToken, access.link.id) };
+        const cases = await store.listPortalMattersForAccess(portalToken, access.link.id);
+        if (process.env.NODE_ENV === "development") {
+          console.log("[client-portal] /v1/portal/cases", {
+            clientId: access.clientAccount.id,
+            portalLinkId: access.link.id,
+            sourceMatterId: access.link.matterId,
+            matterIds: cases.map((matter) => matter.id),
+            caseNumbers: cases.map((matter) => matter.rawCaseNumber),
+          });
+        }
+        return { cases };
       }
       const matter = await store.getPortalMatterForAccess(portalToken, access.link.id, (request.params as { id: string }).id);
       if (!matter) {
         reply.code(404);
         return { error: "Not found" };
       }
-      return { case: matter };
+      if (process.env.NODE_ENV === "development") {
+        console.log("[client-portal] /v1/portal/cases/:id", {
+          clientId: access.clientAccount.id,
+          portalLinkId: access.link.id,
+          requestedMatterId: matter.id,
+          caseNumber: matter.rawCaseNumber,
+        });
+      }
+      const messages = matter.thread ? await store.listMessages(access.session, matter.thread.id) : [];
+      return { case: matter, messages };
     });
   };
 

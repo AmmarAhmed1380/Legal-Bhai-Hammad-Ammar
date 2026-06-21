@@ -24,9 +24,6 @@
     "test:deployment": "node scripts/verify-deployment-assets.mjs",
     "typecheck:mobile": "npm --workspace @wakeel/mobile exec tsc -- --noEmit",
     "verify": "npm run test:api && npm run typecheck:api && npm run build:web && npm run test:web:e2e && npm run typecheck:mobile && npm run test:mobile:flows && npm run test:deployment",
-    "brother:test": "node scripts/start-brother-test.mjs",
-    "brother:test:mobile": "node scripts/start-brother-test.mjs --mobile",
-    "brother:test:reset": "node scripts/reset-brother-test.mjs",
     "reset:demo": "npm --workspace @wakeel/api run reset:demo",
     "vps:sync": "node scripts/vps-sync-config.mjs",
     "vps:sync:api": "node scripts/vps-sync-api.mjs"

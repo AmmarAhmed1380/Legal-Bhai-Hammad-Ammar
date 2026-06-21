@@ -21,7 +21,7 @@ const forbiddenPathPatterns = [
   /(^|\/)(dist|build|coverage)(\/|$)/,
   /(^|\/)logs?(\/|$)/,
   /(^|\/)data\/uploads(\/|$)/,
-  /(^|\/)data\/(product-uploads|brother-test-uploads|runtime)(\/|$)/,
+  /(^|\/)data\/(product-uploads|runtime)(\/|$)/,
   /(^|\/)apps\/api\/data\/uploads(\/|$)/,
   /(^|\/)apps\/api\/data\/(runtime|product-uploads)(\/|$)/,
   /\.(sqlite|sqlite-wal|sqlite-shm|log|zip|tgz|tar|tar\.gz|dump|dump\.age|apk|aab|tsbuildinfo)$/i,

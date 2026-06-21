@@ -45,14 +45,9 @@ export default function ClientSidebar({
         )
       ) : profile ? (
         <div className="panel">
-          <div className="eyebrow">Client Workspace</div>
-          <h1 className="title" style={{ marginBottom: 4 }}>
-            {profile.clientAccount.displayName}
-          </h1>
-          <p className="muted" style={{ marginBottom: 16 }}>{profile.firm?.name ?? "Legal Bhai"}</p>
-          <button className="button" type="button" onClick={signOut}>
-            Sign Out
-          </button>
+          <div className="eyebrow">Client Profile</div>
+          <p className="muted" style={{ margin: "6px 0 4px" }}>{profile.firm?.name ?? "Legal Bhai"}</p>
+          <p style={{ margin: 0, fontWeight: 700 }}>{profile.clientAccount.phone}</p>
         </div>
       ) : null}
 
@@ -81,7 +76,8 @@ export default function ClientSidebar({
                     textAlign: "left",
                     cursor: "pointer",
                     border: isActive ? "1px solid var(--primary)" : undefined,
-                    background: isActive ? "rgba(15, 110, 86, 0.02)" : undefined
+                    background: isActive ? "rgba(15, 110, 86, 0.04)" : undefined,
+                    boxShadow: isActive ? "0 10px 24px rgba(15, 110, 86, 0.10)" : undefined,
                   }}
                 >
                   <div className="top-bar" style={{ marginBottom: 10 }}>

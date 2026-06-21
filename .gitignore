@@ -31,7 +31,6 @@ __MACOSX
 data/*.sqlite
 data/*.sqlite-*
 data/uploads
-data/brother-test-uploads
 data/product-uploads
 data/runtime
 backups

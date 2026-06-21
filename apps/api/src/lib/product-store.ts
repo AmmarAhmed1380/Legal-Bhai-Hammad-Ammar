@@ -577,11 +577,55 @@ export class ProductStore {
     }
   }
 
-  private seed(): void {
-    const count = this.db.prepare("SELECT COUNT(*) AS count FROM firms").get() as { count: number };
-    if (count.count > 0) {
-      return;
+  private resetSeedData(): void {
+    const tables = [
+      "notification_jobs",
+      "notification_attempts",
+      "notification_preferences",
+      "notification_consents",
+      "portal_links",
+      "refresh_tokens",
+      "app_sessions",
+      "magic_link_tokens",
+      "audit_events",
+      "invoices",
+      "time_entries",
+      "calendar_items",
+      "hearings",
+      "document_links",
+      "documents",
+      "messages",
+      "message_threads",
+      "client_memberships",
+      "matter_parties",
+      "matter_matches",
+      "cause_list_entries",
+      "ingestion_runs",
+      "court_sources",
+      "csv_import_jobs",
+      "csv_import_rows",
+      "alerts",
+      "matters",
+      "client_accounts",
+      "firm_memberships",
+      "product_users",
+      "firms",
+      "otp_requests",
+      "pilot_invites",
+    ];
+
+    this.db.exec("PRAGMA foreign_keys = OFF;");
+    try {
+      for (const table of tables) {
+        this.db.prepare(`DELETE FROM ${table}`).run();
+      }
+    } finally {
+      this.db.exec("PRAGMA foreign_keys = ON;");
     }
+  }
+
+  private seed(): void {
+    this.resetSeedData();
 
     const createdAt = nowIso();
     const firmId = "firm-hassan-co";
@@ -592,8 +636,8 @@ export class ProductStore {
       .run(firmId, "Hassan & Co. Law Associates", "Islamabad", "solo_plus", "Asia/Karachi", "trial", createdAt);
 
     const staffUsers: ProductUser[] = [
-      { id: "staff-owner", phone: "03001234567", email: "ahmed@hassanco.pk", displayName: "Ahmed Hassan", language: "en", status: "active" },
-      { id: "staff-lawyer", phone: "03007654321", email: "ayesha@hassanco.pk", displayName: "Ayesha Khan", language: "en", status: "active" },
+      { id: "staff-owner", phone: "03001234567", email: "ahmed@hassanco.pk", displayName: "Advocate Salman Hassan", language: "en", status: "active" },
+      { id: "staff-lawyer", phone: "03007654321", email: "sana@hassanco.pk", displayName: "Sana Malik", language: "en", status: "active" },
       { id: "staff-assistant", phone: "03001112222", email: "hamza@hassanco.pk", displayName: "Hamza Sheikh", language: "en", status: "active" },
     ];
     const insertUser = this.db.prepare(
@@ -625,7 +669,6 @@ export class ProductStore {
 
     const clients: ClientAccount[] = [
       { id: "client-redtone", phone: "03005550001", displayName: "Ahmed Zubair", language: "en", status: "active" },
-      { id: "client-farooq", phone: "03005550002", displayName: "Farooq Traders", language: "ur", status: "active" },
     ];
     const insertClient = this.db.prepare(
       "INSERT INTO client_accounts (id, phone, display_name, language, status, created_at, firm_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -645,34 +688,21 @@ export class ProductStore {
         matterType: "litigation",
         stage: "arguments",
         status: "open",
-        nextHearingAt: "2026-04-28T09:30:00+05:00",
+        nextHearingAt: "2026-08-18T11:00:00+05:00",
         leadLawyerId: "staff-owner",
       },
       {
         id: "matter-farooq",
         firmId,
-        courtId: "isb-district-east",
-        rawCaseNumber: "Civil Suit 112/2026",
-        normalizedCaseNumber: "CIVIL SUIT 112/2026",
-        title: "Farooq Traders v Rizwan Builders",
+        courtId: "rwp-district-sessions",
+        rawCaseNumber: "Civil Suit 45/2025",
+        normalizedCaseNumber: "CIVIL SUIT 45/2025",
+        title: "Ahmed Zubair v. Property Builders Ltd",
         matterType: "litigation",
         stage: "evidence",
         status: "open",
-        nextHearingAt: "2026-04-29T11:00:00+05:00",
-        leadLawyerId: "staff-lawyer",
-      },
-      {
-        id: "matter-qasim",
-        firmId,
-        courtId: "rwp-district-sessions",
-        rawCaseNumber: "Criminal Revision 77/2026",
-        normalizedCaseNumber: "CRIMINAL REVISION 77/2026",
-        title: "State v Qasim Ali",
-        matterType: "litigation",
-        stage: "notice",
-        status: "open",
-        nextHearingAt: "2026-04-29T11:15:00+05:00",
-        leadLawyerId: "staff-assistant",
+        nextHearingAt: "2026-08-24T14:00:00+05:00",
+        leadLawyerId: "staff-owner",
       },
     ];
     const insertMatter = this.db.prepare(`
@@ -701,9 +731,8 @@ export class ProductStore {
     const parties: MatterParty[] = [
       { id: "party-redtone-a", matterId: "matter-redtone", partyType: "petitioner", displayName: "Redtone Telecommunications Pak Pvt Ltd", contactRef: "client-redtone" },
       { id: "party-redtone-b", matterId: "matter-redtone", partyType: "respondent", displayName: "Commissioner Inland Revenue", contactRef: null },
-      { id: "party-farooq-a", matterId: "matter-farooq", partyType: "petitioner", displayName: "Farooq Traders", contactRef: "client-farooq" },
-      { id: "party-farooq-b", matterId: "matter-farooq", partyType: "respondent", displayName: "Rizwan Builders", contactRef: null },
-      { id: "party-qasim-a", matterId: "matter-qasim", partyType: "petitioner", displayName: "Qasim Ali", contactRef: null },
+      { id: "party-zubair-property-a", matterId: "matter-farooq", partyType: "plaintiff", displayName: "Ahmed Zubair", contactRef: "client-redtone" },
+      { id: "party-zubair-property-b", matterId: "matter-farooq", partyType: "defendant", displayName: "Property Builders Ltd", contactRef: null },
     ];
     const insertParty = this.db.prepare(
       "INSERT INTO matter_parties (id, matter_id, party_type, display_name, contact_ref, created_at) VALUES (?, ?, ?, ?, ?, ?)",
@@ -714,7 +743,7 @@ export class ProductStore {
 
     const clientMemberships: ClientMembership[] = [
       { id: "client-membership-redtone", clientAccountId: "client-redtone", matterId: "matter-redtone", accessLevel: "message" },
-      { id: "client-membership-farooq", clientAccountId: "client-farooq", matterId: "matter-farooq", accessLevel: "message" },
+      { id: "client-membership-zubair-property", clientAccountId: "client-redtone", matterId: "matter-farooq", accessLevel: "message" },
     ];
     const insertClientMembership = this.db.prepare(
       "INSERT INTO client_memberships (id, client_account_id, matter_id, access_level, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -731,7 +760,7 @@ export class ProductStore {
 
     const threads: MessageThread[] = [
       { id: "thread-redtone", matterId: "matter-redtone", participantType: "firm_client", status: "open" },
-      { id: "thread-farooq", matterId: "matter-farooq", participantType: "firm_client", status: "open" },
+      { id: "thread-zubair-property", matterId: "matter-farooq", participantType: "firm_client", status: "open" },
     ];
     const insertThread = this.db.prepare(
       "INSERT INTO message_threads (id, matter_id, participant_type, status, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -742,123 +771,78 @@ export class ProductStore {
 
     const documents: ProductDocument[] = [
       {
-        id: "doc-redtone-order",
-        firmId,
-        matterId: "matter-redtone",
-        folderId: null,
-        type: "hearing_order",
-        title: "order-18-apr-2026.jpg",
-        storageKey: "seed:hearing-order-sample.png",
-        mimeType: "image/png",
-        uploadedBy: "staff-owner",
-        ocrStatus: "completed",
-        ocrText: "Order reserved. Next date 14 May 2026.",
-        searchText: "Order reserved. Next date 14 May 2026.",
-        portalVisible: true,
-      },
-      {
         id: "doc-redtone-vakalatnama",
         firmId,
         matterId: "matter-redtone",
         folderId: null,
         type: "vakalatnama",
-        title: "vakalatnama-signed-final.pdf",
-        storageKey: "seed:plaint-summary.pdf",
+        title: "Vakalatnama_Signed.pdf",
+        storageKey: "seed:vakalatnama-signed.pdf",
         mimeType: "application/pdf",
         uploadedBy: "staff-owner",
         ocrStatus: "completed",
-        ocrText: "Vakalatnama client proxy attorney signature",
-        searchText: "Vakalatnama client proxy attorney signature",
+        ocrText: "Signed vakalatnama authorizing Advocate Salman Hassan to appear before Islamabad High Court.",
+        searchText: "Signed vakalatnama Redtone Telecommunications Advocate Salman Hassan Islamabad High Court.",
         portalVisible: true,
       },
       {
-        id: "doc-redtone-evidence",
-        firmId,
-        matterId: "matter-redtone",
-        folderId: null,
-        type: "evidence",
-        title: "evidence-receipts-photograph.jpg",
-        storageKey: "seed:hearing-order-sample.png",
-        mimeType: "image/png",
-        uploadedBy: "staff-owner",
-        ocrStatus: "completed",
-        ocrText: "Receipt 50000 PKR payment bank transfer",
-        searchText: "Receipt 50000 PKR payment bank transfer",
-        portalVisible: true,
-      },
-      {
-        id: "doc-redtone-reply-long",
+        id: "doc-redtone-written-objections",
         firmId,
         matterId: "matter-redtone",
         folderId: null,
         type: "pleading",
-        title: "written-reply-objections-redtone-telecom-vs-fbr-long-filename-test.pdf",
-        storageKey: "seed:plaint-summary.pdf",
+        title: "Written_Objections_Final.docx",
+        storageKey: "seed:written-objections-final.docx",
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        uploadedBy: "staff-owner",
+        ocrStatus: "completed",
+        ocrText: "Final written objections with jurisdictional grounds, facts, legal arguments, and prayer clauses.",
+        searchText: "Final written objections jurisdictional grounds Redtone Telecommunications tax recovery Islamabad High Court.",
+        portalVisible: true,
+      },
+      {
+        id: "doc-redtone-order",
+        firmId,
+        matterId: "matter-redtone",
+        folderId: null,
+        type: "evidence",
+        title: "Evidence_Annexures.pdf",
+        storageKey: "seed:evidence-annexures.pdf",
         mimeType: "application/pdf",
         uploadedBy: "staff-owner",
         ocrStatus: "completed",
-        ocrText: "Written objections reply grounds of appeal",
-        searchText: "Written objections reply grounds of appeal",
+        ocrText: "Evidence annexures with payment receipts, department correspondence, and tax recovery notices.",
+        searchText: "Evidence annexures payment receipts correspondence tax recovery notices Redtone.",
+        portalVisible: true,
+      },
+      {
+        id: "doc-redtone-hearing-order",
+        firmId,
+        matterId: "matter-redtone",
+        folderId: null,
+        type: "hearing_order",
+        title: "Hearing_Order_April.png",
+        storageKey: "seed:hearing-order-april.png",
+        mimeType: "image/png",
+        uploadedBy: "staff-owner",
+        ocrStatus: "completed",
+        ocrText: "Islamabad High Court order sheet showing arguments heard and order reserved for pronouncement.",
+        searchText: "Islamabad High Court order sheet arguments heard order reserved pronouncement.",
         portalVisible: true,
       },
       {
         id: "doc-farooq-pleading",
         firmId,
         matterId: "matter-farooq",
-        folderId: "folder-litigation",
+        folderId: null,
         type: "pleading",
-        title: "plaint-summary.pdf",
-        storageKey: "seed:plaint-summary.pdf",
+        title: "Plaint_Property_Dispute.pdf",
+        storageKey: "seed:plaint-property-dispute.pdf",
         mimeType: "application/pdf",
-        uploadedBy: "staff-lawyer",
-        ocrStatus: "pending",
-        ocrText: null,
-        searchText: "Farooq Traders plaint summary Rizwan Builders",
-        portalVisible: true,
-      },
-      {
-        id: "doc-farooq-order",
-        firmId,
-        matterId: "matter-farooq",
-        folderId: null,
-        type: "hearing_order",
-        title: "hearing-order-farooq-29-apr.png",
-        storageKey: "seed:hearing-order-sample.png",
-        mimeType: "image/png",
-        uploadedBy: "staff-lawyer",
+        uploadedBy: "staff-owner",
         ocrStatus: "completed",
-        ocrText: "Next hearing on Rizwan Builders case",
-        searchText: "Next hearing on Rizwan Builders case",
-        portalVisible: true,
-      },
-      {
-        id: "doc-farooq-evidence",
-        firmId,
-        matterId: "matter-farooq",
-        folderId: null,
-        type: "evidence",
-        title: "delivery-challans-and-invoices-2026-final.pdf",
-        storageKey: "seed:plaint-summary.pdf",
-        mimeType: "application/pdf",
-        uploadedBy: "staff-lawyer",
-        ocrStatus: "completed",
-        ocrText: "Challan invoice numbers evidence",
-        searchText: "Challan invoice numbers evidence",
-        portalVisible: true,
-      },
-      {
-        id: "doc-farooq-vakalatnama",
-        firmId,
-        matterId: "matter-farooq",
-        folderId: null,
-        type: "vakalatnama",
-        title: "signed-vakalatnama-farooq-traders.pdf",
-        storageKey: "seed:plaint-summary.pdf",
-        mimeType: "application/pdf",
-        uploadedBy: "staff-lawyer",
-        ocrStatus: "completed",
-        ocrText: "signed vakalatnama proxy form",
-        searchText: "signed vakalatnama proxy form",
+        ocrText: "Plaint seeking declaration, specific performance, and damages against Property Builders Ltd.",
+        searchText: "Plaint Ahmed Zubair Property Builders Ltd declaration specific performance damages.",
         portalVisible: true,
       },
     ];
@@ -869,38 +853,35 @@ export class ProductStore {
     const insertDocumentLink = this.db.prepare(
       "INSERT INTO document_links (id, document_id, matter_id, created_at) VALUES (?, ?, ?, ?)",
     );
-    insertDocumentLink.run("document-link-redtone", "doc-redtone-order", "matter-redtone", createdAt);
-    insertDocumentLink.run("document-link-redtone-test-1", "doc-redtone-vakalatnama", "matter-redtone", createdAt);
-    insertDocumentLink.run("document-link-redtone-test-2", "doc-redtone-evidence", "matter-redtone", createdAt);
-    insertDocumentLink.run("document-link-redtone-test-3", "doc-redtone-reply-long", "matter-redtone", createdAt);
-    insertDocumentLink.run("document-link-farooq", "doc-farooq-pleading", "matter-farooq", createdAt);
-    insertDocumentLink.run("document-link-farooq-test-1", "doc-farooq-order", "matter-farooq", createdAt);
-    insertDocumentLink.run("document-link-farooq-test-2", "doc-farooq-evidence", "matter-farooq", createdAt);
-    insertDocumentLink.run("document-link-farooq-test-3", "doc-farooq-vakalatnama", "matter-farooq", createdAt);
+    for (const document of documents) {
+      if (document.matterId) {
+        insertDocumentLink.run(`document-link-${document.id}`, document.id, document.matterId, createdAt);
+      }
+    }
 
     const hearings: Hearing[] = [
       {
         id: "hearing-redtone-1",
         matterId: "matter-redtone",
-        listedAt: "2026-04-18T10:05:00+05:00",
-        outcome: "Arguments concluded",
-        notes: "Bench reserved the order and adjourned for pronouncement.",
-        nextDate: "2026-05-14",
+        listedAt: "2026-08-18T11:00:00+05:00",
+        outcome: "Order pronouncement fixed",
+        notes: "Bench heard both sides and fixed the matter for order pronouncement.",
+        nextDate: "2026-08-18",
         courtroom: "Court No: 8",
         bench: "Justice Muhammad Azam Khan / Justice Inaam Ameen Minhas",
         sourceType: "live_ihc",
-        documentId: "doc-redtone-order",
+        documentId: null,
       },
       {
-        id: "hearing-farooq-1",
+        id: "hearing-zubair-property-1",
         matterId: "matter-farooq",
-        listedAt: "2026-04-19T11:00:00+05:00",
-        outcome: "Evidence continued",
-        notes: "Plaintiff witness partly examined.",
-        nextDate: "2026-05-02",
-        courtroom: "Room 12",
-        bench: "Civil Judge East-I",
-        sourceType: "live_isb_district",
+        listedAt: "2026-08-24T14:00:00+05:00",
+        outcome: "Evidence fixed",
+        notes: "Plaintiff witnesses to appear with original allotment documents and payment receipts.",
+        nextDate: "2026-08-24",
+        courtroom: "Civil Court Room 6",
+        bench: "Civil Judge Rawalpindi",
+        sourceType: "live_rwp_district",
         documentId: null,
       },
     ];
@@ -925,9 +906,8 @@ export class ProductStore {
     }
 
     const calendarItems: CalendarItem[] = [
-      { id: "calendar-redtone", matterId: "matter-redtone", listedAt: "2026-04-28T09:30:00+05:00", courtroom: "Court No: 8", bench: "Bench A", sourceType: "live_ihc", sourceConfidence: 0.93, conflictState: "none" },
-      { id: "calendar-farooq", matterId: "matter-farooq", listedAt: "2026-04-29T11:00:00+05:00", courtroom: "Room 12", bench: "Civil Judge East-I", sourceType: "live_isb_district", sourceConfidence: 0.82, conflictState: "possible" },
-      { id: "calendar-qasim", matterId: "matter-qasim", listedAt: "2026-04-29T11:15:00+05:00", courtroom: "Courtroom 4", bench: "Additional Sessions Judge-III", sourceType: "live_rwp_district", sourceConfidence: 0.8, conflictState: "possible" },
+      { id: "calendar-redtone", matterId: "matter-redtone", listedAt: "2026-08-18T11:00:00+05:00", courtroom: "Court No: 8", bench: "Bench A", sourceType: "live_ihc", sourceConfidence: 0.96, conflictState: "none" },
+      { id: "calendar-zubair-property", matterId: "matter-farooq", listedAt: "2026-08-24T14:00:00+05:00", courtroom: "Civil Court Room 6", bench: "Civil Judge Rawalpindi", sourceType: "live_rwp_district", sourceConfidence: 0.9, conflictState: "none" },
     ];
     const insertCalendar = this.db.prepare(
       "INSERT INTO calendar_items (id, matter_id, listed_at, courtroom, bench, source_type, source_confidence, conflict_state, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -952,33 +932,77 @@ export class ProductStore {
         threadId: "thread-redtone",
         senderType: "staff",
         senderId: "staff-owner",
-        body: "Arguments concluded today. The bench reserved the order.",
+        body: "Arguments concluded today before the Islamabad High Court. The bench has fixed the matter for order pronouncement.",
         language: "en",
         deliveryChannel: "in_app",
         deliveryState: "delivered",
-        createdAt: "2026-04-18T11:42:00+05:00",
+        createdAt: "2026-05-14T11:42:00+05:00",
       },
       {
         id: "message-redtone-2",
         threadId: "thread-redtone",
         senderType: "client",
         senderId: "client-redtone",
-        body: "Received. Please let us know once the next order is announced.",
+        body: "Thank you, Salman sahib. Does the company need to prepare anything before the order is announced?",
         language: "en",
         deliveryChannel: "in_app",
         deliveryState: "delivered",
-        createdAt: "2026-04-18T12:05:00+05:00",
+        createdAt: "2026-05-14T12:05:00+05:00",
       },
       {
-        id: "message-farooq-1",
-        threadId: "thread-farooq",
+        id: "message-redtone-3",
+        threadId: "thread-redtone",
         senderType: "staff",
-        senderId: "staff-lawyer",
-        body: "Agli tareekh 2 May hai. Shahid witness ki cross hogi.",
-        language: "ur",
-        deliveryChannel: "sms",
+        senderId: "staff-owner",
+        body: "No fresh filing is required right now. I have uploaded the written reply and both payment receipts in the portal for your records.",
+        language: "en",
+        deliveryChannel: "in_app",
         deliveryState: "delivered",
-        createdAt: "2026-04-19T12:15:00+05:00",
+        createdAt: "2026-05-14T12:22:00+05:00",
+      },
+      {
+        id: "message-redtone-4",
+        threadId: "thread-redtone",
+        senderType: "client",
+        senderId: "client-redtone",
+        body: "Documents are visible. Please notify me as soon as the order is pronounced so we can brief management.",
+        language: "en",
+        deliveryChannel: "in_app",
+        deliveryState: "delivered",
+        createdAt: "2026-05-14T12:40:00+05:00",
+      },
+      {
+        id: "message-redtone-5",
+        threadId: "thread-redtone",
+        senderType: "staff",
+        senderId: "staff-owner",
+        body: "Of course. I will attend the pronouncement and send you the order summary immediately after court.",
+        language: "en",
+        deliveryChannel: "in_app",
+        deliveryState: "delivered",
+        createdAt: "2026-05-14T12:55:00+05:00",
+      },
+      {
+        id: "message-zubair-property-1",
+        threadId: "thread-zubair-property",
+        senderType: "staff",
+        senderId: "staff-owner",
+        body: "For the evidence hearing, please keep the original allotment letter, payment receipts, and CNIC copy ready.",
+        language: "en",
+        deliveryChannel: "in_app",
+        deliveryState: "delivered",
+        createdAt: "2026-05-18T16:15:00+05:00",
+      },
+      {
+        id: "message-zubair-property-2",
+        threadId: "thread-zubair-property",
+        senderType: "client",
+        senderId: "client-redtone",
+        body: "I have arranged the originals and will bring them to your office one day before the hearing.",
+        language: "en",
+        deliveryChannel: "in_app",
+        deliveryState: "delivered",
+        createdAt: "2026-05-18T16:31:00+05:00",
       },
     ];
     const insertMessage = this.db.prepare(
@@ -999,8 +1023,8 @@ export class ProductStore {
     }
 
     const timeEntries: TimeEntry[] = [
-      { id: "time-redtone", firmId, matterId: "matter-redtone", userId: "staff-owner", startedAt: "2026-04-18T12:30:00+05:00", minutes: 90, narrative: "Hearing appearance and client update", billable: true },
-      { id: "time-farooq", firmId, matterId: "matter-farooq", userId: "staff-lawyer", startedAt: "2026-04-19T15:00:00+05:00", minutes: 45, narrative: "Evidence prep and witness coordination", billable: true },
+      { id: "time-redtone", firmId, matterId: "matter-redtone", userId: "staff-owner", startedAt: "2026-05-14T12:30:00+05:00", minutes: 95, narrative: "High Court appearance, order-pronouncement note, and client update", billable: true },
+      { id: "time-zubair-property", firmId, matterId: "matter-farooq", userId: "staff-owner", startedAt: "2026-05-18T15:30:00+05:00", minutes: 45, narrative: "Witness preparation call and evidence checklist", billable: true },
     ];
     const insertTime = this.db.prepare(
       "INSERT INTO time_entries (id, firm_id, matter_id, user_id, started_at, minutes, narrative, billable, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1020,7 +1044,7 @@ export class ProductStore {
     }
 
     const invoices: Invoice[] = [
-      { id: "invoice-redtone", firmId, clientAccountId: "client-redtone", matterId: "matter-redtone", status: "issued", issuedAt: "2026-04-20", dueAt: "2026-05-05", total: 85000 },
+      { id: "invoice-redtone", firmId, clientAccountId: "client-redtone", matterId: "matter-redtone", status: "issued", issuedAt: "2026-05-15", dueAt: "2026-05-30", total: 85000 },
     ];
     const insertInvoice = this.db.prepare(
       "INSERT INTO invoices (id, firm_id, client_account_id, matter_id, status, issued_at, due_at, total, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1042,7 +1066,7 @@ export class ProductStore {
     const sources: Array<CourtSource & { metrics: Record<string, number> }> = [
       { id: "source-ihc", courtId: "ihc", sourceType: "high_court", ingestionMode: "automation", status: "live", lastSuccessfulSyncAt: "2026-04-21T04:12:00Z", metrics: { fetched: 220, matched: 14, parserErrors: 0 } },
       { id: "source-lhc-rwp", courtId: "lhc-rawalpindi-bench", sourceType: "high_court", ingestionMode: "automation", status: "manual_review", lastSuccessfulSyncAt: null, metrics: { fetched: 0, matched: 0, parserErrors: 0 } },
-      { id: "source-rwp-district", courtId: "rwp-district-sessions", sourceType: "district", ingestionMode: "automation", status: "degraded", lastSuccessfulSyncAt: "2026-04-21T03:25:00Z", metrics: { fetched: 74, matched: 5, parserErrors: 2 } },
+      { id: "source-rwp-district", courtId: "rwp-district-sessions", sourceType: "district", ingestionMode: "automation", status: "live", lastSuccessfulSyncAt: "2026-05-18T03:25:00Z", metrics: { fetched: 74, matched: 5, parserErrors: 0 } },
     ];
     const insertSource = this.db.prepare(
       "INSERT INTO court_sources (id, court_id, source_type, ingestion_mode, status, last_successful_sync_at, metrics_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1099,9 +1123,9 @@ export class ProductStore {
         rowsMatched: 5,
         parserFailures: 2,
         unmatchedCount: 6,
-        note: "Bench headings changed on the source page.",
-        startedAt: "2026-04-21T03:22:00Z",
-        finishedAt: "2026-04-21T03:25:00Z",
+        note: null,
+        startedAt: "2026-05-18T03:22:00Z",
+        finishedAt: "2026-05-18T03:25:00Z",
       },
     ];
     const insertRun = this.db.prepare(
@@ -1128,8 +1152,8 @@ export class ProductStore {
     }
 
     const alerts: ProductAlert[] = [
-      { id: "alert-sync", firmId, type: "sync_issue", title: "Rawalpindi parser drift detected", body: "2 unmatched rows need ops review before tomorrow morning.", createdAt, readAt: null },
-      { id: "alert-message", firmId, type: "client_message", title: "New client reply from Ahmed Zubair", body: "Client asked for the reserved order follow-up date.", createdAt, readAt: null },
+      { id: "alert-redtone", firmId, type: "hearing_due", title: "Order pronouncement approaching", body: "W.P. 2076/2019 is fixed for order pronouncement at IHC.", createdAt, readAt: null },
+      { id: "alert-message", firmId, type: "client_message", title: "New client reply from Ahmed Zubair", body: "Client confirmed witness documents for the property suit.", createdAt, readAt: null },
     ];
     const insertAlert = this.db.prepare(
       "INSERT INTO alerts (id, firm_id, type, title, body, created_at, read_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -3346,13 +3370,12 @@ export class ProductStore {
     if (!access || access.link.id !== portalLinkId) {
       return [];
     }
-    const matter = this.getMatter(access.session, access.link.matterId);
-    return matter ? [matter] : [];
+    return this.listMatters(access.session);
   }
 
   getPortalMatterForAccess(rawToken: string, portalLinkId: string, matterId: string): MatterDetail | null {
     const access = this.getPortalAccess(rawToken);
-    if (!access || access.link.id !== portalLinkId || matterId !== access.link.matterId) {
+    if (!access || access.link.id !== portalLinkId) {
       return null;
     }
     const matter = this.getMatter(access.session, matterId);
@@ -3360,59 +3383,365 @@ export class ProductStore {
   }
 
   readSeedAsset(storageKey: string): { bytes: Buffer; contentType: string } | null {
-    if (storageKey === "seed:hearing-order-sample.png") {
-      const bytes = readFileSync(new URL("../../../../Wakeel Design System/assets/hearing-order-sample.png", import.meta.url));
-      return { bytes, contentType: "image/png" };
-    }
-
-    if (storageKey === "seed:plaint-summary.pdf") {
-      const pdf = `%PDF-1.4
-1 0 obj
-<< /Type /Catalog /Pages 2 0 R >>
-endobj
-2 0 obj
-<< /Type /Pages /Kids [3 0 R] /Count 1 >>
-endobj
-3 0 obj
-<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>
-endobj
-4 0 obj
-<< /Length 98 >>
-stream
-BT
-/F1 18 Tf
-72 720 Td
-(Wakeel plaint summary) Tj
-0 -28 Td
-/F1 12 Tf
-(Farooq Traders v Rizwan Builders.) Tj
-0 -18 Td
-(District court pleading seed for the production workspace.) Tj
-ET
-endstream
-endobj
-5 0 obj
-<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
-endobj
-xref
-0 6
-0000000000 65535 f 
-0000000009 00000 n 
-0000000058 00000 n 
-0000000115 00000 n 
-0000000241 00000 n 
-0000000389 00000 n 
-trailer
-<< /Size 6 /Root 1 0 R >>
-startxref
-459
-%%EOF
-`;
-      return { bytes: Buffer.from(pdf, "utf8"), contentType: "application/pdf" };
-    }
-
-    return null;
+    return readLegalSeedAsset(storageKey);
   }
+}
+
+export function readLegalSeedAsset(storageKey: string): { bytes: Buffer; contentType: string } | null {
+  if (storageKey === "seed:vakalatnama-signed.pdf") {
+    return {
+      bytes: buildLegalPdf("Vakalatnama Signed", buildDenseLegalPages("vakalatnama", 1)),
+      contentType: "application/pdf",
+    };
+  }
+  if (storageKey === "seed:writ-petition-final.pdf") {
+    return {
+      bytes: buildLegalPdf("W.P. 2076/2019 - Final Writ Petition", buildDenseLegalPages("writ", 6)),
+      contentType: "application/pdf",
+    };
+  }
+  if (storageKey === "seed:written-objections-final.docx") {
+    return {
+      bytes: buildLegalDocx("Written Objections Final", buildDenseLegalPages("writ", 6)),
+      contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    };
+  }
+  if (storageKey === "seed:evidence-annexures.pdf") {
+    return {
+      bytes: buildLegalPdf("Evidence Annexures", buildDenseLegalPages("annexures", 4)),
+      contentType: "application/pdf",
+    };
+  }
+  if (storageKey === "seed:plaint-property-dispute.pdf") {
+    return {
+      bytes: buildLegalPdf("Civil Suit 45/2025 - Plaint", buildDenseLegalPages("plaint", 4)),
+      contentType: "application/pdf",
+    };
+  }
+  if (storageKey === "seed:hearing-order-april.png") {
+    return {
+      bytes: readFileSync(new URL("../../../../Wakeel Design System/assets/hearing-order-sample.png", import.meta.url)),
+      contentType: "image/png",
+    };
+  }
+  return null;
+}
+
+function buildDenseLegalPages(kind: "vakalatnama" | "writ" | "annexures" | "plaint", pageCount: number): string[] {
+  const sections: Record<typeof kind, string[]> = {
+    vakalatnama: [
+      "VAKALATNAMA. I, the authorized representative of Redtone Telecommunications Pak Pvt Ltd, do hereby appoint Advocate Salman Hassan, Advocate High Court, Hassan & Co. Law Associates, Islamabad, to act, appear, plead, compromise, withdraw, inspect record, file applications, receive certified copies, and do all lawful acts in W.P. 2076/2019 pending before the Islamabad High Court.",
+      "The attorney is authorized to present written submissions, move urgent applications, receive notices, engage assisting counsel, and take all steps necessary for protection of the petitioner's constitutional and statutory rights in respect of the impugned recovery proceedings initiated by the tax authorities.",
+      "This authority includes power to sign pleadings, affidavits, applications, execution papers, objections, rejoinders, miscellaneous applications, and any other document required by the office of the Honourable Court or by law.",
+    ],
+    writ: [
+      "IN THE ISLAMABAD HIGH COURT, ISLAMABAD. Constitutional Petition under Article 199 of the Constitution of the Islamic Republic of Pakistan, 1973. Redtone Telecommunications Pak Pvt Ltd respectfully invokes the constitutional jurisdiction of this Honourable Court against unlawful recovery action, coercive notices, and proceedings undertaken without lawful authority.",
+      "The petitioner is a duly incorporated company engaged in telecommunication infrastructure and related services. The respondents have proceeded on assumptions contrary to the record, ignored material correspondence, and failed to decide the petitioner's statutory representations before initiating coercive measures.",
+      "The impugned action is without jurisdiction, violative of the principles of natural justice, and liable to be declared as having been taken without lawful authority and of no legal effect. The petitioner has no equally efficacious alternative remedy where the threatened recovery is immediate and the jurisdictional defect is apparent on the face of the record.",
+      "GROUNDS. The respondents failed to issue a proper show cause notice; failed to provide complete relied-upon material; acted in excess of statutory powers; disregarded binding departmental instructions; and treated a disputed demand as final despite pending adjudicatory steps.",
+      "PRAYER. It is respectfully prayed that this Honourable Court may suspend the impugned recovery proceedings, restrain coercive action, direct the respondents to decide pending representations after affording hearing, and grant any other relief deemed just and proper in the circumstances.",
+    ],
+    annexures: [
+      "ANNEXURE A. Certified copy index of correspondence exchanged between Redtone Telecommunications Pak Pvt Ltd and the Commissioner Inland Revenue. The record reflects repeated requests for reconciliation of demand, supply of relied-upon documents, and withdrawal of coercive recovery notices pending departmental review.",
+      "ANNEXURE B. Payment receipt and bank challan summary. Receipt No. IHC-TAX-2076-01 records deposit made under protest. The petitioner reserved all rights and stated that deposit shall not be treated as admission of liability.",
+      "ANNEXURE C. Department acknowledgment and postal receipt. The office of the respondent acknowledged receipt of written objections, supporting ledger extracts, and reconciliation statements showing disputed entries.",
+      "ANNEXURE D. Internal board authorization. The authorized representative was empowered to institute constitutional proceedings, execute vakalatnama, and coordinate with counsel for urgent relief before the Islamabad High Court.",
+    ],
+    plaint: [
+      "IN THE COURT OF CIVIL JUDGE, RAWALPINDI. Civil Suit 45/2025. Ahmed Zubair versus Property Builders Ltd. Suit for declaration, specific performance, permanent injunction, damages, and any other relief deemed appropriate.",
+      "The plaintiff entered into an agreement for purchase of a residential unit and paid substantial consideration through banking instruments and acknowledged receipts. The defendant failed to hand over possession within the promised timeline and attempted to impose additional charges not contemplated by the booking form or payment schedule.",
+      "CAUSE OF ACTION. The cause of action first arose when the defendant accepted booking amount and confirmed allotment, again when possession was delayed, and finally when the defendant refused to execute transfer documents despite receipt of repeated notices.",
+      "PRAYER. It is respectfully prayed that the defendant be directed to specifically perform the agreement, execute transfer documents, refrain from alienating the unit, pay damages for delay, and bear costs of proceedings.",
+    ],
+  };
+
+  return Array.from({ length: pageCount }, (_, index) => {
+    const heading = `${kind.toUpperCase()} - PAGE ${index + 1} OF ${pageCount}`;
+    const body = sections[kind].map((section, sectionIndex) => {
+      const clauseNumber = index * sections[kind].length + sectionIndex + 1;
+      return `${clauseNumber}. ${section} Supporting facts, office notes, annexure references, dates of correspondence, and counsel's margin annotations are reproduced for demo review. This paragraph is intentionally text-heavy so search, preview, OCR, and document rendering screens feel close to a real litigation file.`;
+    });
+    return [heading, "", ...body, "", "Verification: The contents are true to the best of the deponent's knowledge and belief. Filed through Advocate Salman Hassan, Hassan & Co. Law Associates, Islamabad."].join("\n");
+  });
+}
+
+function buildLegalPdf(title: string, pages: string[]): Buffer {
+  const fontId = 3;
+  const objects: string[] = [];
+  const pageIds = pages.map((_, index) => 4 + index * 2);
+  const contentIds = pages.map((_, index) => 5 + index * 2);
+  const pageWidth = 612;
+  const pageHeight = 792;
+  const margin = 72;
+  const textWidth = pageWidth - margin * 2;
+  const bodyFontSize = 10;
+  const headerFontSize = 13;
+  const lineHeight = 14;
+
+  objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";
+  objects[2] = `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pages.length} >>`;
+  objects[fontId] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
+
+  pages.forEach((page, index) => {
+    const pageId = pageIds[index];
+    const contentId = contentIds[index];
+    const [pageHeading = "", ...paragraphs] = page.split("\n").filter((line) => line.trim().length > 0);
+    const bodyLines = paragraphs.flatMap((paragraph) => wrapPdfParagraph(paragraph, textWidth, bodyFontSize)).slice(0, 43);
+    let y = pageHeight - margin;
+    const streamParts = [
+      "BT",
+      `/F1 ${headerFontSize} Tf`,
+      "0 Tw",
+      `${centerPdfTextX(title.toUpperCase(), pageWidth, headerFontSize).toFixed(2)} ${y} Td`,
+      `(${escapePdfText(title.toUpperCase())}) Tj`,
+      "ET",
+    ];
+
+    y -= 24;
+    streamParts.push(
+      "BT",
+      `/F1 ${bodyFontSize} Tf`,
+      "0 Tw",
+      `${centerPdfTextX(pageHeading, pageWidth, bodyFontSize).toFixed(2)} ${y} Td`,
+      `(${escapePdfText(pageHeading)}) Tj`,
+      "ET",
+    );
+
+    y -= 26;
+    streamParts.push("BT", `/F1 ${bodyFontSize} Tf`);
+    for (const line of bodyLines) {
+      const wordSpacing = line.justify ? justifiedWordSpacing(line.text, textWidth, bodyFontSize) : 0;
+      streamParts.push(`${wordSpacing.toFixed(3)} Tw`);
+      streamParts.push(`1 0 0 1 ${margin} ${y.toFixed(2)} Tm`);
+      streamParts.push(`(${escapePdfText(line.text)}) Tj`);
+      y -= lineHeight;
+    }
+    streamParts.push("0 Tw", "ET");
+    const stream = [
+      ...streamParts,
+    ].join("\n");
+    objects[pageId] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentId} 0 R >>`;
+    objects[contentId] = `<< /Length ${Buffer.byteLength(stream, "utf8")} >>\nstream\n${stream}\nendstream`;
+  });
+
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  for (let id = 1; id < objects.length; id += 1) {
+    offsets[id] = Buffer.byteLength(pdf, "utf8");
+    pdf += `${id} 0 obj\n${objects[id]}\nendobj\n`;
+  }
+  const startXref = Buffer.byteLength(pdf, "utf8");
+  pdf += `xref\n0 ${objects.length}\n0000000000 65535 f \n`;
+  for (let id = 1; id < objects.length; id += 1) {
+    pdf += `${String(offsets[id]).padStart(10, "0")} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${startXref}\n%%EOF\n`;
+  return Buffer.from(pdf, "utf8");
+}
+
+function wrapPdfParagraph(text: string, maxWidth: number, fontSize: number): Array<{ text: string; justify: boolean }> {
+  const words = text.trim().split(/\s+/);
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (estimatePdfTextWidth(next, fontSize) > maxWidth && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+  }
+  if (current) {
+    lines.push(current);
+  }
+  return lines.map((line, index) => ({ text: line, justify: index < lines.length - 1 && line.includes(" ") }));
+}
+
+function centerPdfTextX(text: string, pageWidth: number, fontSize: number): number {
+  return Math.max(36, (pageWidth - estimatePdfTextWidth(text, fontSize)) / 2);
+}
+
+function justifiedWordSpacing(text: string, targetWidth: number, fontSize: number): number {
+  const spaces = text.split(" ").length - 1;
+  if (spaces <= 0) {
+    return 0;
+  }
+  const remaining = targetWidth - estimatePdfTextWidth(text, fontSize);
+  return remaining > 0 ? remaining / spaces : 0;
+}
+
+function estimatePdfTextWidth(text: string, fontSize: number): number {
+  return text.split("").reduce((total, char) => {
+    if (char === " ") {
+      return total + fontSize * 0.28;
+    }
+    if ("il.,'|".includes(char)) {
+      return total + fontSize * 0.24;
+    }
+    if ("mwMW@#%".includes(char)) {
+      return total + fontSize * 0.78;
+    }
+    if (/[A-Z0-9]/.test(char)) {
+      return total + fontSize * 0.56;
+    }
+    return total + fontSize * 0.48;
+  }, 0);
+}
+
+function escapePdfText(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+}
+
+function buildLegalDocx(title: string, pages: string[]): Buffer {
+  const paragraphs = pages.flatMap((page) => page.split("\n").filter((line) => line.trim().length > 0));
+  const body = [
+    wordParagraph(title.toUpperCase(), "center", true),
+    ...paragraphs.map((paragraph, index) => wordParagraph(paragraph, index === 0 ? "center" : "both", index === 0)),
+  ].join("");
+  const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    ${body}
+    <w:sectPr>
+      <w:pgSz w:w="12240" w:h="15840"/>
+      <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
+    </w:sectPr>
+  </w:body>
+</w:document>`;
+  return buildZip([
+    {
+      path: "[Content_Types].xml",
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`,
+    },
+    {
+      path: "_rels/.rels",
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`,
+    },
+    {
+      path: "word/document.xml",
+      content: documentXml,
+    },
+  ]);
+}
+
+function wordParagraph(text: string, justification: "center" | "both", bold = false): string {
+  return `<w:p>
+  <w:pPr><w:jc w:val="${justification}"/><w:spacing w:after="160"/></w:pPr>
+  <w:r>
+    <w:rPr>${bold ? "<w:b/>" : ""}<w:sz w:val="${bold ? 26 : 22}"/></w:rPr>
+    <w:t xml:space="preserve">${escapeXmlText(text)}</w:t>
+  </w:r>
+</w:p>`;
+}
+
+function escapeXmlText(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function buildZip(files: Array<{ path: string; content: string }>): Buffer {
+  const localParts: Buffer[] = [];
+  const centralParts: Buffer[] = [];
+  let offset = 0;
+
+  for (const file of files) {
+    const name = Buffer.from(file.path, "utf8");
+    const data = Buffer.from(file.content, "utf8");
+    const crc = crc32(data);
+    const localHeader = Buffer.alloc(30);
+    localHeader.writeUInt32LE(0x04034b50, 0);
+    localHeader.writeUInt16LE(20, 4);
+    localHeader.writeUInt16LE(0, 6);
+    localHeader.writeUInt16LE(0, 8);
+    localHeader.writeUInt16LE(0, 10);
+    localHeader.writeUInt16LE(0, 12);
+    localHeader.writeUInt32LE(crc, 14);
+    localHeader.writeUInt32LE(data.length, 18);
+    localHeader.writeUInt32LE(data.length, 22);
+    localHeader.writeUInt16LE(name.length, 26);
+    localHeader.writeUInt16LE(0, 28);
+    localParts.push(localHeader, name, data);
+
+    const centralHeader = Buffer.alloc(46);
+    centralHeader.writeUInt32LE(0x02014b50, 0);
+    centralHeader.writeUInt16LE(20, 4);
+    centralHeader.writeUInt16LE(20, 6);
+    centralHeader.writeUInt16LE(0, 8);
+    centralHeader.writeUInt16LE(0, 10);
+    centralHeader.writeUInt16LE(0, 12);
+    centralHeader.writeUInt16LE(0, 14);
+    centralHeader.writeUInt32LE(crc, 16);
+    centralHeader.writeUInt32LE(data.length, 20);
+    centralHeader.writeUInt32LE(data.length, 24);
+    centralHeader.writeUInt16LE(name.length, 28);
+    centralHeader.writeUInt16LE(0, 30);
+    centralHeader.writeUInt16LE(0, 32);
+    centralHeader.writeUInt16LE(0, 34);
+    centralHeader.writeUInt16LE(0, 36);
+    centralHeader.writeUInt32LE(0, 38);
+    centralHeader.writeUInt32LE(offset, 42);
+    centralParts.push(centralHeader, name);
+
+    offset += localHeader.length + name.length + data.length;
+  }
+
+  const centralDirectory = Buffer.concat(centralParts);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0, 4);
+  end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(files.length, 8);
+  end.writeUInt16LE(files.length, 10);
+  end.writeUInt32LE(centralDirectory.length, 12);
+  end.writeUInt32LE(offset, 16);
+  end.writeUInt16LE(0, 20);
+  return Buffer.concat([...localParts, centralDirectory, end]);
+}
+
+function crc32(buffer: Buffer): number {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function buildHearingOrderSvg(): string {
+  const lines = [
+    "IN THE ISLAMABAD HIGH COURT, ISLAMABAD",
+    "W.P. 2076/2019 - Redtone Telecommunications Pak Pvt Ltd v CIR etc",
+    "Order Sheet - April Hearing",
+    "Present: Advocate Salman Hassan for the petitioner.",
+    "Arguments heard at length. Learned counsel referred to the pending",
+    "representations, recovery notices, and annexures available on record.",
+    "Office is directed to place the connected record with this file.",
+    "Order reserved. To be pronounced on the date fixed by the office.",
+    "Sd/- Court Associate",
+  ];
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="1400" viewBox="0 0 1000 1400">
+  <rect width="1000" height="1400" fill="#f7f3e8"/>
+  <rect x="70" y="70" width="860" height="1260" fill="#fffdf7" stroke="#9a8f7a" stroke-width="3"/>
+  <text x="500" y="145" text-anchor="middle" font-family="Georgia, serif" font-size="34" font-weight="700" fill="#1f2933">${lines[0]}</text>
+  ${lines.slice(1).map((line, index) => `<text x="120" y="${240 + index * 88}" font-family="Georgia, serif" font-size="${index === 1 ? 30 : 27}" fill="#2d3748">${line}</text>`).join("\n  ")}
+  <line x1="120" y1="1090" x2="880" y2="1090" stroke="#9a8f7a" stroke-width="2"/>
+  <text x="120" y="1160" font-family="Georgia, serif" font-size="24" fill="#4a5568">Certified copy prepared for LegalBahi pilot demonstration.</text>
+</svg>`;
 }
 
 

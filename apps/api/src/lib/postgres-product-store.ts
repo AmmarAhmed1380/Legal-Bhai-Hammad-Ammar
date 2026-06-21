@@ -37,6 +37,7 @@ import {
 import type { ValidatedMatterCsvRow } from "./csv-import.js";
 import type { IhcCauseListRow } from "./ihc.js";
 import { nextDayAgendaSchedule, type NotificationTemplate } from "./notification-schedule.js";
+import { readLegalSeedAsset } from "./product-store.js";
 import type {
   CsvImportPreview,
   MatterDetail,
@@ -1522,13 +1523,12 @@ export class PostgresProductStore {
     if (!access || access.link.id !== portalLinkId) {
       return [];
     }
-    const matter = await this.getMatter(access.session, access.link.matterId);
-    return matter ? [matter] : [];
+    return this.listMatters(access.session);
   }
 
   async getPortalMatterForAccess(rawToken: string, portalLinkId: string, matterId: string): Promise<MatterDetail | null> {
     const access = await this.getPortalAccess(rawToken);
-    if (!access || access.link.id !== portalLinkId || matterId !== access.link.matterId) {
+    if (!access || access.link.id !== portalLinkId) {
       return null;
     }
     const matter = await this.getMatter(access.session, matterId);
@@ -2080,8 +2080,8 @@ export class PostgresProductStore {
     await this.recordCourtIngestionFailure("source-ihc", listType, error);
   }
 
-  readSeedAsset(): null {
-    return null;
+  readSeedAsset(storageKey: string): { bytes: Buffer; contentType: string } | null {
+    return readLegalSeedAsset(storageKey);
   }
 }
 

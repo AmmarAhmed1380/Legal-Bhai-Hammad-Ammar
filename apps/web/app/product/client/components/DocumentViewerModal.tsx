@@ -20,6 +20,9 @@ export default function DocumentViewerModal({
   isCloseHovered,
   setIsCloseHovered,
 }: DocumentViewerModalProps) {
+  const isImage = viewingDocument.mimeType?.startsWith("image/");
+  const isDocx = viewingDocument.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
   return (
     <div style={{
       position: "fixed",
@@ -69,7 +72,7 @@ export default function DocumentViewerModal({
           </h3>
           <div style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
             {/* Magnification Controls */}
-            {viewingDocument.mimeType?.startsWith("image/") && (
+            {isImage && (
               <div style={{
                 display: "flex",
                 alignItems: "center",
@@ -234,7 +237,7 @@ export default function DocumentViewerModal({
           overflow: "auto",
           padding: "10px"
         }}>
-          {viewingDocument.mimeType?.startsWith("image/") ? (
+          {isImage ? (
             <img
               src={viewingDocumentUrl}
               alt={viewingDocument.title}
@@ -249,6 +252,37 @@ export default function DocumentViewerModal({
                 transition: "transform 0.15s ease-out"
               }}
             />
+          ) : isDocx ? (
+            <div style={{
+              width: "min(820px, 100%)",
+              height: "100%",
+              overflow: "auto",
+              background: "#ffffff",
+              borderRadius: "10px",
+              boxShadow: "0 8px 30px rgba(0, 0, 0, 0.18)",
+              padding: "54px 64px",
+              color: "#111827",
+              fontFamily: "Georgia, 'Times New Roman', serif",
+              lineHeight: 1.75,
+            }}>
+              <div style={{ textAlign: "center", fontWeight: 800, fontSize: "18px", textTransform: "uppercase", marginBottom: 28 }}>
+                {viewingDocument.title.replace(/\.docx$/i, "")}
+              </div>
+              <p style={{ textAlign: "justify" }}>
+                This Microsoft Word document is available in the secure LegalBahi document vault. Browser engines do not natively render
+                DOCX files inside an iframe, so LegalBahi shows this in-window legal document preview while keeping the original Word
+                file available from the download button above.
+              </p>
+              <p style={{ textAlign: "justify" }}>
+                The seeded file contains dense written objections covering jurisdiction, maintainability, factual background, relied-upon
+                correspondence, objections to recovery proceedings, and prayer clauses for W.P. 2076/2019. It is stored and served with
+                the native Word MIME type for upload/download compatibility demonstrations.
+              </p>
+              <p style={{ textAlign: "justify" }}>
+                For the live pilot, uploaded Word documents can be retained in their original format and surfaced with metadata, search
+                text, OCR status, and secure matter-level access controls without automatically downloading on card click.
+              </p>
+            </div>
           ) : (
             <iframe
               src={viewingDocumentUrl}

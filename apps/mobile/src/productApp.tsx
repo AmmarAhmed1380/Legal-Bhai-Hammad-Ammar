@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -11,15 +13,18 @@ import {
   View,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
+import * as FileSystem from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
 import * as SecureStore from "expo-secure-store";
+import * as Sharing from "expo-sharing";
 
-import { ApiRequestError, apiRequest } from "./api";
+import { API_BASE_URL, ApiRequestError, apiRequest } from "./api";
 import { theme } from "./theme";
 import { enqueueMutation, pendingMutationCount } from "./offline/queue";
 import { flushOfflineQueue, startOfflineSyncAgent } from "./offline/sync-agent";
 
 type ProductTab = "home" | "matters" | "alerts" | "more";
+type ClientWorkspaceTab = "timeline" | "hearings" | "documents" | "chat";
 
 interface StaffProfile {
   actorType: "staff";
@@ -50,6 +55,7 @@ interface MatterDetail extends MatterListItem {
     title: string;
     type: string;
     ocrStatus: string;
+    mimeType?: string;
   }>;
   thread: { id: string } | null;
 }
@@ -112,12 +118,55 @@ function courtLabel(courtId: string): string {
   return PILOT_COURTS.find((court) => court.id === courtId)?.label ?? courtId;
 }
 
+function formatDateTime(value: string | null): string {
+  if (!value) {
+    return "TBC";
+  }
+  return new Date(value).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function documentExtension(document: { title: string; mimeType?: string; type?: string }): string {
+  const fromTitle = document.title.split(".").pop()?.toLowerCase();
+  if (fromTitle && fromTitle.length <= 5 && fromTitle !== document.title.toLowerCase()) {
+    return fromTitle;
+  }
+  if (document.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+    return "docx";
+  }
+  if (document.mimeType === "application/pdf") {
+    return "pdf";
+  }
+  if (document.mimeType?.startsWith("image/")) {
+    return "png";
+  }
+  return document.type?.toLowerCase() || "file";
+}
+
+function documentIcon(document: { title: string; mimeType?: string; type?: string }): string {
+  const extension = documentExtension(document);
+  if (extension === "pdf") return "PDF";
+  if (extension === "docx" || extension === "doc") return "DOCX";
+  if (["jpg", "jpeg", "png"].includes(extension)) return "IMG";
+  return "FILE";
+}
+
 export function ProductApp({ onBack }: { onBack?: () => void }) {
   const [activeTab, setActiveTab] = useState<"lawyer" | "client">("lawyer");
   const [phone, setPhone] = useState("");
   const [auth, setAuth] = useState<{ token: string; refreshToken: string | null } | null>(null);
   const [clientAuth, setClientAuth] = useState<{ token: string; refreshToken: string | null } | null>(null);
   const [clientProfile, setClientProfile] = useState<ClientProfile | null>(null);
+  const [clientMatters, setClientMatters] = useState<MatterListItem[]>([]);
+  const [clientSelectedMatter, setClientSelectedMatter] = useState<MatterDetail | null>(null);
+  const [clientMessages, setClientMessages] = useState<MessageRecord[]>([]);
+  const [clientWorkspaceTab, setClientWorkspaceTab] = useState<ClientWorkspaceTab>("timeline");
+  const [clientMessageDraft, setClientMessageDraft] = useState("");
   const [authHydrated, setAuthHydrated] = useState(false);
   const [profile, setProfile] = useState<StaffProfile | null>(null);
   const [tab, setTab] = useState<ProductTab>("home");
@@ -126,7 +175,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
   const [calendar, setCalendar] = useState<CalendarItem[]>([]);
   const [alerts, setAlerts] = useState<AlertRecord[]>([]);
   const [messages, setMessages] = useState<MessageRecord[]>([]);
-  const [messageDraft, setMessageDraft] = useState("Please review the latest update and let me know if you need anything else.");
+  const [messageDraft, setMessageDraft] = useState("");
   const [hearingOutcome, setHearingOutcome] = useState("Order reserved");
   const [hearingNotes, setHearingNotes] = useState("Counsel appeared. Short written note to be filed before the next listing.");
   const [hearingNextDate, setHearingNextDate] = useState("");
@@ -188,14 +237,24 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
     if (!clientAuth) {
       void SecureStore.deleteItemAsync(CLIENT_STORAGE_KEY);
       setClientProfile(null);
+      setClientMatters([]);
+      setClientSelectedMatter(null);
+      setClientMessages([]);
       return;
     }
     void SecureStore.setItemAsync(CLIENT_STORAGE_KEY, JSON.stringify(clientAuth));
     void apiRequest<{ profile: ClientProfile }>("/v1/me", {}, clientAuth.token)
-      .then((payload) => setClientProfile(payload.profile))
-      .catch(() => {
+      .then(async (payload) => {
+        setClientProfile(payload.profile);
+        await loadClientWorkspace(clientAuth);
+      })
+      .catch((error) => {
         setClientAuth(null);
         setClientProfile(null);
+        setClientMatters([]);
+        setClientSelectedMatter(null);
+        setClientMessages([]);
+        Alert.alert("Client workspace unavailable", error instanceof Error ? error.message : "Sign in again to continue.");
       });
   }, [clientAuth, authHydrated]);
 
@@ -252,6 +311,43 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
     }
   }
 
+  async function clientAuthedRequest<T>(
+    path: string,
+    options: RequestInit = {},
+    activeClientAuth = clientAuth,
+  ): Promise<{ data: T; auth: { token: string; refreshToken: string | null } }> {
+    if (!activeClientAuth) {
+      throw new Error("Client authentication required");
+    }
+
+    try {
+      return {
+        data: await apiRequest<T>(path, options, activeClientAuth.token),
+        auth: activeClientAuth,
+      };
+    } catch (error) {
+      if (!(error instanceof ApiRequestError) || error.status !== 401 || !activeClientAuth.refreshToken) {
+        throw error;
+      }
+
+      const refreshed = await apiRequest<{ token: string; refreshToken: string | null }>("/v1/auth/refresh", {
+        method: "POST",
+        body: JSON.stringify({ refreshToken: activeClientAuth.refreshToken }),
+      });
+      const nextAuth = { token: refreshed.token, refreshToken: refreshed.refreshToken };
+      setClientAuth(nextAuth);
+
+      return {
+        data: await apiRequest<T>(path, options, nextAuth.token),
+        auth: nextAuth,
+      };
+    }
+  }
+
+  function focusFirstOtpInput() {
+    setTimeout(() => otpInputRefs.current[0]?.focus(), 80);
+  }
+
   async function loadWorkspace(activeAuth: { token: string; refreshToken: string | null }) {
     const meResponse = await authedRequest<{ profile: StaffProfile }>("/v1/me", {}, activeAuth);
     const matterResponse = await authedRequest<{ matters: MatterListItem[] }>("/v1/matters", {}, meResponse.auth);
@@ -268,6 +364,20 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
     if (!selectedMatter && matterPayload.matters[0]) {
       await openMatter(matterPayload.matters[0].id, alertResponse.auth);
     }
+  }
+
+  async function loadClientWorkspace(activeClientAuth: { token: string; refreshToken: string | null }) {
+    const matterResponse = await clientAuthedRequest<{ matters: MatterListItem[] }>("/v1/clients/me/matters", {}, activeClientAuth);
+    const matterPayload = matterResponse.data;
+    setClientMatters(matterPayload.matters);
+
+    const firstMatterId = clientSelectedMatter?.id ?? matterPayload.matters[0]?.id;
+    if (firstMatterId) {
+      await openClientMatter(firstMatterId, matterResponse.auth);
+      return;
+    }
+    setClientSelectedMatter(null);
+    setClientMessages([]);
   }
 
   function resetAuthFlow() {
@@ -314,6 +424,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
           : "A verification code has been sent to your phone number.",
       );
       setOtpRequested(true);
+      focusFirstOtpInput();
     } catch (error) {
       setOperationStatus(error instanceof Error ? error.message : "Failed to request OTP.");
     }
@@ -372,6 +483,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
           : "A verification code has been sent to your phone number.",
       );
       setOtpRequested(true);
+      focusFirstOtpInput();
     } catch (error) {
       setOperationStatus(error instanceof Error ? error.message : "Failed to request OTP.");
     }
@@ -445,6 +557,90 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
     }
   }
 
+  async function openClientMatter(matterId: string, activeClientAuth = clientAuth) {
+    if (!activeClientAuth) {
+      return;
+    }
+    try {
+      if (clientSelectedMatter?.id !== matterId) {
+        setClientWorkspaceTab("timeline");
+      }
+      const { data: payload, auth: resolvedAuth } = await clientAuthedRequest<{ matter: MatterDetail }>(
+        `/v1/clients/me/matters/${matterId}`,
+        {},
+        activeClientAuth,
+      );
+      setClientSelectedMatter(payload.matter);
+      if (payload.matter.thread?.id) {
+        const threadPayload = await clientAuthedRequest<{ messages: MessageRecord[] }>(
+          `/v1/threads/${payload.matter.thread.id}/messages`,
+          {},
+          resolvedAuth,
+        );
+        setClientMessages(threadPayload.data.messages);
+        return;
+      }
+      setClientMessages([]);
+    } catch (error) {
+      if (error instanceof ApiRequestError && (error.status === 401 || error.status === 403)) {
+        setClientAuth(null);
+        setClientProfile(null);
+        Alert.alert("Session expired", "Please request OTP again to continue.");
+        return;
+      }
+      Alert.alert("Matter unavailable", error instanceof Error ? error.message : "Could not open this matter.");
+    }
+  }
+
+  async function sendClientMessage() {
+    if (!clientAuth || !clientSelectedMatter?.thread?.id || !clientMessageDraft.trim()) {
+      return;
+    }
+    try {
+      const payload = await clientAuthedRequest(`/v1/threads/${clientSelectedMatter.thread.id}/messages`, {
+        method: "POST",
+        body: JSON.stringify({
+          body: clientMessageDraft.trim(),
+          language: "en",
+          deliveryChannel: "in_app",
+        }),
+      }, clientAuth);
+      setClientMessageDraft("");
+      await openClientMatter(clientSelectedMatter.id, payload.auth);
+    } catch (error) {
+      Alert.alert("Message failed", error instanceof Error ? error.message : "Could not send this message.");
+    }
+  }
+
+  async function openClientDocument(document: MatterDetail["documents"][number]) {
+    if (!clientAuth) {
+      return;
+    }
+    try {
+      const extension = documentExtension(document);
+      const safeTitle = document.title.replace(/[^a-zA-Z0-9._-]+/g, "_");
+      const filename = safeTitle.includes(".") ? safeTitle : `${safeTitle}.${extension}`;
+      const destination = new FileSystem.File(FileSystem.Paths.cache, filename);
+      const result = await FileSystem.File.downloadFileAsync(
+        `${API_BASE_URL}/v1/documents/${document.id}/download`,
+        destination,
+        { headers: { authorization: `Bearer ${clientAuth.token}` }, idempotent: true },
+      );
+
+      const sharingAvailable = await Sharing.isAvailableAsync();
+      if (!sharingAvailable) {
+        Alert.alert("Document saved", `Downloaded to ${result.uri}`);
+        return;
+      }
+      await Sharing.shareAsync(result.uri, {
+        mimeType: document.mimeType,
+        dialogTitle: document.title,
+      });
+    } catch (error) {
+      Alert.alert("Document unavailable", error instanceof Error ? error.message : "Could not open this document.");
+    }
+  }
+
   async function sendMessage() {
     if (!auth || !selectedMatter?.thread?.id) {
       return;
@@ -457,7 +653,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
         deliveryChannel: "in_app",
       }),
     }, auth);
-    setMessageDraft("Please review the latest update and let me know if you need anything else.");
+    setMessageDraft("");
     await openMatter(selectedMatter.id, payload.auth);
   }
 
@@ -602,6 +798,10 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
     }
     setClientAuth(null);
     setClientProfile(null);
+    setClientMatters([]);
+    setClientSelectedMatter(null);
+    setClientMessages([]);
+    setClientMessageDraft("");
     resetAuthFlow();
   }
 
@@ -609,17 +809,193 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
     return (
       <SafeAreaView style={styles.safe}>
         <StatusBar style="dark" />
-        <View style={styles.loginCard}>
-          <Text style={styles.eyebrow}>Client Portal</Text>
-          <Text style={styles.title}>Welcome, {clientProfile.clientAccount.displayName}</Text>
-          <Text style={styles.copy}>
-            {clientProfile.firm?.name ?? "Your lawyer workspace"} · Signed in as client
-          </Text>
-          {operationStatus ? <Text style={styles.statusBanner}>{operationStatus}</Text> : null}
-          <Pressable style={styles.secondaryButton} onPress={() => void signOutClient()}>
-            <Text style={styles.secondaryButtonText}>Sign out</Text>
-          </Pressable>
-        </View>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardVerticalOffset={16}
+        >
+          <View style={styles.clientHeader}>
+            <View style={styles.flexShrink}>
+              <Text style={styles.eyebrow}>Client Portal</Text>
+              <Text style={styles.clientTitle}>Welcome, {clientProfile.clientAccount.displayName}</Text>
+              <Text style={styles.smallText}>{clientProfile.firm?.name ?? "Your lawyer workspace"}</Text>
+            </View>
+            <Pressable style={styles.headerSignOutButton} onPress={() => void signOutClient()}>
+              <Text style={styles.headerSignOutText}>Sign out</Text>
+            </Pressable>
+          </View>
+
+          {clientMatters.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateIcon}>LB</Text>
+              <Text style={styles.sectionTitle}>No shared matters yet</Text>
+              <Text style={[styles.copy, styles.centerText]}>
+                Your lawyer has not shared a matter with this client account. Once a matter is linked, it will appear here automatically.
+              </Text>
+            </View>
+          ) : (
+            <ScrollView contentContainerStyle={styles.clientScreen} keyboardShouldPersistTaps="handled">
+              <View>
+                <Text style={styles.fieldLabel}>Active Matter</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.matterSwitcher}
+                >
+                  {clientMatters.map((matter) => {
+                    const active = clientSelectedMatter?.id === matter.id;
+                    return (
+                      <Pressable
+                        key={matter.id}
+                        style={[styles.matterPill, active ? styles.matterPillActive : null]}
+                        onPress={() => void openClientMatter(matter.id)}
+                      >
+                        <Text style={active ? styles.matterPillActiveText : styles.matterPillText}>
+                          {matter.rawCaseNumber}
+                        </Text>
+                        <Text style={active ? styles.matterPillActiveSubText : styles.matterPillSubText}>
+                          {matter.stage}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              {clientSelectedMatter ? (
+                <>
+                  <View style={styles.overviewCard}>
+                    <Text style={styles.eyebrow}>{clientSelectedMatter.rawCaseNumber}</Text>
+                    <Text style={styles.clientMatterTitle}>{clientSelectedMatter.title}</Text>
+                    <View style={styles.overviewGrid}>
+                      <View style={styles.overviewCell}>
+                        <Text style={styles.smallText}>Court</Text>
+                        <Text style={styles.metaLabel}>{courtLabel(clientSelectedMatter.courtId)}</Text>
+                      </View>
+                      <View style={styles.overviewCell}>
+                        <Text style={styles.smallText}>Stage</Text>
+                        <Text style={styles.metaLabel}>{clientSelectedMatter.stage}</Text>
+                      </View>
+                      <View style={styles.overviewCellFull}>
+                        <Text style={styles.smallText}>Next Hearing</Text>
+                        <Text style={styles.metaLabel}>{formatDateTime(clientSelectedMatter.nextHearingAt)}</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.tabRow}>
+                    {(["timeline", "hearings", "documents", "chat"] as const).map((tabKey) => (
+                      <Pressable
+                        key={tabKey}
+                        style={[styles.pill, clientWorkspaceTab === tabKey ? styles.pillActive : null]}
+                        onPress={() => setClientWorkspaceTab(tabKey)}
+                      >
+                        <Text style={clientWorkspaceTab === tabKey ? styles.pillActiveText : styles.pillText}>{tabKey}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+
+                  {clientWorkspaceTab === "timeline" ? (
+                    <View style={styles.cardWithShadow}>
+                      <Text style={styles.sectionTitle}>Timeline Overview</Text>
+                      {(clientSelectedMatter.hearings ?? []).length > 0 ? (
+                        clientSelectedMatter.hearings.map((hearing) => (
+                          <View key={hearing.id} style={styles.timelineItem}>
+                            <Text style={styles.metaLabel}>{formatDateTime(hearing.listedAt)}</Text>
+                            <Text style={styles.copy}>{hearing.outcome}</Text>
+                            <Text style={styles.smallText}>{hearing.notes}</Text>
+                          </View>
+                        ))
+                      ) : (
+                        <Text style={styles.copy}>No hearing activity has been posted yet.</Text>
+                      )}
+                    </View>
+                  ) : null}
+
+                  {clientWorkspaceTab === "hearings" ? (
+                    <View style={styles.cardWithShadow}>
+                      <Text style={styles.sectionTitle}>Court Calendar</Text>
+                      {(clientSelectedMatter.hearings ?? []).map((hearing) => (
+                        <View key={hearing.id} style={styles.hearingCard}>
+                          <Text style={styles.metaLabel}>{formatDateTime(hearing.listedAt)}</Text>
+                          <Text style={styles.hearingStatus}>{hearing.outcome}</Text>
+                          <Text style={styles.copy}>{hearing.notes}</Text>
+                          {hearing.nextDate ? <Text style={styles.smallText}>Next date: {hearing.nextDate}</Text> : null}
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+
+                  {clientWorkspaceTab === "documents" ? (
+                    <View style={styles.cardWithShadow}>
+                      <Text style={styles.sectionTitle}>Document Vault</Text>
+                      {(clientSelectedMatter.documents ?? []).length > 0 ? (
+                        clientSelectedMatter.documents.map((document) => (
+                          <Pressable
+                            key={document.id}
+                            style={styles.documentCard}
+                            onPress={() => void openClientDocument(document)}
+                          >
+                            <View style={styles.documentIcon}>
+                              <Text style={styles.documentIconText}>{documentIcon(document)}</Text>
+                            </View>
+                            <View style={styles.flexShrink}>
+                              <Text style={styles.metaLabel}>{document.title}</Text>
+                              <Text style={styles.smallText}>
+                                {documentExtension(document).toUpperCase()} · OCR {document.ocrStatus}
+                              </Text>
+                            </View>
+                          </Pressable>
+                        ))
+                      ) : (
+                        <Text style={styles.copy}>No documents are shared for this matter yet.</Text>
+                      )}
+                    </View>
+                  ) : null}
+
+                  {clientWorkspaceTab === "chat" ? (
+                    <View style={styles.cardWithShadow}>
+                      <Text style={styles.sectionTitle}>Counsel Chat</Text>
+                      <FlatList
+                        data={clientMessages}
+                        keyExtractor={(item) => item.id}
+                        scrollEnabled={false}
+                        ListEmptyComponent={<Text style={styles.copy}>No messages yet.</Text>}
+                        renderItem={({ item }) => (
+                          <View
+                            style={[
+                              styles.messageBubble,
+                              item.senderType === "client" ? styles.clientBubble : styles.counselBubble,
+                            ]}
+                          >
+                            <Text style={styles.messageSender}>{item.senderType === "client" ? "You" : "Counsel"}</Text>
+                            <Text style={styles.messageText}>{item.body}</Text>
+                            <Text style={styles.messageTime}>{formatDateTime(item.createdAt)}</Text>
+                          </View>
+                        )}
+                      />
+                      <TextInput
+                        style={[styles.input, styles.textArea]}
+                        multiline
+                        placeholder="Type your message here..."
+                        value={clientMessageDraft}
+                        onChangeText={setClientMessageDraft}
+                      />
+                      <Pressable style={styles.primaryButton} onPress={() => void sendClientMessage()}>
+                        <Text style={styles.primaryButtonText}>Send message</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
+                </>
+              ) : (
+                <View style={styles.emptyState}>
+                  <Text style={styles.sectionTitle}>Loading matter details...</Text>
+                  <Text style={[styles.copy, styles.centerText]}>Preparing your shared workspace.</Text>
+                </View>
+              )}
+            </ScrollView>
+          )}
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -838,7 +1214,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
             <TextInput
               style={[styles.input, styles.textArea]}
               multiline
-              placeholder="Reply to client"
+              placeholder="Type your message here..."
               value={messageDraft}
               onChangeText={setMessageDraft}
             />
@@ -978,10 +1354,49 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.background,
   },
+  flex: {
+    flex: 1,
+  },
+  flexShrink: {
+    flex: 1,
+    minWidth: 0,
+  },
   screen: {
     paddingHorizontal: spacing.lg,
     paddingBottom: 48,
     gap: 12,
+  },
+  clientScreen: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: 48,
+    gap: 14,
+  },
+  clientHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.lg,
+    paddingTop: 12,
+    paddingBottom: 14,
+    gap: 12,
+  },
+  clientTitle: {
+    color: theme.textPrimary,
+    fontSize: 22,
+    fontWeight: "700",
+  },
+  headerSignOutButton: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: "#fff",
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  headerSignOutText: {
+    color: theme.primary,
+    fontWeight: "700",
+    fontSize: 12,
   },
   loginScroll: {
     paddingBottom: 48,
@@ -1062,6 +1477,36 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     textAlign: "center",
   },
+  emptyState: {
+    margin: 20,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: "#fff",
+    padding: 24,
+    alignItems: "center",
+    gap: 10,
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+  },
+  emptyStateIcon: {
+    width: 54,
+    height: 54,
+    borderRadius: 18,
+    backgroundColor: theme.primaryLight,
+    color: theme.primaryDark,
+    textAlign: "center",
+    textAlignVertical: "center",
+    fontWeight: "800",
+    fontSize: 18,
+    overflow: "hidden",
+  },
+  centerText: {
+    textAlign: "center",
+  },
   otpRow: {
     flexDirection: "row",
     justifyContent: "center",
@@ -1117,6 +1562,48 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     flexWrap: "wrap",
+  },
+  matterSwitcher: {
+    gap: 10,
+    paddingVertical: 10,
+    paddingRight: 20,
+  },
+  matterPill: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: "#fff",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    minWidth: 148,
+    gap: 3,
+  },
+  matterPillActive: {
+    backgroundColor: theme.primary,
+    borderColor: theme.primary,
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  matterPillText: {
+    color: theme.textPrimary,
+    fontWeight: "800",
+  },
+  matterPillActiveText: {
+    color: "#fff",
+    fontWeight: "800",
+  },
+  matterPillSubText: {
+    color: theme.textTertiary,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  matterPillActiveSubText: {
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 12,
+    fontWeight: "600",
   },
   pill: {
     borderWidth: 1,
@@ -1182,6 +1669,57 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 10,
   },
+  cardWithShadow: {
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: theme.border,
+    padding: 16,
+    gap: 12,
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+  },
+  overviewCard: {
+    backgroundColor: "#fff",
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: theme.border,
+    padding: 18,
+    gap: 12,
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.1,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 4,
+  },
+  clientMatterTitle: {
+    color: theme.textPrimary,
+    fontSize: 20,
+    fontWeight: "800",
+    lineHeight: 26,
+  },
+  overviewGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  overviewCell: {
+    flexBasis: "47%",
+    borderRadius: 14,
+    backgroundColor: theme.background,
+    padding: 12,
+    gap: 3,
+  },
+  overviewCellFull: {
+    flexBasis: "100%",
+    borderRadius: 14,
+    backgroundColor: theme.primaryLight,
+    padding: 12,
+    gap: 3,
+  },
   cardRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1227,5 +1765,79 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: theme.border,
+  },
+  hearingCard: {
+    borderRadius: 16,
+    backgroundColor: theme.background,
+    padding: 14,
+    gap: 6,
+  },
+  hearingStatus: {
+    color: theme.primaryDark,
+    fontWeight: "800",
+  },
+  documentCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.border,
+    padding: 14,
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 2,
+  },
+  documentIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: theme.primaryLight,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  documentIconText: {
+    color: theme.primaryDark,
+    fontWeight: "800",
+    fontSize: 11,
+  },
+  messageBubble: {
+    maxWidth: "86%",
+    borderRadius: 18,
+    padding: 12,
+    marginVertical: 5,
+    gap: 4,
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  clientBubble: {
+    alignSelf: "flex-end",
+    backgroundColor: "#D8F5E8",
+    borderTopRightRadius: 6,
+  },
+  counselBubble: {
+    alignSelf: "flex-start",
+    backgroundColor: "#F8FAFC",
+    borderTopLeftRadius: 6,
+  },
+  messageSender: {
+    color: theme.textPrimary,
+    fontWeight: "800",
+    fontSize: 12,
+  },
+  messageText: {
+    color: theme.textPrimary,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  messageTime: {
+    color: theme.textTertiary,
+    fontSize: 11,
   },
 });

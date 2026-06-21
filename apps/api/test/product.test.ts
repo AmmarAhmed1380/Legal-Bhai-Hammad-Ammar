@@ -221,7 +221,7 @@ test("product staff OTP auth loads firm profile and seeded matters", async () =>
   };
   assert.equal(me.profile.actorType, "staff");
   assert.equal(me.profile.firm?.name, "Hassan & Co. Law Associates");
-  assert.equal(me.profile.staffUser.displayName, "Ahmed Hassan");
+  assert.equal(me.profile.staffUser.displayName, "Advocate Salman Hassan");
 
   const mattersResponse = await app.inject({
     method: "GET",
@@ -230,8 +230,9 @@ test("product staff OTP auth loads firm profile and seeded matters", async () =>
   });
   assert.equal(mattersResponse.statusCode, 200);
   const matters = (mattersResponse.json() as { matters: Array<{ id: string }> }).matters;
-  assert.equal(matters.length, 3);
+  assert.equal(matters.length, 2);
   assert.ok(matters.some((matter) => matter.id === "matter-redtone"));
+  assert.ok(matters.some((matter) => matter.id === "matter-farooq"));
 });
 
 test("OTP requests do not send codes for unknown clients and reject invalid actor types", async () => {
@@ -377,14 +378,14 @@ test("product client access is limited to shared matters", async () => {
   });
   assert.equal(listResponse.statusCode, 200);
   const matters = (listResponse.json() as { matters: Array<{ id: string }> }).matters;
-  assert.deepEqual(matters.map((matter) => matter.id), ["matter-redtone"]);
+  assert.deepEqual(matters.map((matter) => matter.id), ["matter-redtone", "matter-farooq"]);
 
-  const forbiddenMatter = await app.inject({
+  const secondSharedMatter = await app.inject({
     method: "GET",
     url: "/v1/matters/matter-farooq",
     headers: { authorization: `Bearer ${token}` },
   });
-  assert.equal(forbiddenMatter.statusCode, 404);
+  assert.equal(secondSharedMatter.statusCode, 200);
   const clientDocuments = await app.inject({
     method: "GET",
     url: "/v1/documents?matterId=matter-redtone",
@@ -665,7 +666,7 @@ test("product staff client crm and reports endpoints return firm-scoped aggregat
     metrics: { openMatters: number; outstandingInvoiceTotal: number };
     mattersByStage: Array<{ stage: string; count: number }>;
   };
-  assert.ok(report.metrics.openMatters >= 3);
+  assert.ok(report.metrics.openMatters >= 2);
   assert.ok(report.metrics.outstandingInvoiceTotal >= 85000);
   assert.ok(report.mattersByStage.some((entry) => entry.stage === "arguments"));
 });
@@ -761,7 +762,7 @@ test("product roles, memberships, document patching, and alert reads work", asyn
 
   const alertPatch = await app.inject({
     method: "PATCH",
-    url: "/v1/alerts/alert-sync",
+    url: "/v1/alerts/alert-redtone",
     headers: { authorization: `Bearer ${token}` },
   });
   assert.equal(alertPatch.statusCode, 200);
@@ -790,6 +791,7 @@ test("portal links, scoped portal OTP, document download, and ingestion run read
   assert.equal(portalCases.statusCode, 200);
   const cases = (portalCases.json() as { cases: Array<{ id: string }> }).cases;
   assert.ok(cases.some((record) => record.id === "matter-redtone"));
+  assert.ok(cases.some((record) => record.id === "matter-farooq"));
 
   const portalCase = await app.inject({
     method: "GET",
@@ -806,7 +808,7 @@ test("portal links, scoped portal OTP, document download, and ingestion run read
     headers: { authorization: `Bearer ${clientBearer}` },
   });
   assert.equal(portalDownload.statusCode, 200);
-  assert.equal(portalDownload.headers["content-type"], "image/png");
+  assert.equal(portalDownload.headers["content-type"], "application/pdf");
 
   const ingestionRuns = await app.inject({
     method: "GET",
@@ -1053,13 +1055,8 @@ test("the same client phone remains isolated across firms and portal OTP selects
   assert.deepEqual((secondMatters.json() as { cases: Array<{ id: string }> }).cases.map((matter) => matter.id), [secondPortal.matterId]);
 });
 
-test("a portal token exposes exactly its linked matter", async () => {
-  const { app, productDbPath } = await createProductApp();
-  const db = new DatabaseSync(productDbPath);
-  db.prepare(
-    "INSERT INTO client_memberships (id, client_account_id, matter_id, access_level, created_at) VALUES (?, ?, ?, ?, ?)",
-  ).run("client-membership-redtone-farooq", "client-redtone", "matter-farooq", "message", new Date().toISOString());
-  db.close();
+test("a portal token exposes all matters linked to its client", async () => {
+  const { app } = await createProductApp();
 
   const { token } = await login(app, "staff", "03001234567");
   const portalLinkResponse = await app.inject({
@@ -1084,15 +1081,15 @@ test("a portal token exposes exactly its linked matter", async () => {
   });
   assert.deepEqual(
     (listResponse.json() as { cases: Array<{ id: string }> }).cases.map((matter) => matter.id),
-    ["matter-redtone"],
+    ["matter-redtone", "matter-farooq"],
   );
 
-  const unlinkedResponse = await app.inject({
+  const linkedSecondMatter = await app.inject({
     method: "GET",
     url: `/v1/portal/cases/matter-farooq?token=${portalToken}`,
     headers: { authorization: `Bearer ${portalAccessToken}` },
   });
-  assert.equal(unlinkedResponse.statusCode, 404);
+  assert.equal(linkedSecondMatter.statusCode, 200);
 
   const fullClientWorkspace = await app.inject({
     method: "GET",

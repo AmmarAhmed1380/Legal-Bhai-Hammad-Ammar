@@ -1,1 +1,47 @@
-[]
+[
+  {
+    "workspaceId": "firm-hassan-co",
+    "name": "Hassan & Co. Law Associates",
+    "primaryCity": "Islamabad",
+    "billingPlan": "solo_plus",
+    "timezone": "Asia/Karachi",
+    "status": "trial",
+    "createdAt": "2026-06-21T14:51:59.154Z",
+    "owner": {
+      "id": "staff-owner",
+      "phone": "03001234567",
+      "displayName": "Advocate Salman Hassan",
+      "email": "ahmed@hassanco.pk",
+      "status": "active"
+    },
+    "employees": [
+      {
+        "id": "staff-owner",
+        "phone": "03001234567",
+        "displayName": "Advocate Salman Hassan",
+        "email": "ahmed@hassanco.pk",
+        "role": "owner",
+        "officeLabel": "Islamabad HQ",
+        "status": "active"
+      },
+      {
+        "id": "staff-lawyer",
+        "phone": "03007654321",
+        "displayName": "Sana Malik",
+        "email": "sana@hassanco.pk",
+        "role": "lawyer",
+        "officeLabel": "Islamabad HQ",
+        "status": "active"
+      },
+      {
+        "id": "staff-assistant",
+        "phone": "03001112222",
+        "displayName": "Hamza Sheikh",
+        "email": "hamza@hassanco.pk",
+        "role": "assistant",
+        "officeLabel": "Rawalpindi Desk",
+        "status": "active"
+      }
+    ]
+  }
+]

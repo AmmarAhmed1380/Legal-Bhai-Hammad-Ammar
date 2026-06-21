@@ -175,6 +175,7 @@ export default function HomePage() {
           : "A verification code has been sent to your phone number.",
       );
       setOtpRequested(true);
+      setTimeout(() => focusOtpInput("otp-input", 0), 0);
     } catch (err: any) {
       setOperationStatus(err.message || "Failed to request OTP.");
     }
@@ -246,6 +247,7 @@ export default function HomePage() {
           : "A verification code has been sent to your phone number.",
       );
       setOtpRequested(true);
+      setTimeout(() => focusOtpInput("client-otp-input", 0), 0);
     } catch (err: any) {
       setOperationStatus(err.message || "Failed to request OTP.");
     }

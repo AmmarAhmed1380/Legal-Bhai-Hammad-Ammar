@@ -206,9 +206,12 @@ export function registerDocumentRoutes(ctx: ProductRouteContext): void {
         return { error: "Portal OTP verification is required" };
       }
       const requestedDocumentId = (request.params as { id: string }).id;
-      const portalMatter = await store.getPortalMatterForAccess(portalToken, access.link.id, access.link.matterId);
-      const document = portalMatter?.documents.find((entry) => entry.id === requestedDocumentId) ?? null;
+      const document = await store.getDocument(access.session, requestedDocumentId);
       if (!document) {
+        reply.code(404);
+        return { error: "Not found" };
+      }
+      if (!document.portalVisible) {
         reply.code(404);
         return { error: "Not found" };
       }

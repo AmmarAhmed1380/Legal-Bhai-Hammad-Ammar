@@ -37,15 +37,15 @@ export default function DocumentsTab({
                 transition: "all 0.2s ease",
                 overflow: "hidden",
                 minHeight: "160px",
-                boxShadow: "0 4px 12px rgba(15, 110, 86, 0.02)",
+                boxShadow: "0 8px 20px rgba(15, 23, 42, 0.07)",
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.transform = "translateY(-4px)";
-                e.currentTarget.style.boxShadow = "0 12px 24px rgba(15, 110, 86, 0.08)";
+                e.currentTarget.style.boxShadow = "0 16px 30px rgba(15, 110, 86, 0.12)";
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.transform = "none";
-                e.currentTarget.style.boxShadow = "0 4px 12px rgba(15, 110, 86, 0.02)";
+                e.currentTarget.style.boxShadow = "0 8px 20px rgba(15, 23, 42, 0.07)";
               }}
             >
               {/* Top Section: Large File Type Thumbnail */}

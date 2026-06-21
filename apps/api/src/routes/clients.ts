@@ -29,7 +29,15 @@ export function registerClientRoutes(ctx: ProductRouteContext): void {
     if (!requireClientSession(session, reply)) {
       return { error: "Forbidden" };
     }
-    return { matters: await store.listMatters(session) };
+    const matters = await store.listMatters(session);
+    if (process.env.NODE_ENV === "development") {
+      console.log("[client-portal] /v1/clients/me/matters", {
+        clientId: session.actorId,
+        matterIds: matters.map((matter) => matter.id),
+        caseNumbers: matters.map((matter) => matter.rawCaseNumber),
+      });
+    }
+    return { matters };
   });
 
   app.get("/v1/clients/me/matters/:id", async (request, reply) => {

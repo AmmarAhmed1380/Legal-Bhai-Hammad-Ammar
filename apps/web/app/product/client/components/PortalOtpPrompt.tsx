@@ -32,7 +32,7 @@ export default function PortalOtpPrompt({
       <div className="eyebrow">Portal access</div>
       <h1 className="title">Client portal</h1>
       <p className="muted">
-        Enter the client OTP before Legal Bhai shows the one matter protected by this link.
+        Enter the client OTP before Legal Bhai shows all matters shared with this client.
       </p>
       {workspaceError ? <p className="muted">{workspaceError}</p> : null}
       {!portalMaskedPhone ? (

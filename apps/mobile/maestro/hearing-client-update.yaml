@@ -18,7 +18,7 @@ appId: pk.legalbahi.app
 - inputText: ${NEXT_DATE}
 - tapOn: "Save hearing update"
 - assertVisible: "Hearing saved"
-- tapOn: "Reply to client"
+- tapOn: "Type your message here..."
 - eraseText
 - inputText: ${CLIENT_UPDATE}
 - tapOn: "Send update"

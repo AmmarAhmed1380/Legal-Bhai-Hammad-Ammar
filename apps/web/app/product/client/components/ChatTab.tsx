@@ -1,4 +1,4 @@
-import { type ClientProfile, type MessageRecord } from "../page";
+import { type MessageRecord } from "../page";
 import { formatDateTime } from "./helpers";
 
 interface ChatTabProps {
@@ -6,7 +6,6 @@ interface ChatTabProps {
   draft: string;
   setDraft: (value: string) => void;
   sendMessage: () => void;
-  profile: ClientProfile;
 }
 
 export default function ChatTab({
@@ -14,7 +13,6 @@ export default function ChatTab({
   draft,
   setDraft,
   sendMessage,
-  profile,
 }: ChatTabProps) {
   return (
     <div className="panel">
@@ -46,7 +44,7 @@ export default function ChatTab({
                   border: isMe ? "none" : "1px solid var(--border)",
                   borderRadius: isMe ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
                   padding: "12px 16px",
-                  boxShadow: "0 2px 6px rgba(0, 0, 0, 0.03)",
+                  boxShadow: isMe ? "0 8px 18px rgba(15, 110, 86, 0.12)" : "0 8px 18px rgba(15, 23, 42, 0.08)",
                   position: "relative"
                 }}
               >
@@ -76,7 +74,7 @@ export default function ChatTab({
           type="text"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder={profile.clientAccount.language === "ur" ? "پیغام لکھیں..." : "Write a message..."}
+          placeholder="Type your message here..."
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               sendMessage();

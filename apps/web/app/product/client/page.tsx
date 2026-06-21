@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import type { CSSProperties } from "react";
 import { Suspense, useEffect, useMemo, useState } from "react";
 
 import {
@@ -66,7 +67,6 @@ export interface MessageRecord {
 
 const CLIENT_PHONES = [
   { label: "Ahmed Zubair", phone: "03005550001" },
-  { label: "Farooq Traders", phone: "03005550002" },
 ] as const;
 
 const STORAGE_KEY = "legalbahi-client-auth";
@@ -109,7 +109,7 @@ function ProductClientWorkspace() {
   const [matters, setMatters] = useState<ClientMatter[]>([]);
   const [selectedMatter, setSelectedMatter] = useState<ClientMatterDetail | null>(null);
   const [messages, setMessages] = useState<MessageRecord[]>([]);
-  const [draft, setDraft] = useState("Please confirm whether any further documents are needed from my side.");
+  const [draft, setDraft] = useState("");
   const [loginCode, setLoginCode] = useState<string | null>(null);
   const [otpRequested, setOtpRequested] = useState(false);
   const [portalMaskedPhone, setPortalMaskedPhone] = useState<string | null>(null);
@@ -209,7 +209,7 @@ function ProductClientWorkspace() {
 
   function handleWorkspaceLoadError(error: unknown) {
     if (error instanceof ProductRequestError && (error.status === 401 || error.status === 403)) {
-      signOut();
+      void signOut();
       setWorkspaceError("Your session expired or access was denied. Please sign in again.");
       return;
     }
@@ -281,6 +281,7 @@ function ProductClientWorkspace() {
     });
     setLoginCode("");
     setOtpRequested(true);
+    setTimeout(() => focusPortalOtpInput(0), 0);
   }
 
   async function verifyLogin() {
@@ -300,41 +301,58 @@ function ProductClientWorkspace() {
     if (!activeAuth) {
       return;
     }
-    if (selectedMatter?.id !== matterId) {
-      setActiveSubTab("hearings");
-    }
-    const { data: payload, auth: resolvedAuth } = await authedRequest<{ matter: ClientMatterDetail }>(
-      `/v1/clients/me/matters/${matterId}`,
-      {},
-      activeAuth,
-    );
-    setSelectedMatter(payload.matter);
-    if (payload.matter.thread?.id) {
-      const threadPayload = await authedRequest<{ messages: MessageRecord[] }>(
-        `/v1/threads/${payload.matter.thread.id}/messages`,
+    try {
+      if (selectedMatter?.id !== matterId) {
+        setActiveSubTab("hearings");
+      }
+      const { data: payload, auth: resolvedAuth } = await authedRequest<{ matter: ClientMatterDetail }>(
+        `/v1/clients/me/matters/${matterId}`,
         {},
-        resolvedAuth,
+        activeAuth,
       );
-      setMessages(threadPayload.data.messages);
-      return;
+      setSelectedMatter(payload.matter);
+      if (payload.matter.thread?.id) {
+        const threadPayload = await authedRequest<{ messages: MessageRecord[] }>(
+          `/v1/threads/${payload.matter.thread.id}/messages`,
+          {},
+          resolvedAuth,
+        );
+        setMessages(threadPayload.data.messages);
+        return;
+      }
+      setMessages([]);
+      setWorkspaceError(null);
+    } catch (error) {
+      handleWorkspaceLoadError(error);
     }
-    setMessages([]);
   }
 
   async function openPortalMatter(matterId: string, portalToken: string, activePortalAuth = portalAuth) {
     if (!activePortalAuth) {
       return;
     }
-    if (selectedMatter?.id !== matterId) {
-      setActiveSubTab("hearings");
+    try {
+      if (selectedMatter?.id !== matterId) {
+        setActiveSubTab("hearings");
+      }
+      const payload = await productJsonRequest<{ case: ClientMatterDetail; messages: MessageRecord[] }>(
+        `/v1/portal/cases/${matterId}?token=${encodeURIComponent(portalToken)}`,
+        {},
+        activePortalAuth.token,
+      );
+      setSelectedMatter(payload.case);
+      setMessages(payload.messages ?? []);
+      setWorkspaceError(null);
+    } catch (error) {
+      if (error instanceof ProductRequestError && (error.status === 401 || error.status === 403 || error.status === 404)) {
+        setPortalAuth(null);
+        setPortalMaskedPhone(null);
+        setPortalOtpDigits(Array(6).fill(""));
+        setWorkspaceError("Your portal access expired. Please verify OTP again.");
+        return;
+      }
+      setWorkspaceError(error instanceof Error ? error.message : "Could not open this matter.");
     }
-    const payload = await productJsonRequest<{ case: ClientMatterDetail }>(
-      `/v1/portal/cases/${matterId}?token=${encodeURIComponent(portalToken)}`,
-      {},
-      activePortalAuth.token,
-    );
-    setSelectedMatter(payload.case);
-    setMessages([]);
   }
 
   async function sendMessage() {
@@ -349,7 +367,7 @@ function ProductClientWorkspace() {
         deliveryChannel: "in_app",
       }),
     }, auth);
-    setDraft("Please confirm whether any further documents are needed from my side.");
+    setDraft("");
     await openMatter(selectedMatter.id, payload.auth);
   }
 
@@ -364,6 +382,7 @@ function ProductClientWorkspace() {
     setPortalMaskedPhone(payload.maskedPhone);
     setPortalOtpCode("");
     setPortalOtpDigits(Array(6).fill(""));
+    setTimeout(() => focusPortalOtpInput(0), 0);
   }
 
   async function verifyPortalReplyAccess(codeOverride?: string) {
@@ -393,31 +412,51 @@ function ProductClientWorkspace() {
   };
 
   async function openDocument(documentId: string, portalToken?: string | null, activeAuth = auth) {
-    let response = await fetch(productDocumentDownloadUrl(documentId, portalToken ?? undefined), {
-      headers: activeAuth ? { authorization: `Bearer ${activeAuth.token}` } : undefined,
-    });
-
-    if (response.status === 401 && activeAuth?.refreshToken) {
-      const refreshed = await refreshProductAuth(activeAuth.refreshToken);
-      setAuth(refreshed);
-      response = await fetch(productDocumentDownloadUrl(documentId, portalToken ?? undefined), {
-        headers: { authorization: `Bearer ${refreshed.token}` },
+    try {
+      let response = await fetch(productDocumentDownloadUrl(documentId, portalToken ?? undefined), {
+        headers: activeAuth ? { authorization: `Bearer ${activeAuth.token}` } : undefined,
       });
-    }
 
-    if (!response.ok) {
-      throw new Error(await response.text());
-    }
+      if (response.status === 401 && activeAuth?.refreshToken) {
+        const refreshed = await refreshProductAuth(activeAuth.refreshToken);
+        setAuth(refreshed);
+        response = await fetch(productDocumentDownloadUrl(documentId, portalToken ?? undefined), {
+          headers: { authorization: `Bearer ${refreshed.token}` },
+        });
+      }
 
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    
-    // Find document title and mimeType
-    const doc = selectedMatter?.documents.find((d) => d.id === documentId);
-    const docTitle = doc?.title || "Document Viewer";
-    const docMime = doc?.mimeType || "";
-    setViewingDocument({ id: documentId, title: docTitle, mimeType: docMime });
-    setViewingDocumentUrl(url);
+      if (response.status === 401 || response.status === 403) {
+        if (portalToken) {
+          setPortalAuth(null);
+          setWorkspaceError("Your portal access expired. Please verify OTP again.");
+        } else {
+          void signOut();
+          setWorkspaceError("Your session expired or access was denied. Please sign in again.");
+        }
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      
+      // Find document title and mimeType
+      const doc = selectedMatter?.documents.find((d) => d.id === documentId);
+      const docTitle = doc?.title || "Document Viewer";
+      const docMime = doc?.mimeType || "";
+      setViewingDocument({ id: documentId, title: docTitle, mimeType: docMime });
+      setViewingDocumentUrl(url);
+      setWorkspaceError(null);
+    } catch (error) {
+      setWorkspaceError(error instanceof TypeError
+        ? "Could not reach the API. Please make sure the API server is running on port 3001."
+        : error instanceof Error
+          ? error.message
+          : "Could not download this document.");
+    }
   }
 
   async function signOut() {
@@ -435,6 +474,14 @@ function ProductClientWorkspace() {
     setSelectedMatter(null);
     setMessages([]);
   }
+
+  const subTabStyle = (isActive: boolean): CSSProperties => ({
+    flex: 1,
+    border: isActive ? "1px solid var(--primary)" : "1px solid var(--border)",
+    background: isActive ? "var(--primary)" : "var(--surface)",
+    color: isActive ? "#ffffff" : "var(--text-secondary)",
+    boxShadow: isActive ? "0 10px 22px rgba(15, 110, 86, 0.18)" : "0 4px 12px rgba(15, 23, 42, 0.04)",
+  });
 
   if (incomingPortalToken) {
     return (
@@ -468,6 +515,11 @@ function ProductClientWorkspace() {
 
           {selectedMatter && portalAuth ? (
             <section className="grid">
+              {workspaceError ? (
+                <div className="panel" style={{ borderColor: "rgba(185, 28, 28, 0.25)", color: "#991b1b" }}>
+                  {workspaceError}
+                </div>
+              ) : null}
               <div className="panel" style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "8px" }}>
                 <div className="eyebrow" style={{ margin: 0 }}>Matter timeline</div>
                 <h2 style={{ margin: 0, fontSize: "24px", fontWeight: 800 }}>{selectedMatter.rawCaseNumber}</h2>
@@ -485,7 +537,7 @@ function ProductClientWorkspace() {
                   type="button"
                   className={activeSubTab === "hearings" ? "button" : "button-secondary"}
                   onClick={() => setActiveSubTab("hearings")}
-                  style={{ flex: 1 }}
+                  style={subTabStyle(activeSubTab === "hearings")}
                 >
                   Hearings
                 </button>
@@ -493,9 +545,17 @@ function ProductClientWorkspace() {
                   type="button"
                   className={activeSubTab === "documents" ? "button" : "button-secondary"}
                   onClick={() => setActiveSubTab("documents")}
-                  style={{ flex: 1 }}
+                  style={subTabStyle(activeSubTab === "documents")}
                 >
                   Shared Documents
+                </button>
+                <button
+                  type="button"
+                  className={activeSubTab === "chat" ? "button" : "button-secondary"}
+                  onClick={() => setActiveSubTab("chat")}
+                  style={subTabStyle(activeSubTab === "chat")}
+                >
+                  Chat with Counsel
                 </button>
               </div>
 
@@ -507,6 +567,15 @@ function ProductClientWorkspace() {
                 <DocumentsTab
                   selectedMatter={selectedMatter}
                   openDocument={(docId) => void openDocument(docId, incomingPortalToken, portalAuth)}
+                />
+              )}
+
+              {activeSubTab === "chat" && (
+                <ChatTab
+                  messages={messages}
+                  draft={draft}
+                  setDraft={setDraft}
+                  sendMessage={sendMessage}
                 />
               )}
             </section>
@@ -589,6 +658,11 @@ function ProductClientWorkspace() {
 
         {selectedMatter ? (
           <section className="grid">
+            {workspaceError ? (
+              <div className="panel" style={{ borderColor: "rgba(185, 28, 28, 0.25)", color: "#991b1b" }}>
+                {workspaceError}
+              </div>
+            ) : null}
             <div className="panel" style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "8px" }}>
               <div className="eyebrow" style={{ margin: 0 }}>Matter timeline</div>
               <h2 style={{ margin: 0, fontSize: "24px", fontWeight: 800 }}>{selectedMatter.rawCaseNumber}</h2>
@@ -606,7 +680,7 @@ function ProductClientWorkspace() {
                 type="button"
                 className={activeSubTab === "hearings" ? "button" : "button-secondary"}
                 onClick={() => setActiveSubTab("hearings")}
-                style={{ flex: 1 }}
+                style={subTabStyle(activeSubTab === "hearings")}
               >
                 Hearings
               </button>
@@ -614,7 +688,7 @@ function ProductClientWorkspace() {
                 type="button"
                 className={activeSubTab === "documents" ? "button" : "button-secondary"}
                 onClick={() => setActiveSubTab("documents")}
-                style={{ flex: 1 }}
+                style={subTabStyle(activeSubTab === "documents")}
               >
                 Shared Documents
               </button>
@@ -622,7 +696,7 @@ function ProductClientWorkspace() {
                 type="button"
                 className={activeSubTab === "chat" ? "button" : "button-secondary"}
                 onClick={() => setActiveSubTab("chat")}
-                style={{ flex: 1 }}
+                style={subTabStyle(activeSubTab === "chat")}
               >
                 Chat with Counsel
               </button>
@@ -645,7 +719,6 @@ function ProductClientWorkspace() {
                 draft={draft}
                 setDraft={setDraft}
                 sendMessage={sendMessage}
-                profile={profile}
               />
             )}
           </section>
