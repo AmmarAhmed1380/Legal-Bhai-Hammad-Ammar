@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -16,6 +16,8 @@ import * as SecureStore from "expo-secure-store";
 
 import { ApiRequestError, apiRequest } from "./api";
 import { theme } from "./theme";
+import { enqueueMutation, pendingMutationCount } from "./offline/queue";
+import { flushOfflineQueue, startOfflineSyncAgent } from "./offline/sync-agent";
 
 type ProductTab = "home" | "matters" | "alerts" | "more";
 
@@ -80,25 +82,15 @@ const spacing = {
 const AUTH_STORAGE_KEY = "legalbahi-mobile-auth";
 const CLIENT_STORAGE_KEY = "legalbahi-mobile-client-auth";
 
-function formatPhoneNumber(value: string, countryCode: string): string {
-  const clean = value.replace(/\D/g, "");
-  if (countryCode === "+92") {
-    const digits = clean.slice(0, 11);
-    if (digits.length <= 4) return digits;
-    return `${digits.slice(0, 4)}-${digits.slice(4)}`;
-  }
-  const digits = clean.slice(0, 10);
-  if (digits.length === 0) return "";
-  if (digits.length <= 3) return `(${digits}`;
-  if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
-  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+function formatPhoneNumber(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  if (digits.length <= 4) return digits;
+  return `${digits.slice(0, 4)}-${digits.slice(4)}`;
 }
 
-function formatFullPhone(countryCode: string, phone: string): string {
+function toPakistanPhoneSubmit(phone: string): string {
   const cleanPhone = phone.replace(/\D/g, "");
-  return countryCode === "+92"
-    ? (cleanPhone.startsWith("0") ? cleanPhone : `0${cleanPhone}`)
-    : `${countryCode}${cleanPhone}`;
+  return cleanPhone.startsWith("0") ? cleanPhone : `0${cleanPhone}`;
 }
 
 interface ClientProfile {
@@ -122,7 +114,6 @@ function courtLabel(courtId: string): string {
 
 export function ProductApp({ onBack }: { onBack?: () => void }) {
   const [activeTab, setActiveTab] = useState<"lawyer" | "client">("lawyer");
-  const [countryCode, setCountryCode] = useState("+1");
   const [phone, setPhone] = useState("");
   const [auth, setAuth] = useState<{ token: string; refreshToken: string | null } | null>(null);
   const [clientAuth, setClientAuth] = useState<{ token: string; refreshToken: string | null } | null>(null);
@@ -152,6 +143,16 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
     firmName: "",
     primaryCity: "",
   });
+  const otpInputRefs = useRef<Array<TextInput | null>>(Array(6).fill(null));
+  const [offlineQueueSize, setOfflineQueueSize] = useState(0);
+
+  useEffect(() => {
+    if (!auth?.token) {
+      return;
+    }
+    setOfflineQueueSize(pendingMutationCount());
+    return startOfflineSyncAgent(() => auth.token);
+  }, [auth?.token]);
 
   useEffect(() => {
     void Promise.all([
@@ -278,7 +279,6 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
   function handleTabChange(tab: "lawyer" | "client") {
     setActiveTab(tab);
     setPhone("");
-    setCountryCode("+1");
     resetAuthFlow();
     setRegistrationMode(false);
     setRegistration({
@@ -289,16 +289,16 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
     });
   }
 
-  async function startLawyerLogin() {
+  async function startLawyerLogin(options?: { resend?: boolean }) {
     if (registrationMode) {
       if (!registration.displayName.trim() || !registration.firmName.trim() || !registration.primaryCity.trim()) {
         setOperationStatus("Please fill in all required fields to create a workspace.");
         return;
       }
     }
-    setOperationStatus("Requesting OTP...");
+    setOperationStatus(options?.resend ? "Sending a new verification code..." : "Requesting OTP...");
     try {
-      const formattedPhone = formatFullPhone(countryCode, phone);
+      const formattedPhone = toPakistanPhoneSubmit(phone);
       await apiRequest<{ devCode: string | null }>("/v1/auth/otp/request", {
         method: "POST",
         body: JSON.stringify({
@@ -308,7 +308,11 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
         }),
       });
       setOtpDigits(Array(6).fill(""));
-      setOperationStatus("OTP code sent to your phone number.");
+      setOperationStatus(
+        options?.resend
+          ? "A new verification code has been sent to your phone number."
+          : "A verification code has been sent to your phone number.",
+      );
       setOtpRequested(true);
     } catch (error) {
       setOperationStatus(error instanceof Error ? error.message : "Failed to request OTP.");
@@ -319,7 +323,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
     const codeToUse = codeOverride ?? otpDigits.join("");
     setOperationStatus(registrationMode ? "Creating workspace..." : "Verifying OTP...");
     try {
-      const formattedPhone = formatFullPhone(countryCode, phone);
+      const formattedPhone = toPakistanPhoneSubmit(phone);
       const path = registrationMode ? "/v1/auth/staff/register" : "/v1/auth/otp/verify";
       const bodyPayload = registrationMode
         ? {
@@ -345,10 +349,10 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
     }
   }
 
-  async function startClientLogin() {
-    setOperationStatus("Requesting client OTP...");
+  async function startClientLogin(options?: { resend?: boolean }) {
+    setOperationStatus(options?.resend ? "Sending a new verification code..." : "Requesting client OTP...");
     try {
-      const formattedPhone = formatFullPhone(countryCode, phone);
+      const formattedPhone = toPakistanPhoneSubmit(phone);
       const response = await apiRequest<{ devCode: string | null; expiresAt: string | null }>("/v1/auth/otp/request", {
         method: "POST",
         body: JSON.stringify({
@@ -362,7 +366,11 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
         return;
       }
       setOtpDigits(Array(6).fill(""));
-      setOperationStatus("OTP code sent to your phone number.");
+      setOperationStatus(
+        options?.resend
+          ? "A new verification code has been sent to your phone number."
+          : "A verification code has been sent to your phone number.",
+      );
       setOtpRequested(true);
     } catch (error) {
       setOperationStatus(error instanceof Error ? error.message : "Failed to request OTP.");
@@ -373,7 +381,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
     const codeToUse = codeOverride ?? otpDigits.join("");
     setOperationStatus("Verifying client OTP...");
     try {
-      const formattedPhone = formatFullPhone(countryCode, phone);
+      const formattedPhone = toPakistanPhoneSubmit(phone);
       const payload = await apiRequest<{ token: string; refreshToken: string | null }>("/v1/auth/otp/verify", {
         method: "POST",
         body: JSON.stringify({ phone: formattedPhone, actorType: "client", code: codeToUse }),
@@ -388,10 +396,35 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
   }
 
   function handleOtpChange(index: number, value: string) {
-    const cleanValue = value.replace(/[^0-9]/g, "").slice(-1);
+    const cleanValue = value.replace(/[^0-9]/g, "");
+    if (cleanValue.length > 1) {
+      const nextDigits = [...otpDigits];
+      cleanValue.slice(0, 6 - index).split("").forEach((digit, offset) => {
+        nextDigits[index + offset] = digit;
+      });
+      setOtpDigits(nextDigits);
+      const nextIndex = Math.min(index + cleanValue.length, 5);
+      otpInputRefs.current[nextIndex]?.focus();
+      return;
+    }
+
     const nextDigits = [...otpDigits];
     nextDigits[index] = cleanValue;
     setOtpDigits(nextDigits);
+
+    if (cleanValue && index < 5) {
+      otpInputRefs.current[index + 1]?.focus();
+    }
+  }
+
+  function handleOtpKeyPress(index: number, key: string) {
+    if (key !== "Backspace" || otpDigits[index] || index === 0) {
+      return;
+    }
+    const nextDigits = [...otpDigits];
+    nextDigits[index - 1] = "";
+    setOtpDigits(nextDigits);
+    otpInputRefs.current[index - 1]?.focus();
   }
 
   async function openMatter(matterId: string, activeAuth = auth) {
@@ -433,27 +466,65 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
       return;
     }
 
+    const hearingPayload = {
+      listedAt: new Date().toISOString(),
+      outcome: hearingOutcome,
+      notes: hearingNotes,
+      nextDate: hearingNextDate || "",
+      sourceType: "manual_staff_mobile",
+    };
+
     try {
-      const form = new FormData();
-      form.append("listedAt", new Date().toISOString());
-      form.append("outcome", hearingOutcome);
-      form.append("notes", hearingNotes);
-      form.append("nextDate", hearingNextDate || "");
-      form.append("sourceType", "manual_staff_mobile");
       if (hearingImageUri) {
+        const form = new FormData();
+        form.append("listedAt", hearingPayload.listedAt);
+        form.append("outcome", hearingPayload.outcome);
+        form.append("notes", hearingPayload.notes);
+        form.append("nextDate", hearingPayload.nextDate);
+        form.append("sourceType", hearingPayload.sourceType);
         form.append("file", { uri: hearingImageUri, name: "hearing-order.jpg", type: "image/jpeg" } as unknown as Blob);
+        const payload = await authedRequest(`/v1/matters/${selectedMatter.id}/hearings`, { method: "POST", body: form }, auth);
+        await completeHearingSave(payload.auth);
+        return;
       }
-      const payload = await authedRequest(`/v1/matters/${selectedMatter.id}/hearings`, { method: "POST", body: form }, auth);
-      setHearingOutcome("Order reserved");
-      setHearingNotes("Counsel appeared. Short written note to be filed before the next listing.");
-      setHearingNextDate("");
-      setHearingImageUri(null);
-      await loadWorkspace(payload.auth);
-      await openMatter(selectedMatter.id, payload.auth);
-      Alert.alert("Hearing saved", "The matter timeline has been updated.");
+
+      const payload = await authedRequest(`/v1/matters/${selectedMatter.id}/hearings`, {
+        method: "POST",
+        body: JSON.stringify(hearingPayload),
+      }, auth);
+      await completeHearingSave(payload.auth);
     } catch (error) {
+      const shouldQueue =
+        error instanceof ApiRequestError &&
+        (error.status === 0 || error.status >= 500 || /network|timeout|fetch/i.test(error.message));
+      if (shouldQueue && !hearingImageUri) {
+        enqueueMutation({
+          path: `/v1/matters/${selectedMatter.id}/hearings`,
+          method: "POST",
+          body: hearingPayload,
+        });
+        setOfflineQueueSize(pendingMutationCount());
+        Alert.alert("Saved offline", "The hearing update will sync automatically when connectivity returns.");
+        return;
+      }
       Alert.alert("Save failed", error instanceof Error ? error.message : "Unknown error");
     }
+  }
+
+  async function completeHearingSave(activeAuth: { token: string; refreshToken: string | null }) {
+    setHearingOutcome("Order reserved");
+    setHearingNotes("Counsel appeared. Short written note to be filed before the next listing.");
+    setHearingNextDate("");
+    setHearingImageUri(null);
+    await loadWorkspace(activeAuth);
+    if (selectedMatter) {
+      await openMatter(selectedMatter.id, activeAuth);
+    }
+    const flushed = await flushOfflineQueue(activeAuth.token);
+    if (flushed > 0) {
+      setOfflineQueueSize(pendingMutationCount());
+    }
+    Alert.alert("Hearing saved", "The matter timeline has been updated.");
   }
 
   async function pickHearingImage() {
@@ -588,26 +659,14 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
               <>
                 <Text style={styles.fieldLabel}>Phone Number</Text>
                 <View style={styles.phoneRow}>
-                  <View style={styles.countryPicker}>
-                    <Pressable
-                      style={[styles.countryOption, countryCode === "+92" ? styles.countryOptionActive : null]}
-                      onPress={() => setCountryCode("+92")}
-                    >
-                      <Text style={styles.countryOptionText}>PK +92</Text>
-                    </Pressable>
-                    <Pressable
-                      style={[styles.countryOption, countryCode === "+1" ? styles.countryOptionActive : null]}
-                      onPress={() => setCountryCode("+1")}
-                    >
-                      <Text style={styles.countryOptionText}>US +1</Text>
-                    </Pressable>
+                  <View style={styles.countryPrefix}>
+                    <Text style={styles.countryPrefixText}>PK +92</Text>
                   </View>
                   <TextInput
                     accessibilityLabel="Phone"
                     value={phone}
-                    onChangeText={(value) => setPhone(formatPhoneNumber(value, countryCode))}
+                    onChangeText={(value) => setPhone(formatPhoneNumber(value))}
                     keyboardType="phone-pad"
-                    placeholder={countryCode === "+92" ? "0300-1234567" : "(601) 210-9282"}
                     style={[styles.input, styles.phoneInput]}
                   />
                 </View>
@@ -656,17 +715,23 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
                   {otpDigits.map((digit, index) => (
                     <TextInput
                       key={index}
+                      ref={(input) => {
+                        otpInputRefs.current[index] = input;
+                      }}
                       accessibilityLabel={`OTP digit ${index + 1}`}
                       value={digit}
                       onChangeText={(value) => handleOtpChange(index, value)}
+                      onKeyPress={({ nativeEvent }) => handleOtpKeyPress(index, nativeEvent.key)}
                       keyboardType="number-pad"
+                      textContentType="oneTimeCode"
+                      selectTextOnFocus
                       maxLength={1}
                       style={styles.otpInput}
                     />
                   ))}
                 </View>
                 <View style={styles.otpActions}>
-                  <Pressable onPress={() => void (activeTab === "lawyer" ? startLawyerLogin() : startClientLogin())}>
+                  <Pressable onPress={() => void (activeTab === "lawyer" ? startLawyerLogin({ resend: true }) : startClientLogin({ resend: true }))}>
                     <Text style={styles.linkText}>Resend OTP</Text>
                   </Pressable>
                   <Pressable onPress={resetAuthFlow}>
@@ -829,6 +894,9 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
         <Text style={styles.eyebrow}>Legal Bhai</Text>
         <Text style={styles.title}>{profile.firm?.name ?? "Workspace"}</Text>
         <Text style={styles.copy}>{profile.staffUser.displayName} · {profile.staffMembership.role}</Text>
+        {offlineQueueSize > 0 ? (
+          <Text style={styles.statusBanner}>{offlineQueueSize} hearing update(s) waiting to sync</Text>
+        ) : null}
         <View style={styles.tabRow}>
           {(["home", "matters", "alerts", "more"] as const).map((tabKey) => (
             <Pressable
@@ -966,23 +1034,16 @@ const styles = StyleSheet.create({
   phoneRow: {
     gap: 10,
   },
-  countryPicker: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  countryOption: {
+  countryPrefix: {
+    alignSelf: "flex-start",
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: theme.border,
-    backgroundColor: theme.background,
-  },
-  countryOptionActive: {
     borderColor: theme.primary,
     backgroundColor: theme.primaryLight,
   },
-  countryOptionText: {
+  countryPrefixText: {
     color: theme.textPrimary,
     fontWeight: "600",
     fontSize: 12,

@@ -156,6 +156,7 @@ const commonEnvironment = {
   ENABLE_PRODUCT_SEED_DATA: "true",
   USE_POSTGRES_PRODUCT_STORE: "false",
   IHC_LIVE_FETCH_ENABLED: "false",
+  COURT_LIVE_FETCH_ENABLED: "false",
   WAKEEL_PRODUCT_DB_PATH: testDatabase,
   PRODUCT_UPLOADS_DIRECTORY: testUploads,
   JWT_SECRET: "legalbahi-brother-test-jwt-secret",

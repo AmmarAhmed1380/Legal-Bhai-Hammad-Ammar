@@ -1,19 +1,23 @@
-import { createEmailProvider, createSmsProvider } from "./lib/providers.js";
+import { createEmailProvider, createSmsProvider, createWhatsAppProvider, dispatchClientSmsWithWhatsAppFailover } from "./lib/providers.js";
 import { createRuntimeProductStore } from "./lib/runtime-product-store.js";
 import { envFlag, isProduction, validateProductionEnvironment } from "./lib/config.js";
 import { COURT_SOURCE_DEFINITIONS, fetchCourtCauseList } from "./lib/court-sources.js";
 import { renderNotificationTemplate } from "./lib/notification-schedule.js";
-import { captureError, initializeErrorReporting } from "./lib/telemetry.js";
+import { captureError, initializeErrorReporting, registerProcessErrorHandlers } from "./lib/telemetry.js";
+import { runScheduledDatabaseBackup } from "./lib/database-backup.js";
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
 initializeErrorReporting();
+registerProcessErrorHandlers();
 validateProductionEnvironment();
 const store = createRuntimeProductStore();
 const smsProvider = createSmsProvider();
+const whatsAppProvider = createWhatsAppProvider();
 const emailProvider = createEmailProvider();
 let notificationCycleRunning = false;
 let courtCycleRunning = false;
+let backupCycleRunning = false;
 
 async function runCycle(): Promise<void> {
   await store.schedulePilotNotifications();
@@ -30,7 +34,13 @@ async function runCycle(): Promise<void> {
       const rendered = renderNotificationTemplate(template, job.payload);
       const delivery =
         job.channel === "sms"
-          ? await smsProvider.send(recipient.phone ?? "", rendered.body)
+          ? await dispatchClientSmsWithWhatsAppFailover({
+              templateKey: job.templateKey,
+              phone: recipient.phone ?? "",
+              body: rendered.body,
+              whatsAppProvider,
+              smsProvider,
+            })
           : await emailProvider.send(recipient.email ?? "", rendered.subject, `<pre>${rendered.body}</pre>`);
       await store.recordNotificationAttempt(job.id, { providerId: delivery.providerId, error: null });
     } catch (error) {
@@ -53,6 +63,24 @@ async function runCourtSourceCycle(): Promise<void> {
         await store.recordCourtIngestionFailure(source.id, listType, error instanceof Error ? error.message : "Unknown court source provider failure");
       }
     }
+  }
+}
+
+async function runBackupCycleSafely(): Promise<void> {
+  if (backupCycleRunning || envFlag("BACKUP_ENABLED", true) === false) {
+    return;
+  }
+  backupCycleRunning = true;
+  try {
+    const result = await runScheduledDatabaseBackup();
+    if (result.ran) {
+      console.error("[backup] nightly archive completed", { storageKey: result.storageKey });
+    }
+  } catch (error) {
+    captureError(error);
+    console.error("Database backup cycle failed", error);
+  } finally {
+    backupCycleRunning = false;
   }
 }
 
@@ -91,12 +119,18 @@ const courtInterval = setInterval(
   () => void runCourtSourceCycleSafely(),
   Number(process.env.COURT_SYNC_INTERVAL_MINUTES ?? 1) * 60_000,
 );
+const backupInterval = setInterval(
+  () => void runBackupCycleSafely(),
+  Number(process.env.BACKUP_CHECK_INTERVAL_MINUTES ?? 60) * 60_000,
+);
 void runNotificationCycleSafely();
 void runCourtSourceCycleSafely();
+void runBackupCycleSafely();
 
 async function shutdown(): Promise<void> {
   clearInterval(notificationInterval);
   clearInterval(courtInterval);
+  clearInterval(backupInterval);
   await store.close();
   process.exit(0);
 }

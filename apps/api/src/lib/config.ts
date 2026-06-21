@@ -8,7 +8,7 @@ const isRunningTests =
   process.argv.some((arg) => arg.includes("test")) ||
   Boolean(process.env.WAKEEL_TESTING);
 
-if (process.env.NODE_ENV !== "production" && !isRunningTests) {
+if (!isRunningTests) {
   const possiblePaths = [
     join(process.cwd(), ".env"),
     join(process.cwd(), "apps/api", ".env"),
@@ -18,7 +18,7 @@ if (process.env.NODE_ENV !== "production" && !isRunningTests) {
     if (existsSync(p)) {
       try {
         process.loadEnvFile(p);
-      } catch (err) {
+      } catch {
         // Ignore errors
       }
     }
@@ -98,12 +98,13 @@ export function validateProductionEnvironment(): void {
     "SENTRY_DSN",
     "IHC_SYNC_ENABLED",
     "TRUST_PROXY_LOOPBACK",
+    "UPTIME_SECRET",
   ];
   const missing = required.filter((name) => !process.env[name]?.trim());
   if (missing.length > 0) {
     throw new Error(`Missing production environment variables: ${missing.join(", ")}`);
   }
-  for (const name of ["JWT_SECRET", "PILOT_ADMIN_SECRET"] as const) {
+  for (const name of ["JWT_SECRET", "PILOT_ADMIN_SECRET", "UPTIME_SECRET"] as const) {
     const value = process.env[name]!;
     if (value.length < 32) {
       throw new Error(`${name} must be at least 32 characters in production`);
@@ -161,6 +162,16 @@ export function validateProductionEnvironment(): void {
   }
   if (!envFlag("TRUST_PROXY_LOOPBACK")) {
     throw new Error("TRUST_PROXY_LOOPBACK must be enabled in production");
+  }
+  const malwareProvider = process.env.MALWARE_SCAN_PROVIDER?.trim().toLowerCase();
+  if (!malwareProvider || !["clamav", "cloudmersive", "virustotal"].includes(malwareProvider)) {
+    throw new Error("MALWARE_SCAN_PROVIDER must be clamav, cloudmersive, or virustotal in production");
+  }
+  if (malwareProvider === "cloudmersive" && !process.env.CLOUDMERSIVE_API_KEY?.trim()) {
+    throw new Error("CLOUDMERSIVE_API_KEY must be set when MALWARE_SCAN_PROVIDER=cloudmersive");
+  }
+  if (malwareProvider === "virustotal" && !process.env.VIRUSTOTAL_API_KEY?.trim()) {
+    throw new Error("VIRUSTOTAL_API_KEY must be set when MALWARE_SCAN_PROVIDER=virustotal");
   }
   const ihcInterval = Number(process.env.IHC_SYNC_INTERVAL_MINUTES ?? 60);
   if (!Number.isInteger(ihcInterval) || ihcInterval < 5 || ihcInterval > 1440) {

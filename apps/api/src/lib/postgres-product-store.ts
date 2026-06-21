@@ -47,8 +47,10 @@ import type {
   ProductClientSummary,
   ProductProfile,
   SearchHit,
-} from "./product-store.js";
+} from "../store/types.js";
 import { normalizePakistanPhone } from "./validation.js";
+
+type PostgresNotificationWhere = "WHERE firm_id = $1 ORDER BY scheduled_at DESC";
 
 types.setTypeParser(1082, (value) => value);
 types.setTypeParser(1184, (value) => value);
@@ -310,6 +312,61 @@ export class PostgresProductStore {
       await client.query("UPDATE otp_requests SET used_at = now() WHERE id = $1", [row.id]);
       return true;
     });
+  }
+
+  private async consumePendingOtpRequest(actorType: "staff" | "client", phone: string): Promise<boolean> {
+    return this.transaction(async (client) => {
+      const result = await client.query<{ id: string }>(
+        `SELECT id FROM otp_requests
+         WHERE actor_type = $1 AND phone = $2 AND used_at IS NULL AND expires_at >= now() AND attempt_count < 5
+         ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
+        [actorType, phone],
+      );
+      const row = result.rows[0];
+      if (!row) {
+        return false;
+      }
+      await client.query("UPDATE otp_requests SET used_at = now() WHERE id = $1", [row.id]);
+      return true;
+    });
+  }
+
+  async completeOtpAfterExternalVerify(actorType: "staff" | "client", phone: string): Promise<ProductSession | null> {
+    const normalizedPhone = normalizePakistanPhone(phone);
+    if (!normalizedPhone) {
+      return null;
+    }
+    if (actorType === "staff") {
+      if (!(await this.consumePendingOtpRequest(actorType, normalizedPhone))) {
+        return null;
+      }
+      const staff = await this.findStaffByPhone(normalizedPhone);
+      return staff ? { actorType: "staff", actorId: staff.user.id, firmId: staff.membership.firmId } : null;
+    }
+    const client = await this.findUniqueClientByPhone(normalizedPhone);
+    if (!client || client.status !== "active" || !(await this.consumePendingOtpRequest(actorType, normalizedPhone))) {
+      return null;
+    }
+    return { actorType: "client", actorId: client.id, firmId: client.firmId };
+  }
+
+  async completeOtpAfterExternalVerifyForAccount(
+    clientAccountId: string,
+    phone: string,
+  ): Promise<ProductSession | null> {
+    const normalizedPhone = normalizePakistanPhone(phone);
+    if (!normalizedPhone) {
+      return null;
+    }
+    const result = await this.pool.query(
+      "SELECT id, firm_id FROM client_accounts WHERE id = $1 AND phone = $2 AND status = 'active'",
+      [clientAccountId, normalizedPhone],
+    );
+    const client = result.rows[0];
+    if (!client || !(await this.consumePendingOtpRequest("client", normalizedPhone))) {
+      return null;
+    }
+    return { actorType: "client", actorId: client.id, firmId: client.firm_id };
   }
 
   async canRequestStaffOtp(phone: string): Promise<boolean> {
@@ -1409,7 +1466,21 @@ export class PostgresProductStore {
        RETURNING id, matter_id, client_account_id, created_by, expires_at, created_at, revoked_at`,
       [randomUUID(), matterId, membership.rows[0].client_account_id, session.actorId, hashValue(rawToken), expiresAt],
     );
-    return { portalLink: mapRow<PortalLink>(result.rows[0]), rawToken };
+    const portalLink = mapRow<PortalLink>(result.rows[0]);
+    const portalUrl = `${process.env.PUBLIC_WEB_URL ?? "http://localhost:3000"}/portal/otp?token=${rawToken}`;
+    await this.pool.query(
+      `INSERT INTO notification_jobs (id, firm_id, actor_type, actor_id, channel, template_key, payload, idempotency_key, scheduled_at)
+       VALUES ($1, $2, 'client', $3, 'sms', 'portal_access_token', $4, $5, now())
+       ON CONFLICT (idempotency_key) DO NOTHING`,
+      [
+        randomUUID(),
+        firmId,
+        portalLink.clientAccountId,
+        JSON.stringify({ matterId, portalUrl }),
+        `portal-access:${portalLink.id}:sms`,
+      ],
+    );
+    return { portalLink, rawToken };
   }
 
   async getPortalAccess(rawToken: string): Promise<PortalAccess | null> {
@@ -1713,7 +1784,7 @@ export class PostgresProductStore {
     );
   }
 
-  private async readNotificationJobs(where: string, values: unknown[] = []): Promise<NotificationJobRecord[]> {
+  private async readNotificationJobs(where: PostgresNotificationWhere, values: unknown[] = []): Promise<NotificationJobRecord[]> {
     const result = await this.pool.query(
       `SELECT id, firm_id, actor_type, actor_id, channel, template_key, template_version, payload, scheduled_at, status, attempt_count, last_error
        FROM notification_jobs ${where}`,

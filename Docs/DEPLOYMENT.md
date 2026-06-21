@@ -47,7 +47,7 @@ The installer restarts running services after applying updated commands and envi
 eas build --platform android --profile internal
 ```
 
-12. Configure the private GitHub repository, protected `main` branch, Actions secrets, Sentry project, and both uptime secrets: `LEGALBAHI_API_HEALTH_URL` and `LEGALBAHI_WEB_URL`.
+12. Configure the private GitHub repository, protected `main` branch, Actions secrets, Sentry project, and uptime secrets: `LEGALBAHI_API_HEALTH_URL`, `LEGALBAHI_WEB_URL`, and `UPTIME_SECRET`.
 
 ## Required production settings
 

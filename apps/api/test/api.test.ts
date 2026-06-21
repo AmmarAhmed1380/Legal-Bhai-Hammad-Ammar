@@ -713,6 +713,8 @@ test("CORS allowlist is enforced and production startup fails when unset", async
     SENTRY_DSN: "https://public@example.ingest.sentry.io/1",
     IHC_SYNC_ENABLED: "true",
     TRUST_PROXY_LOOPBACK: "true",
+    MALWARE_SCAN_PROVIDER: "clamav",
+    UPTIME_SECRET: "n7U8pQ5rT2vW9xY4zA6bC1dE3fG8hJ0kL",
   });
   try {
     const allowedOrigin = await isolated.app.inject({
@@ -792,6 +794,8 @@ test("production requires separate document and backup R2 buckets", () => {
     TRUST_PROXY_LOOPBACK: "true",
     ENABLE_DEMO_SURFACES: "false",
     ENABLE_PRODUCT_SEED_DATA: "false",
+    MALWARE_SCAN_PROVIDER: "clamav",
+    UPTIME_SECRET: "n7U8pQ5rT2vW9xY4zA6bC1dE3fG8hJ0kL",
   };
   const previous = Object.fromEntries(Object.keys(productionEnvironment).map((name) => [name, process.env[name]]));
   Object.assign(process.env, productionEnvironment);
@@ -833,6 +837,8 @@ test("production rejects placeholder public hosts even when required values exis
     TRUST_PROXY_LOOPBACK: "true",
     ENABLE_DEMO_SURFACES: "false",
     ENABLE_PRODUCT_SEED_DATA: "false",
+    MALWARE_SCAN_PROVIDER: "clamav",
+    UPTIME_SECRET: "n7U8pQ5rT2vW9xY4zA6bC1dE3fG8hJ0kL",
   };
   const previous = Object.fromEntries(Object.keys(productionEnvironment).map((name) => [name, process.env[name]]));
   Object.assign(process.env, productionEnvironment);

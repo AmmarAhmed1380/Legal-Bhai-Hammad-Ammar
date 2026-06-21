@@ -9,7 +9,7 @@ jobs:
   ready:
     runs-on: ubuntu-latest
     steps:
-      - name: Check API readiness
-        run: curl --fail --show-error --silent --max-time 20 "${{ secrets.LEGALBAHI_API_HEALTH_URL }}/health/ready"
+      - name: Check secured API uptime probe
+        run: curl --fail --show-error --silent --max-time 20 -H "Authorization: Bearer ${{ secrets.UPTIME_SECRET }}" "${{ secrets.LEGALBAHI_API_HEALTH_URL }}/v1/health/uptime"
       - name: Check hosted web app
         run: curl --fail --show-error --silent --max-time 20 "${{ secrets.LEGALBAHI_WEB_URL }}" | grep --fixed-strings "LegalBahi"

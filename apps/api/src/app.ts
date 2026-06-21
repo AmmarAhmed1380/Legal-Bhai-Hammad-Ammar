@@ -1,15 +1,16 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { extname, join } from "node:path";
-
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
-import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
+import { type FastifyReply, type FastifyRequest } from "fastify";
 
 import { DEMO_CODE, STAGES, type NotificationType, type Stage, type User } from "@wakeel/shared";
 import { readBearerToken, signDemoToken, verifyDemoToken } from "./lib/auth.js";
 import { envFlag, getJwtSecret, isProduction, validateProductionEnvironment } from "./lib/config.js";
+import { createFastifyServer } from "./lib/fastify-server.js";
 import { fetchIhcCauseListHtml, normalizeIhcCaseNumber, parseIhcCauseList } from "./lib/ihc.js";
+import { sanitizeInput } from "./lib/input-sanitizer.js";
 import { renderNotificationPreview } from "./lib/notifications.js";
 import { runOcr } from "./lib/ocr.js";
 import { registerProductRoutes } from "./lib/product-api.js";
@@ -17,6 +18,7 @@ import { SlidingWindowRateLimiter } from "./lib/rate-limit.js";
 import { createRuntimeProductStore } from "./lib/runtime-product-store.js";
 import { createStore, type DemoStore, todayInPakistan } from "./lib/store.js";
 import { captureError } from "./lib/telemetry.js";
+import { clientInputErrorResponse, isFastifyClientInputError, isFastifyValidationError, validationErrorResponse } from "./lib/validation-errors.js";
 
 const DEFAULT_DEV_CORS_ORIGINS = [
   "http://localhost:3000",
@@ -180,8 +182,7 @@ async function saveUpload(part: UploadFilePart | null): Promise<{ imageUrl: stri
 export function buildServer(providedDemoStore?: DemoStore) {
   validateProductionEnvironment();
   const trustLoopbackProxy = envFlag("TRUST_PROXY_LOOPBACK", isProduction());
-  const app = Fastify({
-    logger: false,
+  const app = createFastifyServer({
     trustProxy: trustLoopbackProxy ? ["127.0.0.1", "::1"] : false,
   });
   const store = providedDemoStore ?? (isDemoModeEnabled() ? createStore() : null);
@@ -208,7 +209,21 @@ export function buildServer(providedDemoStore?: DemoStore) {
     }
   });
 
+  app.addHook("preValidation", async (request) => {
+    if (request.body !== undefined) {
+      (request as FastifyRequest & { body: unknown }).body = sanitizeInput(request.body);
+    }
+  });
+
   app.setErrorHandler((error, _request, reply) => {
+    if (isFastifyValidationError(error)) {
+      reply.code(400).send(validationErrorResponse(error));
+      return;
+    }
+    if (isFastifyClientInputError(error)) {
+      reply.code(400).send(clientInputErrorResponse(error));
+      return;
+    }
     if ((error as { code?: string }).code === "FST_REQ_FILE_TOO_LARGE") {
       reply.code(413).send({ error: "Upload exceeds the 10 MB limit" });
       return;

@@ -111,9 +111,16 @@ for (const requiredText of [
 }
 
 const uptime = readFileSync(".github/workflows/uptime.yml", "utf8");
-for (const requiredText of ["LEGALBAHI_API_HEALTH_URL", "LEGALBAHI_WEB_URL", "LegalBahi"]) {
+for (const requiredText of ["LEGALBAHI_API_HEALTH_URL", "LEGALBAHI_WEB_URL", "LegalBahi", "/v1/health/uptime", "UPTIME_SECRET"]) {
   if (!uptime.includes(requiredText)) {
     throw new Error(`uptime.yml is missing: ${requiredText}`);
+  }
+}
+
+const production = readFileSync(".github/workflows/production.yml", "utf8");
+for (const requiredText of ["npm run verify", "npm audit", "branches: [main]", "postgres:17-alpine"]) {
+  if (!production.includes(requiredText)) {
+    throw new Error(`production.yml is missing: ${requiredText}`);
   }
 }
 

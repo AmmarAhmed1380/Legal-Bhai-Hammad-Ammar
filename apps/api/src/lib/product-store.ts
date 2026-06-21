@@ -1,5 +1,5 @@
 import { mkdirSync, readFileSync } from "node:fs";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
@@ -29,6 +29,24 @@ import type {
   Session,
   TimeEntry,
 } from "@wakeel/shared";
+import { clientMethods } from "../store/sqlite/clients.js";
+import { coreMethods } from "../store/sqlite/core.js";
+import { hearingMethods } from "../store/sqlite/hearings.js";
+import { matterMethods } from "../store/sqlite/matters.js";
+import type {
+  ActiveRefreshToken,
+  CreateDocumentInput,
+  MatterDetail,
+  NotificationJobRecord,
+  NotificationPreference,
+  OtpRequestRecord,
+  OverviewReport,
+  PortalAccess,
+  ProductProfile,
+  SearchHit,
+  StoredDocumentRow,
+} from "../store/types.js";
+import { decodeJson, encodeJson, hashValue, nowIso } from "../store/utils.js";
 import { envFlag, isProduction } from "./config.js";
 import {
   getCourtSourceDefinition,
@@ -36,177 +54,43 @@ import {
   type CourtCauseListEntry,
   type CourtListType,
 } from "./court-sources.js";
-import type { ValidatedMatterCsvRow } from "./csv-import.js";
 import type { IhcCauseListRow } from "./ihc.js";
+import { syncToFiles } from "./file-sync.js";
 import { nextDayAgendaSchedule, type NotificationTemplate } from "./notification-schedule.js";
 import { normalizePakistanPhone } from "./validation.js";
-import { syncToFiles } from "./file-sync.js";
 
-function nowIso(): string {
-  return new Date().toISOString();
-}
+type SqliteNotificationWhere =
+  | "WHERE firm_id = ?"
+  | "WHERE status IN ('pending', 'retrying') AND scheduled_at <= ? AND attempt_count < 3 ORDER BY scheduled_at LIMIT ?"
+  | "WHERE id = ?";
 
-function hashValue(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
-}
+const SQLITE_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-function encodeJson(value: unknown): string {
-  return JSON.stringify(value);
-}
-
-function decodeJson<T>(value: string | null, fallback: T): T {
-  if (!value) {
-    return fallback;
+function quoteSqliteIdentifier(identifier: string): string {
+  if (!SQLITE_IDENTIFIER.test(identifier)) {
+    throw new Error(`Unsafe SQLite identifier: ${identifier}`);
   }
-
-  return JSON.parse(value) as T;
+  return `"${identifier}"`;
 }
 
-export interface ProductProfile {
-  actorType: "staff" | "client";
-  firm: Firm | null;
-  staffUser?: ProductUser;
-  staffMembership?: FirmMembership;
-  clientAccount?: ClientAccount;
+function assertSafeColumnDefinition(definition: string): void {
+  if (!/^[A-Z0-9_ ()]+$/.test(definition)) {
+    throw new Error("Unsafe SQLite column definition");
+  }
 }
 
-export interface MatterDetail extends Matter {
-  leadLawyer: ProductUser | null;
-  parties: MatterParty[];
-  hearings: Hearing[];
-  documents: ProductDocument[];
-  thread: MessageThread | null;
-}
-
-export interface SearchHit {
-  id: string;
-  kind: "matter" | "document" | "client";
-  title: string;
-  subtitle: string;
-}
-
-export interface OtpRequestRecord {
-  actorType: "staff" | "client";
-  phone: string;
-  code: string;
-}
-
-interface CreateMatterInput {
-  firmId: string;
-  courtId: string;
-  rawCaseNumber: string;
-  normalizedCaseNumber: string;
-  title: string;
-  matterType: Matter["matterType"];
-  stage: string;
-  status: Matter["status"];
-  nextHearingAt: string | null;
-  leadLawyerId: string | null;
-}
-
-interface CreateDocumentInput {
-  firmId: string;
-  matterId: string | null;
-  folderId?: string | null;
-  type: ProductDocument["type"];
-  title: string;
-  storageKey: string;
-  mimeType: string;
-  uploadedBy: string;
-  ocrStatus: ProductDocument["ocrStatus"];
-  ocrText: string | null;
-  searchText: string | null;
-  portalVisible?: boolean;
-}
-
-interface PortalAccess {
-  link: PortalLink;
-  clientAccount: ClientAccount;
-  session: ProductSession;
-}
-
-interface ActiveRefreshToken {
-  id: string;
-  sessionId: string;
-  actorType: "staff" | "client";
-  actorId: string;
-  firmId: string | null;
-  authMethod: ProductAuthMethod;
-  expiresAt: string;
-}
-
-type StoredDocumentRow = Omit<ProductDocument, "portalVisible"> & { portalVisible: number };
-
-export interface ProductClientSummary {
-  id: string;
-  phone: string;
-  displayName: string;
-  language: ProductLanguage;
-  status: ClientAccount["status"];
-  matterCount: number;
-  outstandingTotal: number;
-  lastMessageAt: string | null;
-  nextHearingAt: string | null;
-}
-
-export interface ProductClientDetail {
-  client: ProductClientSummary;
-  matters: Matter[];
-  invoices: Invoice[];
-  threadSummaries: Array<MessageThread & { matter: Matter; lastMessage: Message | null }>;
-}
-
-export interface OverviewReport {
-  metrics: {
-    openMatters: number;
-    upcomingHearings: number;
-    unreadAlerts: number;
-    outstandingInvoiceTotal: number;
-    overdueInvoiceTotal: number;
-    billableMinutes: number;
-  };
-  mattersByStage: Array<{ stage: string; count: number }>;
-  syncHealth: Array<CourtSource & { metrics: Record<string, number> }>;
-}
-
-export interface CsvImportPreview {
-  id: string;
-  status: string;
-  totalRows: number;
-  acceptedRows: number;
-  rejectedRows: number;
-  rows: Array<{
-    rowNumber: number;
-    state: string;
-    normalizedCaseNumber: string | null;
-    error: string | null;
-    payload: Record<string, unknown>;
-  }>;
-}
-
-export interface NotificationPreference {
-  firmId: string;
-  actorType: "staff" | "client";
-  actorId: string;
-  emailEnabled: boolean;
-  smsEnabled: boolean;
-  optedOutAt: string | null;
-}
-
-export interface NotificationJobRecord {
-  id: string;
-  firmId: string;
-  actorType: "staff" | "client";
-  actorId: string;
-  channel: "email" | "sms";
-  templateKey: string;
-  templateVersion: number;
-  payload: Record<string, unknown>;
-  scheduledAt: string;
-  status: string;
-  attemptCount: number;
-  lastError: string | null;
-}
+export type {
+  CsvImportPreview,
+  MatterDetail,
+  NotificationJobRecord,
+  NotificationPreference,
+  OtpRequestRecord,
+  OverviewReport,
+  ProductClientDetail,
+  ProductClientSummary,
+  ProductProfile,
+  SearchHit,
+} from "../store/types.js";
 
 export class ProductStore {
   readonly db: DatabaseSync;
@@ -268,9 +152,12 @@ export class ProductStore {
   }
 
   private ensureColumn(table: string, column: string, definition: string): void {
-    const rows = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    assertSafeColumnDefinition(definition);
+    const quotedTable = quoteSqliteIdentifier(table);
+    const quotedColumn = quoteSqliteIdentifier(column);
+    const rows = this.db.prepare(`PRAGMA table_info(${quotedTable})`).all() as Array<{ name: string }>;
     if (!rows.some((row) => row.name === column)) {
-      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+      this.db.exec(`ALTER TABLE ${quotedTable} ADD COLUMN ${quotedColumn} ${definition}`);
     }
   }
 
@@ -684,6 +571,7 @@ export class ProductStore {
       ["lawyer_next_day_agenda", "sms", "", "Legal Bhai next-day agenda:\n{{payload}}"],
       ["client_hearing_reminder", "sms", "", "Legal Bhai hearing reminder. Your hearing is scheduled in approximately 24 hours.\n{{payload}}"],
       ["post_hearing_update", "sms", "", "Legal Bhai matter update. Your lawyer posted a hearing update.\n{{payload}}"],
+      ["portal_access_token", "sms", "", "Legal Bhai client portal access:\n{{payload}}"],
     ] as const) {
       insertTemplate.run(...template, createdAt);
     }
@@ -1435,6 +1323,75 @@ export class ProductStore {
     return true;
   }
 
+  private consumePendingOtpRequest(actorType: "staff" | "client", phone: string): boolean {
+    const row = this.db
+      .prepare(`
+        SELECT id
+        FROM otp_requests
+        WHERE actor_type = ? AND phone = ? AND used_at IS NULL AND expires_at >= ? AND attempt_count < 5
+        ORDER BY created_at DESC
+        LIMIT 1
+      `)
+      .get(actorType, phone, nowIso()) as { id: string } | undefined;
+    if (!row) {
+      return false;
+    }
+    this.db.prepare("UPDATE otp_requests SET used_at = ? WHERE id = ?").run(nowIso(), row.id);
+    return true;
+  }
+
+  completeOtpAfterExternalVerify(actorType: "staff" | "client", phone: string): ProductSession | null {
+    const normalizedPhone = normalizePakistanPhone(phone);
+    if (!normalizedPhone) {
+      return null;
+    }
+    if (actorType === "staff") {
+      if (!this.consumePendingOtpRequest(actorType, normalizedPhone)) {
+        return null;
+      }
+      const staff = this.findStaffByPhone(normalizedPhone);
+      if (!staff) {
+        return null;
+      }
+      return {
+        actorType: "staff",
+        actorId: staff.user.id,
+        firmId: staff.membership.firmId,
+      };
+    }
+    const client = this.findUniqueClientByPhone(normalizedPhone);
+    if (!client || client.status !== "active" || !this.consumePendingOtpRequest(actorType, normalizedPhone)) {
+      return null;
+    }
+    return {
+      actorType: "client",
+      actorId: client.id,
+      firmId: this.resolveClientFirmId(client.id, client.firmId),
+    };
+  }
+
+  completeOtpAfterExternalVerifyForAccount(clientAccountId: string, phone: string): ProductSession | null {
+    const normalizedPhone = normalizePakistanPhone(phone);
+    if (!normalizedPhone) {
+      return null;
+    }
+    const client = this.db
+      .prepare(`
+        SELECT id, phone, display_name AS displayName, language, status, firm_id AS firmId
+        FROM client_accounts
+        WHERE id = ? AND phone = ? AND status = 'active'
+      `)
+      .get(clientAccountId, normalizedPhone) as (ClientAccount & { firmId: string | null }) | undefined;
+    if (!client || !this.consumePendingOtpRequest("client", normalizedPhone)) {
+      return null;
+    }
+    return {
+      actorType: "client",
+      actorId: client.id,
+      firmId: this.resolveClientFirmId(client.id, client.firmId),
+    };
+  }
+
   canRequestStaffOtp(phone: string): boolean {
     const normalizedPhone = normalizePakistanPhone(phone);
     if (!normalizedPhone) {
@@ -2168,450 +2125,6 @@ export class ProductStore {
     }));
   }
 
-  listMatters(session: ProductSession): Matter[] {
-    if (session.actorType === "staff") {
-      return this.db
-        .prepare(`
-          SELECT
-            id,
-            firm_id AS firmId,
-            court_id AS courtId,
-            raw_case_number AS rawCaseNumber,
-            normalized_case_number AS normalizedCaseNumber,
-            title,
-            matter_type AS matterType,
-            stage,
-            status,
-            next_hearing_at AS nextHearingAt,
-            lead_lawyer_id AS leadLawyerId
-          FROM matters
-          WHERE firm_id = ?
-          ORDER BY next_hearing_at IS NULL, next_hearing_at, title
-        `)
-        .all(session.firmId) as unknown as Matter[];
-    }
-
-    return this.db
-      .prepare(`
-        SELECT
-          m.id,
-          m.firm_id AS firmId,
-          m.court_id AS courtId,
-          m.raw_case_number AS rawCaseNumber,
-          m.normalized_case_number AS normalizedCaseNumber,
-          m.title,
-          m.matter_type AS matterType,
-          m.stage,
-          m.status,
-          m.next_hearing_at AS nextHearingAt,
-          m.lead_lawyer_id AS leadLawyerId
-        FROM matters m
-        JOIN client_memberships cm ON cm.matter_id = m.id
-        WHERE cm.client_account_id = ?
-        ORDER BY m.next_hearing_at IS NULL, m.next_hearing_at, m.title
-      `)
-      .all(session.actorId) as unknown as Matter[];
-  }
-
-  getMatter(session: ProductSession, matterId: string): MatterDetail | null {
-    const base = this.db
-      .prepare(`
-        SELECT
-          id,
-          firm_id AS firmId,
-          court_id AS courtId,
-          raw_case_number AS rawCaseNumber,
-          normalized_case_number AS normalizedCaseNumber,
-          title,
-          matter_type AS matterType,
-          stage,
-          status,
-          next_hearing_at AS nextHearingAt,
-          lead_lawyer_id AS leadLawyerId
-        FROM matters
-        WHERE id = ?
-      `)
-      .get(matterId) as unknown as Matter | undefined;
-
-    if (!base || !this.canAccessMatter(session, base.id, base.firmId)) {
-      return null;
-    }
-
-    const leadLawyer = base.leadLawyerId ? this.getStaffUser(base.leadLawyerId) : null;
-    const parties = this.db
-      .prepare(
-        "SELECT id, matter_id AS matterId, party_type AS partyType, display_name AS displayName, contact_ref AS contactRef FROM matter_parties WHERE matter_id = ? ORDER BY created_at",
-      )
-      .all(matterId) as unknown as MatterParty[];
-    const hearings = this.listHearings(session, matterId);
-    const documents = this.listDocuments(session, { matterId });
-    const thread = this.db
-      .prepare("SELECT id, matter_id AS matterId, participant_type AS participantType, status FROM message_threads WHERE matter_id = ?")
-      .get(matterId) as MessageThread | undefined;
-
-    return {
-      ...base,
-      leadLawyer,
-      parties,
-      hearings,
-      documents,
-      thread: thread ?? null,
-    };
-  }
-
-  createMatter(session: ProductSession, input: CreateMatterInput): Matter | null {
-    if (session.actorType !== "staff" || !session.firmId || session.firmId !== input.firmId) {
-      return null;
-    }
-    if (input.leadLawyerId && !this.staffBelongsToFirm(input.leadLawyerId, input.firmId)) {
-      return null;
-    }
-    const matter: Matter = {
-      id: randomUUID(),
-      ...input,
-      normalizedCaseNumber: input.normalizedCaseNumber || normalizeCourtCaseNumber(input.courtId, input.rawCaseNumber),
-    };
-    this.db
-      .prepare(`
-        INSERT INTO matters (
-          id, firm_id, court_id, raw_case_number, normalized_case_number, title, matter_type, stage, status, next_hearing_at, lead_lawyer_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `)
-      .run(
-        matter.id,
-        matter.firmId,
-        matter.courtId,
-        matter.rawCaseNumber,
-        matter.normalizedCaseNumber,
-        matter.title,
-        matter.matterType,
-        matter.stage,
-        matter.status,
-        matter.nextHearingAt,
-        matter.leadLawyerId,
-        nowIso(),
-        nowIso(),
-      );
-    this.db
-      .prepare("INSERT INTO message_threads (id, matter_id, participant_type, status, created_at) VALUES (?, ?, ?, ?, ?)")
-      .run(randomUUID(), matter.id, "firm_client", "open", nowIso());
-    this.synchronizeManualCalendarItem(matter.id, matter.nextHearingAt);
-    return matter;
-  }
-
-  createCsvImportPreview(session: ProductSession, rows: ValidatedMatterCsvRow[]): CsvImportPreview | null {
-    if (session.actorType !== "staff" || !session.firmId) {
-      return null;
-    }
-    const jobId = randomUUID();
-    const previewRows = rows.map((row) => {
-      const normalizedCaseNumber = row.input ? normalizeCourtCaseNumber(row.input.courtId, row.input.rawCaseNumber) : null;
-      const duplicate =
-        normalizedCaseNumber &&
-        (this.db
-          .prepare("SELECT id FROM matters WHERE firm_id = ? AND normalized_case_number = ?")
-          .get(session.firmId, normalizedCaseNumber) as { id: string } | undefined);
-      const error = row.error ?? (duplicate ? "Duplicate case number in workspace" : null);
-      return {
-        rowNumber: row.rowNumber,
-        state: error ? "rejected" : "accepted",
-        normalizedCaseNumber,
-        error,
-        payload: row.input ? { ...row.input } : {},
-      };
-    });
-    const acceptedRows = previewRows.filter((row) => row.state === "accepted").length;
-    this.db
-      .prepare(`
-        INSERT INTO csv_import_jobs (id, firm_id, created_by, status, total_rows, accepted_rows, rejected_rows, created_at, confirmed_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
-      `)
-      .run(jobId, session.firmId, session.actorId, "preview", rows.length, acceptedRows, rows.length - acceptedRows, nowIso());
-    const insertRow = this.db.prepare(`
-      INSERT INTO csv_import_rows (id, job_id, row_number, payload_json, normalized_case_number, state, error, matter_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
-    `);
-    for (const row of previewRows) {
-      insertRow.run(randomUUID(), jobId, row.rowNumber, encodeJson(row.payload), row.normalizedCaseNumber, row.state, row.error);
-    }
-    return {
-      id: jobId,
-      status: "preview",
-      totalRows: rows.length,
-      acceptedRows,
-      rejectedRows: rows.length - acceptedRows,
-      rows: previewRows,
-    };
-  }
-
-  getCsvImportPreview(session: ProductSession, jobId: string, rejectedOnly = false): CsvImportPreview | null {
-    if (session.actorType !== "staff" || !session.firmId) {
-      return null;
-    }
-    const job = this.db
-      .prepare(`
-        SELECT id, status, total_rows AS totalRows, accepted_rows AS acceptedRows, rejected_rows AS rejectedRows
-        FROM csv_import_jobs WHERE id = ? AND firm_id = ?
-      `)
-      .get(jobId, session.firmId) as Omit<CsvImportPreview, "rows"> | undefined;
-    if (!job) {
-      return null;
-    }
-    const rows = this.db
-      .prepare(`
-        SELECT row_number AS rowNumber, payload_json AS payloadJson, normalized_case_number AS normalizedCaseNumber, state, error
-        FROM csv_import_rows WHERE job_id = ? ${rejectedOnly ? "AND state = 'rejected'" : ""} ORDER BY row_number
-      `)
-      .all(jobId) as Array<{
-        rowNumber: number;
-        payloadJson: string;
-        normalizedCaseNumber: string | null;
-        state: string;
-        error: string | null;
-      }>;
-    return { ...job, rows: rows.map((row) => ({ ...row, payload: decodeJson(row.payloadJson, {}) })) };
-  }
-
-  confirmCsvImport(session: ProductSession, jobId: string): CsvImportPreview | null {
-    const preview = this.getCsvImportPreview(session, jobId);
-    if (!preview || preview.status !== "preview" || !session.firmId) {
-      return null;
-    }
-    for (const row of preview.rows.filter((entry) => entry.state === "accepted")) {
-      const input = row.payload as unknown as ValidatedMatterCsvRow["input"];
-      if (!input || !row.normalizedCaseNumber) {
-        continue;
-      }
-      const matter = this.createMatter(session, {
-        firmId: session.firmId,
-        courtId: input.courtId,
-        rawCaseNumber: input.rawCaseNumber,
-        normalizedCaseNumber: row.normalizedCaseNumber,
-        title: input.title,
-        matterType: input.matterType,
-        stage: input.stage,
-        status: "open",
-        nextHearingAt: input.nextHearingAt,
-        leadLawyerId: session.actorId,
-      });
-      if (matter) {
-        this.db
-          .prepare("UPDATE csv_import_rows SET state = ?, matter_id = ? WHERE job_id = ? AND row_number = ?")
-          .run("imported", matter.id, jobId, row.rowNumber);
-      }
-    }
-    this.db.prepare("UPDATE csv_import_jobs SET status = ?, confirmed_at = ? WHERE id = ?").run("confirmed", nowIso(), jobId);
-    return this.getCsvImportPreview(session, jobId);
-  }
-
-  updateMatter(session: ProductSession, matterId: string, patch: Partial<Omit<CreateMatterInput, "firmId">>): Matter | null {
-    const existing = this.getMatter(session, matterId);
-    if (!existing) {
-      return null;
-    }
-    if (patch.leadLawyerId && !this.staffBelongsToFirm(patch.leadLawyerId, existing.firmId)) {
-      return null;
-    }
-    const merged = {
-      courtId: patch.courtId ?? existing.courtId,
-      rawCaseNumber: patch.rawCaseNumber ?? existing.rawCaseNumber,
-      normalizedCaseNumber: patch.normalizedCaseNumber ?? existing.normalizedCaseNumber,
-      title: patch.title ?? existing.title,
-      matterType: patch.matterType ?? existing.matterType,
-      stage: patch.stage ?? existing.stage,
-      status: patch.status ?? existing.status,
-      nextHearingAt: patch.nextHearingAt === undefined ? existing.nextHearingAt : patch.nextHearingAt,
-      leadLawyerId: patch.leadLawyerId === undefined ? existing.leadLawyerId : patch.leadLawyerId,
-    };
-    this.db
-      .prepare(`
-        UPDATE matters
-        SET court_id = ?, raw_case_number = ?, normalized_case_number = ?, title = ?, matter_type = ?, stage = ?, status = ?, next_hearing_at = ?, lead_lawyer_id = ?, updated_at = ?
-        WHERE id = ?
-      `)
-      .run(
-        merged.courtId,
-        merged.rawCaseNumber,
-        merged.normalizedCaseNumber,
-        merged.title,
-        merged.matterType,
-        merged.stage,
-        merged.status,
-        merged.nextHearingAt,
-        merged.leadLawyerId,
-        nowIso(),
-        matterId,
-      );
-
-    if (patch.nextHearingAt !== undefined || patch.courtId !== undefined || patch.leadLawyerId !== undefined) {
-      this.synchronizeManualCalendarItem(matterId, merged.nextHearingAt);
-    }
-
-    return this.db
-      .prepare(`
-        SELECT
-          id,
-          firm_id AS firmId,
-          court_id AS courtId,
-          raw_case_number AS rawCaseNumber,
-          normalized_case_number AS normalizedCaseNumber,
-          title,
-          matter_type AS matterType,
-          stage,
-          status,
-          next_hearing_at AS nextHearingAt,
-          lead_lawyer_id AS leadLawyerId
-        FROM matters
-        WHERE id = ?
-      `)
-      .get(matterId) as unknown as Matter;
-  }
-
-  createMatterParty(
-    session: ProductSession,
-    matterId: string,
-    input: Pick<MatterParty, "partyType" | "displayName" | "contactRef">,
-  ): MatterParty | null {
-    const firmId = this.getMatterFirmId(matterId);
-    if (session.actorType !== "staff" || !firmId || !this.canAccessMatter(session, matterId, firmId) || !input.displayName.trim()) {
-      return null;
-    }
-    const party: MatterParty = { id: randomUUID(), matterId, partyType: input.partyType, displayName: input.displayName.trim(), contactRef: input.contactRef };
-    this.db
-      .prepare("INSERT INTO matter_parties (id, matter_id, party_type, display_name, contact_ref, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(party.id, party.matterId, party.partyType, party.displayName, party.contactRef, nowIso());
-    return party;
-  }
-
-  updateMatterParty(
-    session: ProductSession,
-    matterId: string,
-    partyId: string,
-    patch: Partial<Pick<MatterParty, "partyType" | "displayName" | "contactRef">>,
-  ): MatterParty | null {
-    const matter = this.getMatter(session, matterId);
-    if (!matter || session.actorType !== "staff") {
-      return null;
-    }
-    const existing = matter.parties.find((party) => party.id === partyId);
-    if (!existing) {
-      return null;
-    }
-    const party = {
-      ...existing,
-      partyType: patch.partyType ?? existing.partyType,
-      displayName: patch.displayName?.trim() || existing.displayName,
-      contactRef: patch.contactRef === undefined ? existing.contactRef : patch.contactRef,
-    };
-    this.db
-      .prepare("UPDATE matter_parties SET party_type = ?, display_name = ?, contact_ref = ? WHERE id = ? AND matter_id = ?")
-      .run(party.partyType, party.displayName, party.contactRef, partyId, matterId);
-    return party;
-  }
-
-  deleteMatterParty(session: ProductSession, matterId: string, partyId: string): boolean {
-    const firmId = this.getMatterFirmId(matterId);
-    if (session.actorType !== "staff" || !firmId || !this.canAccessMatter(session, matterId, firmId)) {
-      return false;
-    }
-    const result = this.db.prepare("DELETE FROM matter_parties WHERE id = ? AND matter_id = ?").run(partyId, matterId);
-    return Number(result.changes ?? 0) > 0;
-  }
-
-  listHearings(session: ProductSession, matterId: string): Hearing[] {
-    const firmId = this.getMatterFirmId(matterId);
-    if (!firmId || !this.canAccessMatter(session, matterId, firmId)) {
-      return [];
-    }
-    return this.db
-      .prepare(`
-        SELECT
-          id,
-          matter_id AS matterId,
-          listed_at AS listedAt,
-          outcome,
-          notes,
-          next_date AS nextDate,
-          courtroom,
-          bench,
-          source_type AS sourceType,
-          document_id AS documentId
-        FROM hearings
-        WHERE matter_id = ?
-        ORDER BY listed_at DESC, created_at DESC
-      `)
-      .all(matterId) as unknown as Hearing[];
-  }
-
-  addHearing(session: ProductSession, input: {
-    matterId: string;
-    listedAt: string;
-    outcome: string;
-    notes: string;
-    nextDate: string | null;
-    courtroom: string | null;
-    bench: string | null;
-    sourceType: string;
-    documentId: string | null;
-  }): Hearing | null {
-    const firmId = this.getMatterFirmId(input.matterId);
-    if (!firmId || !this.canAccessMatter(session, input.matterId, firmId) || session.actorType !== "staff") {
-      return null;
-    }
-    if (input.documentId && !this.getDocument(session, input.documentId)) {
-      return null;
-    }
-
-    const hearing: Hearing = {
-      id: randomUUID(),
-      matterId: input.matterId,
-      listedAt: input.listedAt,
-      outcome: input.outcome,
-      notes: input.notes,
-      nextDate: input.nextDate,
-      courtroom: input.courtroom,
-      bench: input.bench,
-      sourceType: input.sourceType,
-      documentId: input.documentId,
-    };
-
-    this.db
-      .prepare(`
-        INSERT INTO hearings (id, matter_id, listed_at, outcome, notes, next_date, courtroom, bench, source_type, document_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `)
-      .run(
-        hearing.id,
-        hearing.matterId,
-        hearing.listedAt,
-        hearing.outcome,
-        hearing.notes,
-        hearing.nextDate,
-        hearing.courtroom,
-        hearing.bench,
-        hearing.sourceType,
-        hearing.documentId,
-        nowIso(),
-      );
-
-    if (hearing.nextDate) {
-      this.db.prepare("UPDATE matters SET next_hearing_at = ?, updated_at = ? WHERE id = ?").run(hearing.nextDate, nowIso(), hearing.matterId);
-      this.synchronizeManualCalendarItem(hearing.matterId, hearing.nextDate);
-    }
-
-    this.createAuditEvent({
-      firmId,
-      actorType: "system",
-      actorId: null,
-      objectType: "hearing",
-      objectId: hearing.id,
-      eventType: "hearing.created",
-      payload: { matterId: hearing.matterId, sourceType: hearing.sourceType },
-    });
-    this.enqueueMatterClientUpdate(firmId, hearing);
-
-    return hearing;
-  }
 
   listCalendar(session: ProductSession): Array<CalendarItem & { matter: Matter }> {
     const matters = this.listMatters(session);
@@ -2647,35 +2160,6 @@ export class ProductStore {
     return this.listCalendar(session).filter((item) => item.conflictState !== "none");
   }
 
-  listDocuments(session: ProductSession, filters: { matterId?: string } = {}): ProductDocument[] {
-    const rows = this.db
-      .prepare(`
-        SELECT
-          id,
-          firm_id AS firmId,
-          matter_id AS matterId,
-          folder_id AS folderId,
-          type,
-          title,
-          storage_key AS storageKey,
-          mime_type AS mimeType,
-          uploaded_by AS uploadedBy,
-          ocr_status AS ocrStatus,
-          ocr_text AS ocrText,
-          search_text AS searchText,
-          portal_visible AS portalVisible
-        FROM documents
-        WHERE (? IS NULL OR matter_id = ?)
-        ORDER BY created_at DESC
-      `)
-      .all(filters.matterId ?? null, filters.matterId ?? null)
-      .map((row) => ({
-        ...(row as unknown as ProductDocument),
-        portalVisible: Boolean((row as { portalVisible: number }).portalVisible),
-      })) as ProductDocument[];
-
-    return rows.filter((document) => this.canAccessDocument(session, document));
-  }
 
   createDocument(session: ProductSession, input: CreateDocumentInput): ProductDocument | null {
     if (session.actorType !== "staff" || !session.firmId || session.firmId !== input.firmId || session.actorId !== input.uploadedBy) {
@@ -2697,36 +2181,6 @@ export class ProductStore {
     return document;
   }
 
-  getDocument(session: ProductSession, id: string): ProductDocument | null {
-    const row = this.db
-      .prepare(`
-        SELECT
-          id,
-          firm_id AS firmId,
-          matter_id AS matterId,
-          folder_id AS folderId,
-          type,
-          title,
-          storage_key AS storageKey,
-          mime_type AS mimeType,
-          uploaded_by AS uploadedBy,
-          ocr_status AS ocrStatus,
-          ocr_text AS ocrText,
-          search_text AS searchText,
-          portal_visible AS portalVisible
-        FROM documents
-        WHERE id = ?
-      `)
-      .get(id) as StoredDocumentRow | undefined;
-    if (!row) {
-      return null;
-    }
-    const document = { ...row, portalVisible: Boolean(row.portalVisible) };
-    if (!this.canAccessDocument(session, document)) {
-      return null;
-    }
-    return document;
-  }
 
   updateDocument(
     session: ProductSession,
@@ -2816,31 +2270,6 @@ export class ProductStore {
     return link;
   }
 
-  listThreads(session: ProductSession): Array<MessageThread & { matter: Matter; lastMessage: Message | null }> {
-    return this.listMatters(session).map((matter) => {
-      const thread = this.db
-        .prepare("SELECT id, matter_id AS matterId, participant_type AS participantType, status FROM message_threads WHERE matter_id = ?")
-        .get(matter.id) as MessageThread | undefined;
-      if (!thread) {
-        return null;
-      }
-      const lastMessage = this.db
-        .prepare(`
-          SELECT id, thread_id AS threadId, sender_type AS senderType, sender_id AS senderId, body, language, delivery_channel AS deliveryChannel, delivery_state AS deliveryState, created_at AS createdAt
-          FROM messages
-          WHERE thread_id = ?
-          ORDER BY created_at DESC
-          LIMIT 1
-        `)
-        .get(thread.id) as Message | undefined;
-
-      return {
-        ...thread,
-        matter,
-        lastMessage: lastMessage ?? null,
-      };
-    }).filter(Boolean) as Array<MessageThread & { matter: Matter; lastMessage: Message | null }>;
-  }
 
   getThread(session: ProductSession, threadId: string): MessageThread | null {
     const row = this.db
@@ -3009,242 +2438,6 @@ export class ProductStore {
       .all(session.firmId) as unknown as Invoice[];
   }
 
-  listClients(session: ProductSession): ProductClientSummary[] {
-    if (session.actorType !== "staff" || !session.firmId) {
-      return [];
-    }
-
-    return this.db
-      .prepare(`
-        SELECT
-          c.id,
-          c.phone,
-          c.display_name AS displayName,
-          c.language,
-          c.status,
-          (
-            SELECT COUNT(DISTINCT cm.matter_id)
-            FROM client_memberships cm
-            JOIN matters m ON m.id = cm.matter_id
-            WHERE cm.client_account_id = c.id AND m.firm_id = ?
-          ) AS matterCount,
-          (
-            SELECT COALESCE(SUM(i.total), 0)
-            FROM invoices i
-            WHERE i.client_account_id = c.id AND i.firm_id = ? AND i.status IN ('draft', 'issued')
-          ) AS outstandingTotal,
-          (
-            SELECT MAX(msg.created_at)
-            FROM messages msg
-            JOIN message_threads mt ON mt.id = msg.thread_id
-            JOIN client_memberships cm ON cm.matter_id = mt.matter_id
-            JOIN matters m ON m.id = cm.matter_id
-            WHERE cm.client_account_id = c.id AND m.firm_id = ?
-          ) AS lastMessageAt,
-          (
-            SELECT MIN(m.next_hearing_at)
-            FROM client_memberships cm
-            JOIN matters m ON m.id = cm.matter_id
-            WHERE cm.client_account_id = c.id AND m.firm_id = ? AND m.next_hearing_at IS NOT NULL
-          ) AS nextHearingAt
-        FROM client_accounts c
-        WHERE c.firm_id = ? OR EXISTS (
-          SELECT 1
-          FROM client_memberships cm
-          JOIN matters m ON m.id = cm.matter_id
-          WHERE cm.client_account_id = c.id AND m.firm_id = ?
-        )
-        ORDER BY c.display_name ASC
-      `)
-      .all(session.firmId, session.firmId, session.firmId, session.firmId, session.firmId, session.firmId) as unknown as ProductClientSummary[];
-  }
-
-  createClient(
-    session: ProductSession,
-    input: { phone: string; displayName: string; language: ProductLanguage },
-  ): ClientAccount | null {
-    if (session.actorType !== "staff" || !session.firmId) {
-      return null;
-    }
-    const phone = normalizePakistanPhone(input.phone);
-    if (!phone || !input.displayName.trim()) {
-      return null;
-    }
-    const existing = this.db
-      .prepare("SELECT id, phone, display_name AS displayName, language, status FROM client_accounts WHERE firm_id = ? AND phone = ?")
-      .get(session.firmId, phone) as ClientAccount | undefined;
-    if (existing) {
-      return existing;
-    }
-    const client: ClientAccount = {
-      id: randomUUID(),
-      phone,
-      displayName: input.displayName.trim(),
-      language: input.language,
-      status: "active",
-    };
-    this.db
-      .prepare(
-        "INSERT INTO client_accounts (id, phone, display_name, language, status, created_at, firm_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      )
-      .run(client.id, client.phone, client.displayName, client.language, client.status, nowIso(), session.firmId);
-    return client;
-  }
-
-  updateClient(
-    session: ProductSession,
-    clientId: string,
-    patch: Partial<Pick<ClientAccount, "displayName" | "language" | "status">>,
-  ): ClientAccount | null {
-    if (session.actorType !== "staff" || !session.firmId) {
-      return null;
-    }
-    const existing = this.db
-      .prepare("SELECT id, phone, display_name AS displayName, language, status, firm_id AS firmId FROM client_accounts WHERE id = ?")
-      .get(clientId) as (ClientAccount & { firmId: string | null }) | undefined;
-    if (!existing || (existing.firmId !== session.firmId && !this.clientBelongsToFirm(clientId, session.firmId))) {
-      return null;
-    }
-    const client: ClientAccount = {
-      id: existing.id,
-      phone: existing.phone,
-      displayName: patch.displayName?.trim() || existing.displayName,
-      language: patch.language ?? existing.language,
-      status: patch.status ?? existing.status,
-    };
-    this.db
-      .prepare("UPDATE client_accounts SET display_name = ?, language = ?, status = ?, firm_id = COALESCE(firm_id, ?) WHERE id = ?")
-      .run(client.displayName, client.language, client.status, session.firmId, client.id);
-    if (patch.status === "archived") {
-      const revokedAt = nowIso();
-      this.db.prepare("UPDATE portal_links SET revoked_at = ? WHERE client_account_id = ? AND revoked_at IS NULL").run(revokedAt, clientId);
-      this.db.prepare("UPDATE app_sessions SET revoked_at = ? WHERE actor_type = 'client' AND actor_id = ? AND revoked_at IS NULL").run(revokedAt, clientId);
-      this.db
-        .prepare("DELETE FROM notification_jobs WHERE firm_id = ? AND actor_type = 'client' AND actor_id = ? AND status IN ('pending', 'retrying')")
-        .run(session.firmId, clientId);
-      this.db
-        .prepare("UPDATE notification_consents SET status = 'revoked', revoked_at = ?, updated_at = ? WHERE firm_id = ? AND actor_type = 'client' AND actor_id = ? AND status = 'granted'")
-        .run(revokedAt, revokedAt, session.firmId, clientId);
-      this.db
-        .prepare("UPDATE notification_preferences SET email_enabled = 0, sms_enabled = 0, opted_out_at = ?, updated_at = ? WHERE firm_id = ? AND actor_type = 'client' AND actor_id = ?")
-        .run(revokedAt, revokedAt, session.firmId, clientId);
-    }
-    return client;
-  }
-
-  shareMatterWithClient(session: ProductSession, matterId: string, clientId: string): ClientMembership | null {
-    const firmId = this.getMatterFirmId(matterId);
-    const client = this.db.prepare("SELECT id FROM client_accounts WHERE id = ? AND status = 'active'").get(clientId) as { id: string } | undefined;
-    if (
-      session.actorType !== "staff" ||
-      !session.firmId ||
-      !firmId ||
-      session.firmId !== firmId ||
-      !this.canAccessMatter(session, matterId, firmId) ||
-      !client ||
-      (!this.clientBelongsToFirm(clientId, firmId) &&
-        !(this.db.prepare("SELECT id FROM client_accounts WHERE id = ? AND firm_id = ?").get(clientId, firmId) as { id: string } | undefined))
-    ) {
-      return null;
-    }
-    const membership: ClientMembership = {
-      id: randomUUID(),
-      clientAccountId: clientId,
-      matterId,
-      accessLevel: "message",
-    };
-    this.db
-      .prepare(`
-        INSERT INTO client_memberships (id, client_account_id, matter_id, access_level, created_at)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(client_account_id, matter_id) DO UPDATE SET access_level = excluded.access_level
-      `)
-      .run(membership.id, membership.clientAccountId, membership.matterId, membership.accessLevel, nowIso());
-    return membership;
-  }
-
-  unlinkMatterFromClient(session: ProductSession, matterId: string, clientId: string): boolean {
-    const firmId = this.getMatterFirmId(matterId);
-    if (session.actorType !== "staff" || !session.firmId || firmId !== session.firmId) {
-      return false;
-    }
-    const removed = this.db
-      .prepare("DELETE FROM client_memberships WHERE matter_id = ? AND client_account_id = ?")
-      .run(matterId, clientId);
-    if (Number(removed.changes ?? 0) !== 1) {
-      return false;
-    }
-    const revokedAt = nowIso();
-    this.db
-      .prepare("UPDATE portal_links SET revoked_at = ? WHERE matter_id = ? AND client_account_id = ? AND revoked_at IS NULL")
-      .run(revokedAt, matterId, clientId);
-    this.db
-      .prepare(`
-        DELETE FROM notification_jobs
-        WHERE firm_id = ? AND actor_type = 'client' AND actor_id = ?
-          AND json_extract(payload_json, '$.matterId') = ? AND status IN ('pending', 'retrying')
-      `)
-      .run(firmId, clientId, matterId);
-    return true;
-  }
-
-  getClientDetail(session: ProductSession, clientId: string): ProductClientDetail | null {
-    if (session.actorType !== "staff" || !session.firmId) {
-      return null;
-    }
-
-    const client = this.listClients(session).find((entry) => entry.id === clientId);
-    if (!client) {
-      return null;
-    }
-
-    const matters = (this.db
-      .prepare(`
-        SELECT m.id
-        FROM matters m
-        JOIN client_memberships cm ON cm.matter_id = m.id
-        WHERE cm.client_account_id = ? AND m.firm_id = ?
-        ORDER BY m.created_at ASC
-      `)
-      .all(clientId, session.firmId) as Array<{ id: string }>)
-      .map((row) => this.getMatter(session, row.id))
-      .filter((matter): matter is MatterDetail => Boolean(matter))
-      .map((matter) => ({
-        id: matter.id,
-        firmId: matter.firmId,
-        courtId: matter.courtId,
-        rawCaseNumber: matter.rawCaseNumber,
-        normalizedCaseNumber: matter.normalizedCaseNumber,
-        title: matter.title,
-        matterType: matter.matterType,
-        stage: matter.stage,
-        status: matter.status,
-        nextHearingAt: matter.nextHearingAt,
-        leadLawyerId: matter.leadLawyerId,
-      }));
-
-    const invoices = this.db
-      .prepare(`
-        SELECT
-          id,
-          firm_id AS firmId,
-          client_account_id AS clientAccountId,
-          matter_id AS matterId,
-          status,
-          issued_at AS issuedAt,
-          due_at AS dueAt,
-          total
-        FROM invoices
-        WHERE client_account_id = ? AND firm_id = ?
-        ORDER BY created_at DESC
-      `)
-      .all(clientId, session.firmId) as unknown as Invoice[];
-
-    const matterById = new Map(matters.map((matter) => [matter.id, matter]));
-    const threadSummaries = this.listThreads(session).filter((thread) => matterById.has(thread.matter.id));
-
-    return { client, matters, invoices, threadSummaries };
-  }
 
   getOverviewReport(session: ProductSession): OverviewReport | null {
     if (session.actorType !== "staff" || !session.firmId) {
@@ -3572,47 +2765,6 @@ export class ProductStore {
     return this.listCourtMatchReview(session).find((match) => match.id === matchId) ?? null;
   }
 
-  private markPossibleCalendarConflicts(listDate: string): void {
-    const normalizedDate = listDate.slice(0, 10);
-    const rows = this.db
-      .prepare(`
-        SELECT ci.id, ci.matter_id AS matterId, m.lead_lawyer_id AS leadLawyerId, m.court_id AS courtId
-        FROM calendar_items ci JOIN matters m ON m.id = ci.matter_id
-        WHERE substr(ci.listed_at, 1, 10) = ?
-      `)
-      .all(normalizedDate) as Array<{ id: string; matterId: string; leadLawyerId: string | null; courtId: string }>;
-    this.db.prepare("UPDATE calendar_items SET conflict_state = 'none' WHERE substr(listed_at, 1, 10) = ?").run(normalizedDate);
-    for (const row of rows) {
-      const hasConflict = row.leadLawyerId && rows.some((candidate) =>
-        candidate.matterId !== row.matterId &&
-        candidate.leadLawyerId === row.leadLawyerId &&
-        candidate.courtId !== row.courtId
-      );
-      if (hasConflict) {
-        this.db.prepare("UPDATE calendar_items SET conflict_state = 'possible' WHERE id = ?").run(row.id);
-      }
-    }
-  }
-
-  private synchronizeManualCalendarItem(matterId: string, nextHearingAt: string | null): void {
-    const existingDates = (
-      this.db
-        .prepare("SELECT listed_at AS listedAt FROM calendar_items WHERE matter_id = ?")
-        .all(matterId) as Array<{ listedAt: string }>
-    ).map((row) => row.listedAt.slice(0, 10));
-    this.db.prepare("DELETE FROM calendar_items WHERE matter_id = ? AND source_type = 'manual_staff'").run(matterId);
-    if (nextHearingAt) {
-      this.db
-        .prepare(`
-          INSERT INTO calendar_items (id, matter_id, listed_at, courtroom, bench, source_type, source_confidence, conflict_state, created_at)
-          VALUES (?, ?, ?, NULL, NULL, 'manual_staff', 1, 'none', ?)
-        `)
-        .run(randomUUID(), matterId, nextHearingAt, nowIso());
-    }
-    for (const date of new Set([...existingDates, ...(nextHearingAt ? [nextHearingAt.slice(0, 10)] : [])])) {
-      this.markPossibleCalendarConflicts(date);
-    }
-  }
 
   recordCourtSync(id: string): (CourtSource & { metrics: Record<string, number> }) | null {
     const existing = this.listCourtSources().find((source) => source.id === id);
@@ -3999,67 +3151,8 @@ export class ProductStore {
       .run(randomUUID(), jobId, input.providerId, status, input.error, nowIso());
   }
 
-  private enqueueMatterClientUpdate(firmId: string, hearing: Hearing): void {
-    const clients = this.db
-      .prepare(`
-        SELECT cm.client_account_id AS clientId
-        FROM client_memberships cm
-        JOIN client_accounts c ON c.id = cm.client_account_id
-        WHERE cm.matter_id = ? AND c.status = 'active'
-      `)
-      .all(hearing.matterId) as Array<{ clientId: string }>;
-    for (const client of clients) {
-      this.enqueueNotification(
-        firmId,
-        "client",
-        client.clientId,
-        "sms",
-        "post_hearing_update",
-        { matterId: hearing.matterId, outcome: hearing.outcome, notes: hearing.notes, nextDate: hearing.nextDate },
-        nowIso(),
-        `post-hearing:${hearing.id}:${client.clientId}:sms`,
-      );
-    }
-  }
 
-  private enqueueNotification(
-    firmId: string,
-    actorType: "staff" | "client",
-    actorId: string,
-    channel: "email" | "sms",
-    templateKey: string,
-    payload: Record<string, unknown>,
-    scheduledAt: string,
-    idempotencyKey: string,
-  ): boolean {
-    const consent = this.db
-      .prepare(`
-        SELECT 1
-        FROM notification_consents
-        WHERE firm_id = ? AND actor_type = ? AND actor_id = ? AND channel = ?
-          AND status = 'granted' AND revoked_at IS NULL
-      `)
-      .get(firmId, actorType, actorId, channel);
-    if (!consent) {
-      return false;
-    }
-    const preference = this.db
-      .prepare("SELECT email_enabled AS emailEnabled, sms_enabled AS smsEnabled, opted_out_at AS optedOutAt FROM notification_preferences WHERE firm_id = ? AND actor_type = ? AND actor_id = ?")
-      .get(firmId, actorType, actorId) as { emailEnabled: number; smsEnabled: number; optedOutAt: string | null } | undefined;
-    if (preference?.optedOutAt || (channel === "email" && preference?.emailEnabled === 0) || (channel === "sms" && preference?.smsEnabled === 0)) {
-      return false;
-    }
-    const result = this.db
-      .prepare(`
-        INSERT OR IGNORE INTO notification_jobs (
-          id, firm_id, actor_type, actor_id, channel, template_key, template_version, payload_json, idempotency_key, scheduled_at, status, attempt_count, last_error, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, 'pending', 0, NULL, ?)
-      `)
-      .run(randomUUID(), firmId, actorType, actorId, channel, templateKey, encodeJson(payload), idempotencyKey, scheduledAt, nowIso());
-    return Number(result.changes ?? 0) > 0;
-  }
-
-  private readNotificationJobs(where: string, values: Array<string | number>): NotificationJobRecord[] {
+  private readNotificationJobs(where: SqliteNotificationWhere, values: Array<string | number>): NotificationJobRecord[] {
     return (this.db
       .prepare(`
         SELECT id, firm_id AS firmId, actor_type AS actorType, actor_id AS actorId, channel, template_key AS templateKey,
@@ -4136,77 +3229,6 @@ export class ProductStore {
     });
   }
 
-  private createAuditEvent(input: Omit<AuditEvent, "id" | "createdAt">): void {
-    this.db
-      .prepare(`
-        INSERT INTO audit_events (id, firm_id, actor_type, actor_id, object_type, object_id, event_type, payload_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `)
-      .run(
-        randomUUID(),
-        input.firmId,
-        input.actorType,
-        input.actorId,
-        input.objectType,
-        input.objectId,
-        input.eventType,
-        encodeJson(input.payload),
-        nowIso(),
-      );
-  }
-
-  private getStaffUser(id: string): ProductUser | null {
-    const row = this.db
-      .prepare("SELECT id, phone, email, display_name AS displayName, language, status FROM product_users WHERE id = ?")
-      .get(id) as ProductUser | undefined;
-    return row ?? null;
-  }
-
-  private getMatterFirmId(matterId: string): string | null {
-    const row = this.db.prepare("SELECT firm_id AS firmId FROM matters WHERE id = ?").get(matterId) as { firmId: string } | undefined;
-    return row?.firmId ?? null;
-  }
-
-  private staffBelongsToFirm(userId: string, firmId: string): boolean {
-    const row = this.db
-      .prepare("SELECT id FROM firm_memberships WHERE user_id = ? AND firm_id = ?")
-      .get(userId, firmId) as { id: string } | undefined;
-    return Boolean(row);
-  }
-
-  private clientBelongsToFirm(clientAccountId: string, firmId: string): boolean {
-    const row = this.db
-      .prepare(`
-        SELECT cm.id
-        FROM client_memberships cm
-        JOIN matters m ON m.id = cm.matter_id
-        WHERE cm.client_account_id = ? AND m.firm_id = ?
-        LIMIT 1
-      `)
-      .get(clientAccountId, firmId) as { id: string } | undefined;
-    return Boolean(row);
-  }
-
-  private canAccessMatter(session: ProductSession, matterId: string, firmId: string): boolean {
-    if (session.actorType === "staff") {
-      return session.firmId === firmId;
-    }
-
-    const membership = this.db
-      .prepare("SELECT id FROM client_memberships WHERE client_account_id = ? AND matter_id = ?")
-      .get(session.actorId, matterId) as { id: string } | undefined;
-    return Boolean(membership);
-  }
-
-  private canAccessDocument(session: ProductSession, document: ProductDocument): boolean {
-    if (session.actorType === "staff") {
-      return session.firmId === document.firmId;
-    }
-    if (!document.matterId) {
-      return false;
-    }
-    return document.portalVisible && this.canAccessMatter(session, document.matterId, document.firmId);
-  }
 
   createPortalLink(
     session: ProductSession,
@@ -4258,6 +3280,23 @@ export class ProductStore {
         portalLink.expiresAt,
         portalLink.createdAt,
         portalLink.revokedAt,
+      );
+
+    const portalUrl = `${process.env.PUBLIC_WEB_URL ?? "http://localhost:3000"}/portal/otp?token=${rawToken}`;
+    this.db
+      .prepare(`
+        INSERT INTO notification_jobs (
+          id, firm_id, actor_type, actor_id, channel, template_key, template_version, payload_json, idempotency_key, scheduled_at, status, attempt_count, last_error, created_at
+        ) VALUES (?, ?, 'client', ?, 'sms', 'portal_access_token', 1, ?, ?, ?, 'pending', 0, NULL, ?)
+      `)
+      .run(
+        randomUUID(),
+        firmId,
+        membership[0].clientAccountId,
+        JSON.stringify({ matterId, portalUrl }),
+        `portal-access:${portalLink.id}:sms`,
+        nowIso(),
+        portalLink.createdAt,
       );
 
     return { portalLink, rawToken };
@@ -4375,6 +3414,15 @@ startxref
     return null;
   }
 }
+
+
+Object.assign(
+  ProductStore.prototype,
+  coreMethods,
+  matterMethods,
+  clientMethods,
+  hearingMethods,
+);
 
 export function createProductStore(dbPath = process.env.WAKEEL_PRODUCT_DB_PATH ?? "data/legalbahi-product.sqlite"): ProductStore {
   const isTesting =

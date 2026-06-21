@@ -124,6 +124,14 @@ function ProductClientWorkspace() {
     }
   }, [portalOtpDigits]);
 
+  const focusPortalOtpInput = (index: number) => {
+    const input = document.getElementById(`portal-otp-input-${index}`);
+    if (input) {
+      (input as HTMLInputElement).focus();
+      (input as HTMLInputElement).select();
+    }
+  };
+
   const handlePortalOtpChange = (index: number, value: string) => {
     const cleanValue = value.replace(/[^0-9]/g, "").slice(-1);
     const nextDigits = [...portalOtpDigits];
@@ -131,23 +139,17 @@ function ProductClientWorkspace() {
     setPortalOtpDigits(nextDigits);
 
     if (cleanValue && index < 5) {
-      const nextInput = document.getElementById(`portal-otp-input-${index + 1}`);
-      if (nextInput) {
-        (nextInput as HTMLInputElement).focus();
-      }
+      focusPortalOtpInput(index + 1);
     }
   };
 
   const handlePortalOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Backspace") {
       if (!portalOtpDigits[index] && index > 0) {
-        const prevInput = document.getElementById(`portal-otp-input-${index - 1}`);
-        if (prevInput) {
-          const nextDigits = [...portalOtpDigits];
-          nextDigits[index - 1] = "";
-          setPortalOtpDigits(nextDigits);
-          (prevInput as HTMLInputElement).focus();
-        }
+        const nextDigits = [...portalOtpDigits];
+        nextDigits[index - 1] = "";
+        setPortalOtpDigits(nextDigits);
+        focusPortalOtpInput(index - 1);
       } else {
         const nextDigits = [...portalOtpDigits];
         nextDigits[index] = "";
@@ -166,10 +168,7 @@ function ProductClientWorkspace() {
     const pasteData = e.clipboardData.getData("text").trim();
     if (/^\d{6}$/.test(pasteData)) {
       setPortalOtpDigits(pasteData.split(""));
-      const lastInput = document.getElementById("portal-otp-input-5");
-      if (lastInput) {
-        (lastInput as HTMLInputElement).focus();
-      }
+      focusPortalOtpInput(5);
     }
   };
 

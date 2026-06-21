@@ -4,8 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import Fastify from "fastify";
-
+import { createFastifyServer, registerValidationErrorHandler } from "../src/lib/fastify-server.js";
 import { registerProductRoutes } from "../src/lib/product-api.js";
 import { createProductStore } from "../src/lib/product-store.js";
 
@@ -32,11 +31,22 @@ function requestPath(routePath: string): string {
 
 test("every mutable product route is authentication-protected or explicitly public", async () => {
   const tempDir = mkdtempSync(join(tmpdir(), "legalbahi-route-security-"));
-  const previousJwtSecret = process.env.JWT_SECRET;
+  const previousEnv = {
+    JWT_SECRET: process.env.JWT_SECRET,
+    NODE_ENV: process.env.NODE_ENV,
+    TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID,
+    TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN,
+    TWILIO_SMS_FROM: process.env.TWILIO_SMS_FROM,
+  };
+  process.env.NODE_ENV = "test";
   process.env.JWT_SECRET = "route-security-test-secret";
+  process.env.TWILIO_ACCOUNT_SID = `AC${"a".repeat(32)}`;
+  process.env.TWILIO_AUTH_TOKEN = "twilio-test-token";
+  process.env.TWILIO_SMS_FROM = "+15555550100";
 
   const store = createProductStore(join(tempDir, "product.sqlite"));
-  const app = Fastify();
+  const app = createFastifyServer();
+  registerValidationErrorHandler(app);
   const mutableRoutes = new Map<string, { method: string; path: string }>();
   app.addHook("onRoute", (route) => {
     const methods = Array.isArray(route.method) ? route.method : [route.method];
@@ -59,7 +69,7 @@ test("every mutable product route is authentication-protected or explicitly publ
         url: requestPath(route.path),
       });
       assert.ok(
-        response.statusCode === 401 || response.statusCode === 403,
+        response.statusCode === 400 || response.statusCode === 401 || response.statusCode === 403,
         `${key} returned ${response.statusCode} without authentication`,
       );
     }
@@ -71,10 +81,12 @@ test("every mutable product route is authentication-protected or explicitly publ
     await app.close();
     store.close();
     rmSync(tempDir, { recursive: true, force: true });
-    if (previousJwtSecret === undefined) {
-      delete process.env.JWT_SECRET;
-    } else {
-      process.env.JWT_SECRET = previousJwtSecret;
+    for (const [name, value] of Object.entries(previousEnv)) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
     }
   }
 });

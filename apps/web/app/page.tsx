@@ -11,27 +11,15 @@ import {
 const STAFF_STORAGE_KEY = "legalbahi-staff-auth";
 const CLIENT_STORAGE_KEY = "legalbahi-client-auth";
 
-const MOCK_STAFF = [
-  { label: "Demo Lawyer", phone: "6012109282" },
-];
-
-const MOCK_CLIENTS = [
-  { label: "Demo Client", phone: "6012109282" },
-];
-
 const formatPhoneNumber = (value: string) => {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  if (digits.length <= 4) return digits;
+  return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+};
+
+const toPakistanPhoneSubmit = (value: string) => {
   const clean = value.replace(/\D/g, "");
-  if (clean.startsWith("0")) {
-    const digits = clean.slice(0, 11);
-    if (digits.length <= 4) return digits;
-    return `${digits.slice(0, 4)}-${digits.slice(4)}`;
-  } else {
-    const digits = clean.slice(0, 10);
-    if (digits.length === 0) return "";
-    if (digits.length <= 3) return `(${digits}`;
-    if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
-    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
-  }
+  return clean.startsWith("0") ? clean : `0${clean}`;
 };
 
 export default function HomePage() {
@@ -44,8 +32,6 @@ export default function HomePage() {
 
   // Form fields
   const [phone, setPhone] = useState("");
-  const [countryCode, setCountryCode] = useState("+1");
-  const [isCountryDropdownOpen, setIsCountryDropdownOpen] = useState(false);
 
   const [displayName, setDisplayName] = useState("");
   const [firmName, setFirmName] = useState("");
@@ -66,30 +52,34 @@ export default function HomePage() {
     }
   }, [otpDigits, activeTab]);
 
-  const handleOtpChange = (index: number, value: string) => {
+  const otpInputId = (prefix: string, index: number) => `${prefix}-${index}`;
+
+  const focusOtpInput = (prefix: string, index: number) => {
+    const input = document.getElementById(otpInputId(prefix, index));
+    if (input) {
+      (input as HTMLInputElement).focus();
+      (input as HTMLInputElement).select();
+    }
+  };
+
+  const handleOtpChange = (index: number, value: string, inputPrefix = "otp-input") => {
     const cleanValue = value.replace(/[^0-9]/g, "").slice(-1);
     const nextDigits = [...otpDigits];
     nextDigits[index] = cleanValue;
     setOtpDigits(nextDigits);
 
     if (cleanValue && index < 5) {
-      const nextInput = document.getElementById(`otp-input-${index + 1}`);
-      if (nextInput) {
-        (nextInput as HTMLInputElement).focus();
-      }
+      focusOtpInput(inputPrefix, index + 1);
     }
   };
 
-  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>, inputPrefix = "otp-input") => {
     if (e.key === "Backspace") {
       if (!otpDigits[index] && index > 0) {
-        const prevInput = document.getElementById(`otp-input-${index - 1}`);
-        if (prevInput) {
-          const nextDigits = [...otpDigits];
-          nextDigits[index - 1] = "";
-          setOtpDigits(nextDigits);
-          (prevInput as HTMLInputElement).focus();
-        }
+        const nextDigits = [...otpDigits];
+        nextDigits[index - 1] = "";
+        setOtpDigits(nextDigits);
+        focusOtpInput(inputPrefix, index - 1);
       } else {
         const nextDigits = [...otpDigits];
         nextDigits[index] = "";
@@ -107,15 +97,12 @@ export default function HomePage() {
     }
   };
 
-  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>, inputPrefix = "otp-input") => {
     e.preventDefault();
     const pasteData = e.clipboardData.getData("text").trim();
     if (/^\d{6}$/.test(pasteData)) {
       setOtpDigits(pasteData.split(""));
-      const lastInput = document.getElementById("otp-input-5");
-      if (lastInput) {
-        (lastInput as HTMLInputElement).focus();
-      }
+      focusOtpInput(inputPrefix, 5);
     }
   };
 
@@ -141,7 +128,6 @@ export default function HomePage() {
   const handleTabChange = (tab: "lawyer" | "client") => {
     setActiveTab(tab);
     setPhone("");
-    setCountryCode("+1");
     setOtpRequested(false);
     setLoginCode("");
     setOtpDigits(Array(6).fill(""));
@@ -162,20 +148,17 @@ export default function HomePage() {
   };
 
   // 1. Lawyer Workspace OTP Request
-  const startLawyerLogin = async () => {
+  const startLawyerLogin = async (options?: { resend?: boolean }) => {
     if (registrationMode) {
       if (!displayName.trim() || !firmName.trim() || !primaryCity.trim()) {
         setOperationStatus("Please fill in all required fields (Full Name, Firm/Chamber Name, and Primary City) to create a workspace.");
         return;
       }
     }
-    setOperationStatus("Requesting OTP...");
+    setOperationStatus(options?.resend ? "Sending a new verification code..." : "Requesting OTP...");
     try {
-      const cleanPhone = phone.replace(/\D/g, "");
-      const formattedPhone = countryCode === "+92"
-        ? (cleanPhone.startsWith("0") ? cleanPhone : `0${cleanPhone}`)
-        : `${countryCode}${cleanPhone}`;
-      const response = await productJsonRequest<{ devCode: string | null }>("/v1/auth/otp/request", {
+      const formattedPhone = toPakistanPhoneSubmit(phone);
+      await productJsonRequest<{ devCode: string | null }>("/v1/auth/otp/request", {
         method: "POST",
         body: JSON.stringify({
           phone: formattedPhone,
@@ -186,11 +169,22 @@ export default function HomePage() {
       
       setLoginCode("");
       setOtpDigits(Array(6).fill(""));
-      setOperationStatus("OTP code sent to your phone number.");
+      setOperationStatus(
+        options?.resend
+          ? "A new verification code has been sent to your phone number."
+          : "A verification code has been sent to your phone number.",
+      );
       setOtpRequested(true);
     } catch (err: any) {
       setOperationStatus(err.message || "Failed to request OTP.");
     }
+  };
+
+  const resetOtpFlow = () => {
+    setOtpRequested(false);
+    setOtpDigits(Array(6).fill(""));
+    setLoginCode("");
+    setOperationStatus(null);
   };
 
   // 2. Lawyer Workspace OTP Verification (Login or Register)
@@ -198,10 +192,7 @@ export default function HomePage() {
     const codeToUse = codeOverride || loginCode;
     setOperationStatus(registrationMode ? "Creating workspace..." : "Verifying OTP...");
     try {
-      const cleanPhone = phone.replace(/\D/g, "");
-      const formattedPhone = countryCode === "+92"
-        ? (cleanPhone.startsWith("0") ? cleanPhone : `0${cleanPhone}`)
-        : `${countryCode}${cleanPhone}`;
+      const formattedPhone = toPakistanPhoneSubmit(phone);
       const path = registrationMode ? "/v1/auth/staff/register" : "/v1/auth/otp/verify";
       const bodyPayload = registrationMode
         ? {
@@ -229,13 +220,10 @@ export default function HomePage() {
   };
 
   // 3. Client OTP Request
-  const startClientLogin = async () => {
-    setOperationStatus("Requesting client OTP...");
+  const startClientLogin = async (options?: { resend?: boolean }) => {
+    setOperationStatus(options?.resend ? "Sending a new verification code..." : "Requesting client OTP...");
     try {
-      const cleanPhone = phone.replace(/\D/g, "");
-      const formattedPhone = countryCode === "+92"
-        ? (cleanPhone.startsWith("0") ? cleanPhone : `0${cleanPhone}`)
-        : `${countryCode}${cleanPhone}`;
+      const formattedPhone = toPakistanPhoneSubmit(phone);
       const response = await productJsonRequest<{ devCode: string | null; expiresAt: string | null }>("/v1/auth/otp/request", {
         method: "POST",
         body: JSON.stringify({
@@ -252,7 +240,11 @@ export default function HomePage() {
       
       setLoginCode("");
       setOtpDigits(Array(6).fill(""));
-      setOperationStatus("OTP code sent to your phone number.");
+      setOperationStatus(
+        options?.resend
+          ? "A new verification code has been sent to your phone number."
+          : "A verification code has been sent to your phone number.",
+      );
       setOtpRequested(true);
     } catch (err: any) {
       setOperationStatus(err.message || "Failed to request OTP.");
@@ -264,10 +256,7 @@ export default function HomePage() {
     const codeToUse = codeOverride || loginCode;
     setOperationStatus("Verifying client OTP...");
     try {
-      const cleanPhone = phone.replace(/\D/g, "");
-      const formattedPhone = countryCode === "+92"
-        ? (cleanPhone.startsWith("0") ? cleanPhone : `0${cleanPhone}`)
-        : `${countryCode}${cleanPhone}`;
+      const formattedPhone = toPakistanPhoneSubmit(phone);
       const payload = await productJsonRequest<{ token: string; refreshToken: string | null }>("/v1/auth/otp/verify", {
         method: "POST",
         body: JSON.stringify({ phone: formattedPhone, actorType: "client", code: codeToUse }),
@@ -351,199 +340,38 @@ export default function HomePage() {
               <div className="field">
                 <label>Phone Number</label>
                 <div style={{ display: "flex", alignItems: "center", position: "relative" }}>
-                  {isCountryDropdownOpen && (
-                    <div
-                      onClick={() => setIsCountryDropdownOpen(false)}
-                      style={{
-                        position: "fixed",
-                        inset: 0,
-                        zIndex: 9,
-                        background: "transparent",
-                      }}
-                    />
-                  )}
                   <div style={{
                     position: "absolute",
                     left: "14px",
                     display: "flex",
                     alignItems: "center",
+                    gap: "8px",
                     height: "100%",
                     zIndex: 10,
                   }}>
-                    <div style={{ position: "relative" }}>
-                      <button
-                        type="button"
-                        onClick={() => setIsCountryDropdownOpen(!isCountryDropdownOpen)}
-                        style={{
-                          width: "64px",
-                          background: "none",
-                          border: "none",
-                          display: "flex",
-                          alignItems: "center",
-                          cursor: "pointer",
-                          outline: "none",
-                          userSelect: "none",
-                          fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif',
-                          padding: 0
-                        }}
-                      >
-                        <div style={{
-                          width: "20px",
-                          height: "20px",
-                          borderRadius: "50%",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: "10px",
-                          fontWeight: 500,
-                          lineHeight: 1,
-                          backgroundColor: countryCode === "+92" ? "rgba(15, 110, 86, 0.1)" : "rgba(216, 90, 48, 0.1)",
-                          color: countryCode === "+92" ? "var(--primary)" : "var(--accent)",
-                          flexShrink: 0,
-                          marginRight: "8px",
-                          fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif',
-                          letterSpacing: "-0.2px"
-                        }}>
-                          {countryCode === "+92" ? "PK" : "US"}
-                        </div>
-                        <span style={{ color: "var(--text-primary)", fontWeight: 500, fontSize: "13px", marginRight: "3px", fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif' }}>{countryCode}</span>
-                        <svg
-                          width="8"
-                          height="8"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="3.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          style={{
-                            opacity: 0.6,
-                            transform: isCountryDropdownOpen ? "rotate(180deg)" : "rotate(0deg)",
-                            transition: "transform 0.2s ease"
-                          }}
-                        >
-                          <polyline points="6 9 12 15 18 9"></polyline>
-                        </svg>
-                      </button>
- 
-                      {isCountryDropdownOpen && (
-                        <div style={{
-                          position: "absolute",
-                          top: "calc(100% + 8px)",
-                          left: "-8px",
-                          backgroundColor: "#ffffff",
-                          border: "1px solid var(--border)",
-                          borderRadius: "12px",
-                          boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
-                          padding: "6px",
-                          zIndex: 11,
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "4px",
-                          minWidth: "220px",
-                          width: "max-content",
-                        }}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCountryCode("+92");
-                              setIsCountryDropdownOpen(false);
-                            }}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "10px",
-                              width: "100%",
-                              padding: "10px 12px",
-                              border: "none",
-                              background: countryCode === "+92" ? "var(--primary-light)" : "none",
-                              color: countryCode === "+92" ? "var(--primary-dark)" : "var(--text-primary)",
-                              fontWeight: countryCode === "+92" ? 700 : 500,
-                              borderRadius: "8px",
-                              fontSize: "14px",
-                              fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif',
-                              cursor: "pointer",
-                              textAlign: "left",
-                            }}
-                            onMouseEnter={(e) => {
-                              if (countryCode !== "+92") e.currentTarget.style.backgroundColor = "rgba(0,0,0,0.03)";
-                            }}
-                            onMouseLeave={(e) => {
-                              if (countryCode !== "+92") e.currentTarget.style.backgroundColor = "transparent";
-                            }}
-                          >
-                            <div style={{
-                              width: "22px",
-                              height: "22px",
-                              borderRadius: "50%",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              fontSize: "11px",
-                              fontWeight: 500,
-                              backgroundColor: "rgba(15, 110, 86, 0.15)",
-                              color: "var(--primary)",
-                              flexShrink: 0,
-                            }}>
-                              PK
-                            </div>
-                            <span style={{ fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif' }}>Pakistan (+92)</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCountryCode("+1");
-                              setIsCountryDropdownOpen(false);
-                            }}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "10px",
-                              width: "100%",
-                              padding: "10px 12px",
-                              border: "none",
-                              background: countryCode === "+1" ? "var(--primary-light)" : "none",
-                              color: countryCode === "+1" ? "var(--primary-dark)" : "var(--text-primary)",
-                              fontWeight: countryCode === "+1" ? 700 : 500,
-                              borderRadius: "8px",
-                              fontSize: "14px",
-                              fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif',
-                              cursor: "pointer",
-                              textAlign: "left",
-                            }}
-                            onMouseEnter={(e) => {
-                              if (countryCode !== "+1") e.currentTarget.style.backgroundColor = "rgba(0,0,0,0.03)";
-                            }}
-                            onMouseLeave={(e) => {
-                              if (countryCode !== "+1") e.currentTarget.style.backgroundColor = "transparent";
-                            }}
-                          >
-                            <div style={{
-                              width: "22px",
-                              height: "22px",
-                              borderRadius: "50%",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              fontSize: "11px",
-                              fontWeight: 500,
-                              backgroundColor: "rgba(216, 90, 48, 0.15)",
-                              color: "var(--accent)",
-                              flexShrink: 0,
-                            }}>
-                              US
-                            </div>
-                            <span style={{ fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif' }}>United States (+1)</span>
-                          </button>
-                        </div>
-                      )}
+                    <div style={{
+                      width: "20px",
+                      height: "20px",
+                      borderRadius: "50%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "10px",
+                      fontWeight: 500,
+                      lineHeight: 1,
+                      backgroundColor: "rgba(15, 110, 86, 0.1)",
+                      color: "var(--primary)",
+                      flexShrink: 0,
+                      fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif',
+                    }}>
+                      PK
                     </div>
+                    <span style={{ color: "var(--text-primary)", fontWeight: 500, fontSize: "13px", fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif' }}>+92</span>
                     <div style={{
                       width: "1px",
                       height: "18px",
                       backgroundColor: "var(--text-secondary)",
                       opacity: 0.25,
-                      marginLeft: "6px",
                     }} />
                   </div>
                   <input
@@ -560,9 +388,8 @@ export default function HomePage() {
                         }
                       }
                     }}
-                    placeholder=""
                     style={{
-                      paddingLeft: "96px",
+                      paddingLeft: "84px",
                       fontSize: "15px",
                     }}
                   />
@@ -615,50 +442,22 @@ export default function HomePage() {
             {/* OTP Input Fields (6 individual boxes) */}
             {otpRequested && (
               <div className="field">
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", marginBottom: 12 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOtpRequested(false);
-                      setOtpDigits(Array(6).fill(""));
-                      setLoginCode("");
-                      setOperationStatus(null);
-                    }}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "var(--text-secondary)",
-                      cursor: "pointer",
-                      padding: "4px",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      borderRadius: "50%",
-                      transition: "all 0.2s ease"
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "rgba(0,0,0,0.05)"}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                    title="Go back"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" style={{ width: 18, height: 18 }}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
-                    </svg>
-                  </button>
+                <div style={{ textAlign: "center", marginBottom: 12 }}>
                   <label style={{ margin: 0, fontWeight: 600 }}>OTP Verification Code:</label>
                 </div>
                 <div style={{ display: "flex", gap: "8px", justifyContent: "center", marginBottom: 20 }}>
                   {otpDigits.map((digit, idx) => (
                     <input
                       key={idx}
-                      id={`otp-input-${idx}`}
+                      id={otpInputId("otp-input", idx)}
                       type="text"
                       inputMode="numeric"
                       pattern="[0-9]*"
                       maxLength={1}
                       value={digit}
-                      onChange={(e) => handleOtpChange(idx, e.target.value)}
-                      onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                      onPaste={handleOtpPaste}
+                      onChange={(e) => handleOtpChange(idx, e.target.value, "otp-input")}
+                      onKeyDown={(e) => handleOtpKeyDown(idx, e, "otp-input")}
+                      onPaste={(e) => handleOtpPaste(e, "otp-input")}
                       style={{
                         width: "48px",
                         height: "48px",
@@ -686,7 +485,7 @@ export default function HomePage() {
               }}>
                 <button
                   type="button"
-                  onClick={() => void startLawyerLogin()}
+                  onClick={() => void startLawyerLogin({ resend: true })}
                   style={{
                     background: "none",
                     border: "none",
@@ -701,12 +500,7 @@ export default function HomePage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setOtpRequested(false);
-                    setOtpDigits(Array(6).fill(""));
-                    setLoginCode("");
-                    setOperationStatus(null);
-                  }}
+                  onClick={resetOtpFlow}
                   style={{
                     background: "none",
                     border: "none",
@@ -785,199 +579,38 @@ export default function HomePage() {
               <div className="field">
                 <label>Phone Number</label>
                 <div style={{ display: "flex", alignItems: "center", position: "relative" }}>
-                  {isCountryDropdownOpen && (
-                    <div
-                      onClick={() => setIsCountryDropdownOpen(false)}
-                      style={{
-                        position: "fixed",
-                        inset: 0,
-                        zIndex: 9,
-                        background: "transparent",
-                      }}
-                    />
-                  )}
                   <div style={{
                     position: "absolute",
                     left: "14px",
                     display: "flex",
                     alignItems: "center",
+                    gap: "8px",
                     height: "100%",
                     zIndex: 10,
                   }}>
-                    <div style={{ position: "relative" }}>
-                      <button
-                        type="button"
-                        onClick={() => setIsCountryDropdownOpen(!isCountryDropdownOpen)}
-                        style={{
-                          width: "64px",
-                          background: "none",
-                          border: "none",
-                          display: "flex",
-                          alignItems: "center",
-                          cursor: "pointer",
-                          outline: "none",
-                          userSelect: "none",
-                          fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif',
-                          padding: 0
-                        }}
-                      >
-                        <div style={{
-                          width: "20px",
-                          height: "20px",
-                          borderRadius: "50%",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: "10px",
-                          fontWeight: 500,
-                          lineHeight: 1,
-                          backgroundColor: countryCode === "+92" ? "rgba(15, 110, 86, 0.1)" : "rgba(216, 90, 48, 0.1)",
-                          color: countryCode === "+92" ? "var(--primary)" : "var(--accent)",
-                          flexShrink: 0,
-                          marginRight: "8px",
-                          fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif',
-                          letterSpacing: "-0.2px"
-                        }}>
-                          {countryCode === "+92" ? "PK" : "US"}
-                        </div>
-                        <span style={{ color: "var(--text-primary)", fontWeight: 500, fontSize: "13px", marginRight: "3px", fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif' }}>{countryCode}</span>
-                        <svg
-                          width="8"
-                          height="8"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="3.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          style={{
-                            opacity: 0.6,
-                            transform: isCountryDropdownOpen ? "rotate(180deg)" : "rotate(0deg)",
-                            transition: "transform 0.2s ease"
-                          }}
-                        >
-                          <polyline points="6 9 12 15 18 9"></polyline>
-                        </svg>
-                      </button>
-
-                      {isCountryDropdownOpen && (
-                        <div style={{
-                          position: "absolute",
-                          top: "calc(100% + 8px)",
-                          left: "-8px",
-                          backgroundColor: "#ffffff",
-                          border: "1px solid var(--border)",
-                          borderRadius: "12px",
-                          boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
-                          padding: "6px",
-                          zIndex: 11,
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "4px",
-                          minWidth: "220px",
-                          width: "max-content",
-                        }}>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCountryCode("+92");
-                              setIsCountryDropdownOpen(false);
-                            }}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "10px",
-                              width: "100%",
-                              padding: "10px 12px",
-                              border: "none",
-                              background: countryCode === "+92" ? "var(--primary-light)" : "none",
-                              color: countryCode === "+92" ? "var(--primary-dark)" : "var(--text-primary)",
-                              fontWeight: countryCode === "+92" ? 700 : 500,
-                              borderRadius: "8px",
-                              fontSize: "14px",
-                              fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif',
-                              cursor: "pointer",
-                              textAlign: "left",
-                            }}
-                            onMouseEnter={(e) => {
-                              if (countryCode !== "+92") e.currentTarget.style.backgroundColor = "rgba(0,0,0,0.03)";
-                            }}
-                            onMouseLeave={(e) => {
-                              if (countryCode !== "+92") e.currentTarget.style.backgroundColor = "transparent";
-                            }}
-                          >
-                            <div style={{
-                              width: "22px",
-                              height: "22px",
-                              borderRadius: "50%",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              fontSize: "11px",
-                              fontWeight: 500,
-                              backgroundColor: "rgba(15, 110, 86, 0.15)",
-                              color: "var(--primary)",
-                              flexShrink: 0,
-                            }}>
-                              PK
-                            </div>
-                            <span style={{ fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif' }}>Pakistan (+92)</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setCountryCode("+1");
-                              setIsCountryDropdownOpen(false);
-                            }}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "10px",
-                              width: "100%",
-                              padding: "10px 12px",
-                              border: "none",
-                              background: countryCode === "+1" ? "var(--primary-light)" : "none",
-                              color: countryCode === "+1" ? "var(--primary-dark)" : "var(--text-primary)",
-                              fontWeight: countryCode === "+1" ? 700 : 500,
-                              borderRadius: "8px",
-                              fontSize: "14px",
-                              fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif',
-                              cursor: "pointer",
-                              textAlign: "left",
-                            }}
-                            onMouseEnter={(e) => {
-                              if (countryCode !== "+1") e.currentTarget.style.backgroundColor = "rgba(0,0,0,0.03)";
-                            }}
-                            onMouseLeave={(e) => {
-                              if (countryCode !== "+1") e.currentTarget.style.backgroundColor = "transparent";
-                            }}
-                          >
-                            <div style={{
-                              width: "22px",
-                              height: "22px",
-                              borderRadius: "50%",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              fontSize: "11px",
-                              fontWeight: 500,
-                              backgroundColor: "rgba(216, 90, 48, 0.15)",
-                              color: "var(--accent)",
-                              flexShrink: 0,
-                            }}>
-                              US
-                            </div>
-                            <span style={{ fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif' }}>United States (+1)</span>
-                          </button>
-                        </div>
-                      )}
+                    <div style={{
+                      width: "20px",
+                      height: "20px",
+                      borderRadius: "50%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "10px",
+                      fontWeight: 500,
+                      lineHeight: 1,
+                      backgroundColor: "rgba(15, 110, 86, 0.1)",
+                      color: "var(--primary)",
+                      flexShrink: 0,
+                      fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif',
+                    }}>
+                      PK
                     </div>
+                    <span style={{ color: "var(--text-primary)", fontWeight: 500, fontSize: "13px", fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif' }}>+92</span>
                     <div style={{
                       width: "1px",
                       height: "18px",
                       backgroundColor: "var(--text-secondary)",
                       opacity: 0.25,
-                      marginLeft: "6px",
                     }} />
                   </div>
                   <input
@@ -990,9 +623,8 @@ export default function HomePage() {
                         void startClientLogin();
                       }
                     }}
-                    placeholder=""
                     style={{
-                      paddingLeft: "96px",
+                      paddingLeft: "84px",
                       fontSize: "15px",
                     }}
                   />
@@ -1003,50 +635,22 @@ export default function HomePage() {
             {/* OTP Input Fields (6 individual boxes) */}
             {otpRequested && (
               <div className="field">
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", marginBottom: 12 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOtpRequested(false);
-                      setOtpDigits(Array(6).fill(""));
-                      setLoginCode("");
-                      setOperationStatus(null);
-                    }}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "var(--text-secondary)",
-                      cursor: "pointer",
-                      padding: "4px",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      borderRadius: "50%",
-                      transition: "all 0.2s ease"
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "rgba(0,0,0,0.05)"}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                    title="Go back"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" style={{ width: 18, height: 18 }}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5 3 12m0 0 7.5-7.5M3 12h18" />
-                    </svg>
-                  </button>
+                <div style={{ textAlign: "center", marginBottom: 12 }}>
                   <label style={{ margin: 0, fontWeight: 600 }}>OTP Verification Code:</label>
                 </div>
                 <div style={{ display: "flex", gap: "8px", justifyContent: "center", marginBottom: 20 }}>
                   {otpDigits.map((digit, idx) => (
                     <input
                       key={idx}
-                      id={`otp-input-${idx}`}
+                      id={otpInputId("client-otp-input", idx)}
                       type="text"
                       inputMode="numeric"
                       pattern="[0-9]*"
                       maxLength={1}
                       value={digit}
-                      onChange={(e) => handleOtpChange(idx, e.target.value)}
-                      onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                      onPaste={handleOtpPaste}
+                      onChange={(e) => handleOtpChange(idx, e.target.value, "client-otp-input")}
+                      onKeyDown={(e) => handleOtpKeyDown(idx, e, "client-otp-input")}
+                      onPaste={(e) => handleOtpPaste(e, "client-otp-input")}
                       style={{
                         width: "48px",
                         height: "48px",
@@ -1074,7 +678,7 @@ export default function HomePage() {
               }}>
                 <button
                   type="button"
-                  onClick={() => void startClientLogin()}
+                  onClick={() => void startClientLogin({ resend: true })}
                   style={{
                     background: "none",
                     border: "none",
@@ -1089,12 +693,7 @@ export default function HomePage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setOtpRequested(false);
-                    setOtpDigits(Array(6).fill(""));
-                    setLoginCode("");
-                    setOperationStatus(null);
-                  }}
+                  onClick={resetOtpFlow}
                   style={{
                     background: "none",
                     border: "none",

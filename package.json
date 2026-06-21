@@ -7,7 +7,7 @@
   ],
   "scripts": {
     "dev:api": "npm --workspace @wakeel/api run dev",
-    "dev:web": "npm --workspace @wakeel/web run dev",
+    "dev:web": "cmd /c \"set NODE_ENV=development&& npm --workspace @wakeel/web run dev\"",
     "dev:mobile": "npm --workspace @wakeel/mobile run dev",
     "lint": "node scripts/lint-repo.mjs",
     "typecheck": "npm run typecheck:api && npm run typecheck:mobile",
@@ -28,7 +28,8 @@
     "brother:test:mobile": "node scripts/start-brother-test.mjs --mobile",
     "brother:test:reset": "node scripts/reset-brother-test.mjs",
     "reset:demo": "npm --workspace @wakeel/api run reset:demo",
-    "vps:sync": "node scripts/vps-sync-config.mjs"
+    "vps:sync": "node scripts/vps-sync-config.mjs",
+    "vps:sync:api": "node scripts/vps-sync-api.mjs"
   },
   "overrides": {
     "postcss": "8.5.15",

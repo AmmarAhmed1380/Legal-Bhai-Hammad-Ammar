@@ -113,6 +113,21 @@ function Install-LegalBahiService {
   if ($LASTEXITCODE -ne 0) { throw "NSSM failed to set the $Name restart policy" }
   & $Nssm set $Name AppRestartDelay 5000
   if ($LASTEXITCODE -ne 0) { throw "NSSM failed to set the $Name restart delay" }
+
+  $LogDirectory = Join-Path $Root "logs"
+  if (-not (Test-Path $LogDirectory)) {
+    New-Item -ItemType Directory -Path $LogDirectory | Out-Null
+  }
+  $StdoutLog = Join-Path $LogDirectory "$Name.stdout.log"
+  $StderrLog = Join-Path $LogDirectory "$Name.stderr.log"
+  & $Nssm set $Name AppStdout $StdoutLog
+  if ($LASTEXITCODE -ne 0) { throw "NSSM failed to set the $Name stdout log" }
+  & $Nssm set $Name AppStderr $StderrLog
+  if ($LASTEXITCODE -ne 0) { throw "NSSM failed to set the $Name stderr log" }
+  & $Nssm set $Name AppRotateFiles 1
+  if ($LASTEXITCODE -ne 0) { throw "NSSM failed to enable log rotation for $Name" }
+  & $Nssm set $Name AppRotateBytes 10485760
+  if ($LASTEXITCODE -ne 0) { throw "NSSM failed to set log rotation size for $Name" }
 }
 
 Install-LegalBahiService -Name "LegalBahiApi" -Arguments "--workspace @wakeel/api run start" -EnvironmentEntries $ApiEnvironmentEntries

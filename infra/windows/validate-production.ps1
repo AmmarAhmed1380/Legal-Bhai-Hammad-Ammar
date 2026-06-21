@@ -48,7 +48,7 @@ $Required = @(
   "RESEND_API_KEY", "RESEND_FROM_EMAIL", "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID",
   "R2_SECRET_ACCESS_KEY", "R2_DOCUMENT_BUCKET", "R2_BACKUP_BUCKET",
   "R2_BACKUP_ACCESS_KEY_ID", "R2_BACKUP_SECRET_ACCESS_KEY", "BACKUP_AGE_RECIPIENT",
-  "SENTRY_DSN", "IHC_SYNC_ENABLED"
+  "SENTRY_DSN", "IHC_SYNC_ENABLED", "UPTIME_SECRET"
 )
 foreach ($Name in $Required) {
   Require-ProductionValue -Name $Name | Out-Null
@@ -68,7 +68,7 @@ if ($env:TRUST_PROXY_LOOPBACK -ne "true") {
   throw "TRUST_PROXY_LOOPBACK must be true in production"
 }
 
-foreach ($Name in @("JWT_SECRET", "PILOT_ADMIN_SECRET")) {
+foreach ($Name in @("JWT_SECRET", "PILOT_ADMIN_SECRET", "UPTIME_SECRET")) {
   $Value = Require-ProductionValue -Name $Name
   if ($Value.Length -lt 32) {
     throw "$Name must be at least 32 characters in production"
