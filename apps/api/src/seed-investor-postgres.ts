@@ -5,7 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 
 import { Pool } from "pg";
 
-import { createProductStore } from "./lib/product-store.js";
+import { ProductStore } from "./lib/product-store.js";
 
 const SEED_TABLES = [
   "firms",
@@ -80,7 +80,7 @@ async function run(): Promise<void> {
     const tempDir = mkdtempSync(join(tmpdir(), "legalbahi-investor-seed-"));
     const sqlitePath = join(tempDir, "seed.sqlite");
     try {
-      createProductStore(sqlitePath, { seed: true });
+      new ProductStore(sqlitePath, { seed: true });
       const sqlite = new DatabaseSync(sqlitePath);
 
       console.log("Copying investor demo data from seeded SQLite snapshot into Postgres...");

@@ -89,7 +89,7 @@ async function runMigration(): Promise<void> {
   const db = new DatabaseSync(dbPath);
   const seedDocs = db.prepare(
     "SELECT id, title, storage_key, mime_type FROM documents WHERE storage_key LIKE 'seed:%'",
-  ).all() as SeedDocumentRow[];
+  ).all() as unknown as SeedDocumentRow[];
   console.log(`Found ${seedDocs.length} seed document(s) to migrate to R2.`);
   await migrateSeedDocuments(seedDocs, async (id, storageKey) => {
     db.prepare("UPDATE documents SET storage_key = ? WHERE id = ?").run(storageKey, id);
