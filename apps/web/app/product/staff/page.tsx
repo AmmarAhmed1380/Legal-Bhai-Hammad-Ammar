@@ -26,6 +26,7 @@ import AlertsSection from "./components/AlertsSection";
 import ClientsSection from "./components/ClientsSection";
 import VaultSection from "./components/VaultSection";
 import SettingsSection from "./components/SettingsSection";
+import DocumentViewerModal from "../client/components/DocumentViewerModal";
 
 export type StaffSection =
   | "overview"
@@ -105,6 +106,13 @@ export interface MatterDetail extends MatterListItem {
     uploaderType?: string;
   }>;
   thread: { id: string } | null;
+  clients?: Array<{
+    id: string;
+    phone: string;
+    displayName: string;
+    language: string;
+    status: string;
+  }>;
 }
 
 export interface ThreadSummary {
@@ -128,6 +136,8 @@ export interface CalendarItem {
   conflictState: string;
   sourceType: string;
   matter: MatterListItem;
+  courtroom?: string | null;
+  bench?: string | null;
 }
 
 export interface CourtSource {
@@ -368,11 +378,11 @@ export default function ProductStaffPage() {
   const [otpRequested, setOtpRequested] = useState(false);
   const [registrationMode, setRegistrationMode] = useState(false);
   const [registration, setRegistration] = useState({ displayName: "", email: "", firmName: "", primaryCity: "Islamabad" });
-  const [messageDraft, setMessageDraft] = useState("Sharing the latest hearing update and next steps.");
+  const [messageDraft, setMessageDraft] = useState("");
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [portalUrl, setPortalUrl] = useState<string | null>(null);
-  const [hearingOutcome, setHearingOutcome] = useState("Order reserved");
-  const [hearingNotes, setHearingNotes] = useState("Counsel appeared. The court reserved the order and directed filing of any short note within three days.");
+  const [hearingOutcome, setHearingOutcome] = useState("");
+  const [hearingNotes, setHearingNotes] = useState("");
   const [hearingNextDate, setHearingNextDate] = useState("");
   const [hearingListedAt, setHearingListedAt] = useState(defaultDateTimeValue);
   const [hearingFile, setHearingFile] = useState<File | null>(null);
@@ -382,6 +392,22 @@ export default function ProductStaffPage() {
   const [csvImport, setCsvImport] = useState("");
   const [csvPreview, setCsvPreview] = useState<CsvImportPreview | null>(null);
   const [newClient, setNewClient] = useState({ displayName: "", phone: "", language: "en" });
+  const [clientSearch, setClientSearch] = useState("");
+  const [clientStatusFilter, setClientStatusFilter] = useState<"all" | "active" | "invited" | "archived">("all");
+  const [clientCsvImport, setClientCsvImport] = useState("");
+  const [clientCsvPreview, setClientCsvPreview] = useState<{
+    id: string;
+    status: string;
+    totalRows: number;
+    acceptedRows: number;
+    rejectedRows: number;
+    rows: Array<{
+      rowNumber: number;
+      state: "accepted" | "rejected";
+      error: string | null;
+      payload: { displayName: string; phone: string; language: string };
+    }>;
+  } | null>(null);
   const [matterClientId, setMatterClientId] = useState("");
   const [newParty, setNewParty] = useState<{ displayName: string; partyType: "petitioner" | "respondent" | "applicant" | "other" }>({
     displayName: "",
@@ -410,6 +436,7 @@ export default function ProductStaffPage() {
   const [inviteOfficeLabel, setInviteOfficeLabel] = useState("");
 
   const authRef = useRef<ProductAuthState | null>(null);
+  const activeMatterIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     authRef.current = auth;
@@ -437,10 +464,10 @@ export default function ProductStaffPage() {
   }, [authHydrated, auth, router]);
 
   useEffect(() => {
-    if (auth && routedMatterId && routedMatterId !== selectedMatter?.id) {
+    if (auth && routedMatterId && routedMatterId !== activeMatterIdRef.current) {
       void openMatter(routedMatterId, auth).catch(handleWorkspaceLoadError);
     }
-  }, [auth, routedMatterId, selectedMatter?.id]);
+  }, [auth, routedMatterId]);
 
   useEffect(() => {
     if (!auth || activeSection !== "clients") {
@@ -579,7 +606,7 @@ export default function ProductStaffPage() {
     try {
       const cleanPhone = invitePhone.replace(/\D/g, "");
       const formattedPhone = cleanPhone.startsWith("0") ? cleanPhone : `0${cleanPhone}`;
-      
+
       await productJsonRequest(`/v1/firms/${profile.firm.id}/invitations`, {
         method: "POST",
         body: JSON.stringify({
@@ -594,7 +621,7 @@ export default function ProductStaffPage() {
       setInviteOfficeLabel("");
       setInviteEmail("");
       setOperationStatus("Invitation sent successfully!");
-      
+
       await loadTeamMembers(profile.firm.id, auth.token);
     } catch (err: any) {
       setOperationStatus(err.message || "Failed to send invitation.");
@@ -658,6 +685,9 @@ export default function ProductStaffPage() {
       return;
     }
 
+    activeMatterIdRef.current = matterId;
+    router.replace(`/matters/${matterId}`);
+
     const { data: payload, auth: resolvedAuth } = await authedRequest<{ matter: MatterDetail }>(`/v1/matters/${matterId}`, {}, activeAuth);
     setSelectedMatter(payload.matter);
     setMatterDraft({
@@ -719,40 +749,48 @@ export default function ProductStaffPage() {
       return;
     }
 
-    let response = await fetch(productDocumentDownloadUrl(documentId), {
-      headers: { authorization: `Bearer ${resolvedAuth.token}` },
-    });
-
-    if (response.status === 401 && resolvedAuth.refreshToken) {
-      resolvedAuth = await refreshProductAuth(resolvedAuth.refreshToken);
-      authRef.current = resolvedAuth;
-      writeStoredProductAuth(STORAGE_KEY, resolvedAuth);
-      setAuth(resolvedAuth);
-      response = await fetch(productDocumentDownloadUrl(documentId), {
+    try {
+      let response = await fetch(productDocumentDownloadUrl(documentId), {
         headers: { authorization: `Bearer ${resolvedAuth.token}` },
       });
-    }
 
-    if (!response.ok) {
-      let errorMessage = "Could not download this document.";
-      try {
-        const body = await response.text();
-        const parsed = JSON.parse(body);
-        if (parsed.error) errorMessage = parsed.error;
-        else errorMessage = body;
-      } catch {}
-      throw new Error(errorMessage);
-    }
+      if (response.status === 401 && resolvedAuth.refreshToken) {
+        resolvedAuth = await refreshProductAuth(resolvedAuth.refreshToken);
+        authRef.current = resolvedAuth;
+        writeStoredProductAuth(STORAGE_KEY, resolvedAuth);
+        setAuth(resolvedAuth);
+        response = await fetch(productDocumentDownloadUrl(documentId), {
+          headers: { authorization: `Bearer ${resolvedAuth.token}` },
+        });
+      }
 
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    
-    // Find document title and mimeType
-    const doc = selectedMatter?.documents.find((d) => d.id === documentId) || documents.find((d) => d.id === documentId);
-    const docTitle = doc?.title || "Document Viewer";
-    const docMime = doc?.mimeType || "";
-    setViewingDocument({ id: documentId, title: docTitle, mimeType: docMime });
-    setViewingDocumentUrl(url);
+      if (!response.ok) {
+        let errorMessage = "Could not download this document.";
+        try {
+          const body = await response.text();
+          const parsed = JSON.parse(body);
+          if (parsed.error) errorMessage = parsed.error;
+          else errorMessage = body;
+        } catch { }
+        throw new Error(errorMessage);
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      // Find document title and mimeType
+      const doc = selectedMatter?.documents.find((d) => d.id === documentId) || documents.find((d) => d.id === documentId);
+      const docTitle = doc?.title || "Document Viewer";
+      const docMime = doc?.mimeType || "";
+      setViewingDocument({ id: documentId, title: docTitle, mimeType: docMime });
+      setViewingDocumentUrl(url);
+    } catch (error) {
+      setOperationStatus(error instanceof TypeError
+        ? "Could not reach API."
+        : error instanceof Error
+          ? error.message
+          : "Could not download this document.");
+    }
   }
 
   async function syncCourtSource(sourceId: string) {
@@ -785,38 +823,41 @@ export default function ProductStaffPage() {
         deliveryChannel: "in_app",
       }),
     }, auth);
-    setMessageDraft("Sharing the latest hearing update and next steps.");
+    setMessageDraft("");
     await openMatter(selectedMatter.id, payload.auth);
   }
 
-  async function createPortalLink() {
-    if (!auth || !selectedMatter || !matterClientId) {
+  async function createPortalLink(clientIdOverride?: string) {
+    const clientId = clientIdOverride || matterClientId;
+    if (!auth || !selectedMatter || !clientId) {
       return;
     }
     const payload = await authedRequest<{ portalUrl: string }>("/v1/portal/links", {
       method: "POST",
-      body: JSON.stringify({ matterId: selectedMatter.id, clientId: matterClientId }),
+      body: JSON.stringify({ matterId: selectedMatter.id, clientId }),
     }, auth);
     setPortalUrl(payload.data.portalUrl);
   }
 
-  async function linkClientToMatter() {
-    if (!auth || !selectedMatter || !matterClientId) {
+  async function linkClientToMatter(clientIdOverride?: string) {
+    const clientId = clientIdOverride || matterClientId;
+    if (!auth || !selectedMatter || !clientId) {
       return;
     }
     const response = await authedRequest(`/v1/matters/${selectedMatter.id}/clients`, {
       method: "POST",
-      body: JSON.stringify({ clientId: matterClientId }),
+      body: JSON.stringify({ clientId }),
     }, auth);
     setOperationStatus("Client linked to matter.");
     await openMatter(selectedMatter.id, response.auth);
   }
 
-  async function unlinkClientFromMatter() {
-    if (!auth || !selectedMatter || !matterClientId) {
+  async function unlinkClientFromMatter(clientIdOverride?: string) {
+    const clientId = clientIdOverride || matterClientId;
+    if (!auth || !selectedMatter || !clientId) {
       return;
     }
-    const response = await authedRequest(`/v1/matters/${selectedMatter.id}/clients/${matterClientId}`, {
+    const response = await authedRequest(`/v1/matters/${selectedMatter.id}/clients/${clientId}`, {
       method: "DELETE",
     }, auth);
     setPortalUrl(null);
@@ -847,8 +888,8 @@ export default function ProductStaffPage() {
     }, auth);
 
     setHearingStatus(`Saved hearing update for ${selectedMatter.rawCaseNumber}.`);
-    setHearingOutcome("Order reserved");
-    setHearingNotes("Counsel appeared. The court reserved the order and directed filing of any short note within three days.");
+    setHearingOutcome("");
+    setHearingNotes("");
     setHearingNextDate("");
     setHearingListedAt(defaultDateTimeValue());
     setHearingFile(null);
@@ -988,6 +1029,22 @@ export default function ProductStaffPage() {
     await loadWorkspace(response.auth);
   }
 
+  async function uploadVaultDocument(file: File, title: string, type: string, portalVisible: boolean, matterId: string | null) {
+    if (!auth || !file) return;
+    const form = new FormData();
+    if (matterId) {
+      form.set("matterId", matterId);
+    }
+    form.set("type", type);
+    form.set("title", title.trim() || file.name);
+    form.set("portalVisible", String(portalVisible));
+    form.set("file", file);
+    const response = await authedRequest("/v1/documents", { method: "POST", body: form }, auth);
+    setOperationStatus("Document uploaded to vault successfully.");
+    await loadWorkspace(response.auth);
+  }
+
+
   async function linkUnmatchedCauseEntry(entryId: string) {
     const matterId = courtReviewMatterIds[entryId];
     if (!auth || !matterId) return;
@@ -1030,6 +1087,185 @@ export default function ProductStaffPage() {
         setOperationStatus("Failed to create client.");
       }
     }
+  }
+
+  function parseCsvRecords(csv: string): string[][] {
+    const records: string[][] = [];
+    let record: string[] = [];
+    let field = "";
+    let quoted = false;
+
+    for (let index = 0; index < csv.length; index += 1) {
+      const character = csv[index];
+      if (quoted) {
+        if (character === '"' && csv[index + 1] === '"') {
+          field += '"';
+          index += 1;
+        } else if (character === '"') {
+          quoted = false;
+        } else {
+          field += character;
+        }
+        continue;
+      }
+      if (character === '"') {
+        quoted = true;
+      } else if (character === ",") {
+        record.push(field.trim());
+        field = "";
+      } else if (character === "\n") {
+        record.push(field.trim());
+        records.push(record);
+        record = [];
+        field = "";
+      } else if (character !== "\r") {
+        field += character;
+      }
+    }
+    if (field.length > 0 || record.length > 0) {
+      record.push(field.trim());
+      records.push(record);
+    }
+    return records.filter((row) => row.some(Boolean));
+  }
+
+  async function previewClientCsvImport() {
+    if (!auth || !clientCsvImport.trim()) return;
+    const records = parseCsvRecords(clientCsvImport);
+    if (records.length === 0) {
+      setClientCsvPreview({
+        id: "local-preview",
+        status: "preview",
+        totalRows: 0,
+        acceptedRows: 0,
+        rejectedRows: 1,
+        rows: [{ rowNumber: 1, state: "rejected", error: "CSV is empty", payload: { displayName: "", phone: "", language: "en" } }],
+      });
+      return;
+    }
+
+    const [headerRow, ...rows] = records;
+    const headers = headerRow.map((h) => h.trim());
+    const required = ["displayName", "phone"];
+    const missing = required.filter((h) => !headers.includes(h));
+    if (missing.length > 0) {
+      setClientCsvPreview({
+        id: "local-preview",
+        status: "preview",
+        totalRows: 0,
+        acceptedRows: 0,
+        rejectedRows: 1,
+        rows: [{ rowNumber: 1, state: "rejected", error: `Missing columns: ${missing.join(", ")}`, payload: { displayName: "", phone: "", language: "en" } }],
+      });
+      return;
+    }
+
+    let accepted = 0;
+    let rejected = 0;
+    const parsedRows = rows.map((values, index) => {
+      const row = Object.fromEntries(headers.map((header, column) => [header, values[column] ?? ""]));
+      const errors: string[] = [];
+      const displayName = (row.displayName ?? "").trim();
+      const phone = (row.phone ?? "").trim();
+      const language = (row.language ?? "en").trim().toLowerCase() || "en";
+
+      if (!displayName) {
+        errors.push("displayName is required");
+      } else if (displayName.length > 200) {
+        errors.push("displayName must be under 200 characters");
+      }
+
+      const phoneRegex = /^\+?[0-9\s-]{7,22}$/;
+      if (!phone) {
+        errors.push("phone is required");
+      } else if (!phoneRegex.test(phone)) {
+        errors.push("phone must be a valid number (7-22 digits, optional +, spaces or dashes)");
+      }
+
+      if (language !== "en" && language !== "ur") {
+        errors.push("language must be either en (English) or ur (Urdu)");
+      }
+
+      const state = errors.length === 0 ? "accepted" : "rejected";
+      if (state === "accepted") accepted++;
+      else rejected++;
+
+      return {
+        rowNumber: index + 2,
+        state: state as "accepted" | "rejected",
+        error: errors.length > 0 ? errors.join("; ") : null,
+        payload: { displayName, phone, language },
+      };
+    });
+
+    setClientCsvPreview({
+      id: "local-preview",
+      status: "preview",
+      totalRows: parsedRows.length,
+      acceptedRows: accepted,
+      rejectedRows: rejected,
+      rows: parsedRows,
+    });
+    setOperationStatus(`Client CSV Validation ready: ${accepted} accepted; ${rejected} rejected.`);
+  }
+
+  async function confirmClientCsvImport() {
+    if (!auth || !clientCsvPreview || clientCsvPreview.status !== "preview") return;
+    setOperationStatus("Importing clients...");
+    let accepted = 0;
+    let rejected = 0;
+    const updatedRows = [...clientCsvPreview.rows];
+    let resolvedAuth = auth;
+
+    for (let i = 0; i < updatedRows.length; i++) {
+      const row = updatedRows[i];
+      if (row.state === "accepted") {
+        try {
+          const res = await authedRequest<{ client: any }>("/v1/clients", {
+            method: "POST",
+            body: JSON.stringify(row.payload),
+          }, resolvedAuth);
+          resolvedAuth = res.auth;
+          accepted++;
+        } catch (err: any) {
+          row.state = "rejected";
+          row.error = err.message || "Failed to create client";
+          rejected++;
+        }
+      }
+    }
+
+    setClientCsvPreview({
+      ...clientCsvPreview,
+      status: "confirmed",
+      acceptedRows: accepted,
+      rejectedRows: clientCsvPreview.rejectedRows + rejected,
+      rows: updatedRows,
+    });
+    setClientCsvImport("");
+    setOperationStatus(`Client CSV Import finished: ${accepted} successfully imported; ${rejected} failed.`);
+    await loadWorkspace(resolvedAuth);
+  }
+
+  function downloadRejectedClientRows() {
+    if (!clientCsvPreview) return;
+    const rejectedRows = clientCsvPreview.rows.filter((row) => row.state === "rejected");
+    const csv = [
+      "rowNumber,displayName,phone,language,error",
+      ...rejectedRows.map((row) => [
+        row.rowNumber,
+        JSON.stringify(row.payload.displayName),
+        JSON.stringify(row.payload.phone),
+        JSON.stringify(row.payload.language),
+        JSON.stringify(row.error ?? ""),
+      ].join(",")),
+    ].join("\n");
+    const url = window.URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "legalbahi-rejected-client-rows.csv";
+    link.click();
+    window.URL.revokeObjectURL(url);
   }
 
   async function addParty() {
@@ -1119,8 +1355,26 @@ export default function ProductStaffPage() {
     if (!auth) {
       return;
     }
-    const payload = await authedRequest(`/v1/alerts/${alertId}`, { method: "PATCH" }, auth);
-    await loadWorkspace(payload.auth);
+    // Optimistic update — flip readAt locally so the button vanishes immediately
+    setAlerts((prev) =>
+      prev.map((a) => (a.id === alertId ? { ...a, readAt: new Date().toISOString() } : a))
+    );
+    try {
+      const payload = await authedRequest(`/v1/alerts/${alertId}`, { method: "PATCH", body: JSON.stringify({}) }, auth);
+      // Sync just the alerts list from the server (lightweight, no full reload)
+      const alertResponse = await authedRequest<{ alerts: AlertRecord[]; auditEvents: AuditEvent[] }>(
+        "/v1/alerts",
+        {},
+        payload.auth,
+      );
+      setAlerts(alertResponse.data.alerts);
+    } catch (err: any) {
+      // Revert optimistic update on failure
+      setAlerts((prev) =>
+        prev.map((a) => (a.id === alertId ? { ...a, readAt: null } : a))
+      );
+      setOperationStatus(err.message || "Failed to mark alert as read.");
+    }
   }
 
   async function signOut() {
@@ -1182,6 +1436,7 @@ export default function ProductStaffPage() {
         profile={profile}
         activeSection={activeSection}
         signOut={signOut}
+        unreadAlertsCount={stats.unreadAlerts}
       />
 
       {operationStatus ? (
@@ -1200,13 +1455,13 @@ export default function ProductStaffPage() {
           stats={stats}
           report={report}
           calendar={calendar}
-          syncMessage={syncMessage}
-          courtSources={courtSources}
           alerts={alerts}
           threads={threads}
+          matters={matters}
           markAlertRead={markAlertRead}
           openMatter={openMatter}
           router={router}
+          profile={profile}
         />
       )}
 
@@ -1241,6 +1496,7 @@ export default function ProductStaffPage() {
           hearingNextDate={hearingNextDate}
           setHearingNextDate={setHearingNextDate}
           setHearingFile={setHearingFile}
+          hearingFile={hearingFile}
           captureHearing={captureHearing}
           hearingStatus={hearingStatus}
           matterClientId={matterClientId}
@@ -1280,6 +1536,8 @@ export default function ProductStaffPage() {
           linkUnmatchedCauseEntry={linkUnmatchedCauseEntry}
           calendarConflicts={calendarConflicts}
           courtSources={courtSources}
+          openMatter={openMatter}
+          router={router}
         />
       )}
 
@@ -1287,6 +1545,9 @@ export default function ProductStaffPage() {
         <AlertsSection
           alerts={alerts}
           markAlertRead={markAlertRead}
+          matters={matters}
+          openMatter={openMatter}
+          router={router}
         />
       )}
 
@@ -1307,6 +1568,16 @@ export default function ProductStaffPage() {
           saveClientNotificationPreference={saveClientNotificationPreference}
           openMatter={openMatter}
           router={router}
+          clientSearch={clientSearch}
+          setClientSearch={setClientSearch}
+          clientStatusFilter={clientStatusFilter}
+          setClientStatusFilter={setClientStatusFilter}
+          clientCsvImport={clientCsvImport}
+          setClientCsvImport={setClientCsvImport}
+          previewClientCsvImport={previewClientCsvImport}
+          clientCsvPreview={clientCsvPreview}
+          confirmClientCsvImport={confirmClientCsvImport}
+          downloadRejectedClientRows={downloadRejectedClientRows}
         />
       )}
 
@@ -1326,6 +1597,8 @@ export default function ProductStaffPage() {
           setZoomScale={setZoomScale}
           isCloseHovered={isCloseHovered}
           setIsCloseHovered={setIsCloseHovered}
+          matters={matters}
+          uploadVaultDocument={uploadVaultDocument}
         />
       )}
 
@@ -1404,6 +1677,18 @@ export default function ProductStaffPage() {
             </div>
           </div>
         </section>
+      )}
+
+      {viewingDocumentUrl && viewingDocument && activeSection !== "vault" && (
+        <DocumentViewerModal
+          viewingDocument={viewingDocument}
+          viewingDocumentUrl={viewingDocumentUrl}
+          closeDocumentViewer={closeDocumentViewer}
+          zoomScale={zoomScale}
+          setZoomScale={setZoomScale}
+          isCloseHovered={isCloseHovered}
+          setIsCloseHovered={setIsCloseHovered}
+        />
       )}
     </main>
   );

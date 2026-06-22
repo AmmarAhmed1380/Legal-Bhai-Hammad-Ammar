@@ -90,6 +90,15 @@ export const matterMethods = {
       .prepare("SELECT id, matter_id AS matterId, participant_type AS participantType, status FROM message_threads WHERE matter_id = ?")
       .get(matterId) as MatterDetail["thread"] | undefined;
 
+    const clients = this.db
+      .prepare(`
+        SELECT c.id, c.phone, c.display_name AS displayName, c.language, c.status
+        FROM client_accounts c
+        JOIN client_memberships cm ON cm.client_account_id = c.id
+        WHERE cm.matter_id = ?
+      `)
+      .all(matterId) as unknown as MatterDetail["clients"];
+
     return {
       ...base,
       leadLawyer,
@@ -97,6 +106,7 @@ export const matterMethods = {
       hearings,
       documents,
       thread: thread ?? null,
+      clients,
     };
   },
 

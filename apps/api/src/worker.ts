@@ -5,6 +5,8 @@ import { COURT_SOURCE_DEFINITIONS, fetchCourtCauseList } from "./lib/court-sourc
 import { renderNotificationTemplate } from "./lib/notification-schedule.js";
 import { captureError, initializeErrorReporting, registerProcessErrorHandlers } from "./lib/telemetry.js";
 import { runScheduledDatabaseBackup } from "./lib/database-backup.js";
+import { LahoreHighCourtScraper } from "./services/scrapers/lhc-scraper.js";
+import { DistrictCourtScraper } from "./services/scrapers/district-scraper.js";
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
@@ -114,6 +116,56 @@ async function runCourtSourceCycleSafely(): Promise<void> {
   }
 }
 
+let lastScrapeDatePakistan = "";
+
+function isOneAmPakistanTime(): boolean {
+  const options: Intl.DateTimeFormatOptions = {
+    timeZone: "Asia/Karachi",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  };
+  const formatter = new Intl.DateTimeFormat("en-US", options);
+  return formatter.format(new Date()) === "01:00";
+}
+
+function getPakistanDate(): string {
+  const options: Intl.DateTimeFormatOptions = {
+    timeZone: "Asia/Karachi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  };
+  const formatter = new Intl.DateTimeFormat("en-CA", options);
+  return formatter.format(new Date());
+}
+
+async function runDailyScraperCycleSafely(): Promise<void> {
+  if (!isOneAmPakistanTime()) {
+    return;
+  }
+  const today = getPakistanDate();
+  if (lastScrapeDatePakistan === today) {
+    return;
+  }
+  lastScrapeDatePakistan = today;
+
+  console.log(`[Worker] Executing daily 1:00 AM PKT scraper cycle for ${today}...`);
+  try {
+    const lhcScraper = new LahoreHighCourtScraper();
+    const lhcRows = await lhcScraper.fetchCauseList(today);
+    console.log(`[Worker] LHC Scraper parsed ${lhcRows?.length ?? 0} rows`);
+
+    const districtScraper = new DistrictCourtScraper();
+    const activeCaseNumbers = ["W.P. 2076/2019", "C.R. 456/2021"];
+    const districtMatches = await districtScraper.scrapeAndMatchCases(today, activeCaseNumbers);
+    console.log(`[Worker] District Scraper matched ${districtMatches?.length ?? 0} cases`);
+  } catch (error) {
+    captureError(error);
+    console.error("Daily scraper cycle failed:", error);
+  }
+}
+
 const notificationInterval = setInterval(() => void runNotificationCycleSafely(), 60_000);
 const courtInterval = setInterval(
   () => void runCourtSourceCycleSafely(),
@@ -123,14 +175,18 @@ const backupInterval = setInterval(
   () => void runBackupCycleSafely(),
   Number(process.env.BACKUP_CHECK_INTERVAL_MINUTES ?? 60) * 60_000,
 );
+const scraperInterval = setInterval(() => void runDailyScraperCycleSafely(), 60_000);
+
 void runNotificationCycleSafely();
 void runCourtSourceCycleSafely();
 void runBackupCycleSafely();
+void runDailyScraperCycleSafely();
 
 async function shutdown(): Promise<void> {
   clearInterval(notificationInterval);
   clearInterval(courtInterval);
   clearInterval(backupInterval);
+  clearInterval(scraperInterval);
   await store.close();
   process.exit(0);
 }

@@ -628,6 +628,7 @@ export class ProductStore {
     this.resetSeedData();
 
     const createdAt = nowIso();
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
     const firmId = "firm-hassan-co";
     this.db
       .prepare(
@@ -1065,7 +1066,7 @@ export class ProductStore {
 
     const sources: Array<CourtSource & { metrics: Record<string, number> }> = [
       { id: "source-ihc", courtId: "ihc", sourceType: "high_court", ingestionMode: "automation", status: "live", lastSuccessfulSyncAt: "2026-04-21T04:12:00Z", metrics: { fetched: 220, matched: 14, parserErrors: 0 } },
-      { id: "source-lhc-rwp", courtId: "lhc-rawalpindi-bench", sourceType: "high_court", ingestionMode: "automation", status: "manual_review", lastSuccessfulSyncAt: null, metrics: { fetched: 0, matched: 0, parserErrors: 0 } },
+      { id: "source-lhc-rwp", courtId: "lhc-rawalpindi-bench", sourceType: "high_court", ingestionMode: "automation", status: "live", lastSuccessfulSyncAt: twoHoursAgo, metrics: { fetched: 0, matched: 0, parserErrors: 0 } },
       { id: "source-rwp-district", courtId: "rwp-district-sessions", sourceType: "district", ingestionMode: "automation", status: "live", lastSuccessfulSyncAt: "2026-05-18T03:25:00Z", metrics: { fetched: 74, matched: 5, parserErrors: 0 } },
     ];
     const insertSource = this.db.prepare(
@@ -2509,7 +2510,7 @@ export class ProductStore {
             return false;
           }
           const hearingTime = new Date(matter.nextHearingAt).getTime();
-          return hearingTime >= now && hearingTime <= upcomingBoundary;
+          return hearingTime > now;
         }).length,
         unreadAlerts: alerts.filter((alert) => !alert.readAt).length,
         outstandingInvoiceTotal,

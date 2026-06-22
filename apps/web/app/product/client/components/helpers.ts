@@ -1,3 +1,34 @@
+export function formatPakistanDisplayPhone(phone: string): string {
+  if (!phone) return phone;
+  const digits = phone.replace(/\D/g, "");
+  
+  if (phone.startsWith("+1") || (digits.length === 11 && digits.startsWith("1"))) {
+    const local = digits.startsWith("1") ? digits.slice(1) : digits;
+    if (local.length === 10) {
+      return `+1 (${local.slice(0, 3)}) ${local.slice(3, 6)}-${local.slice(6)}`;
+    }
+  }
+  
+  let local = digits;
+  if (digits.startsWith("92")) {
+    local = digits.slice(2);
+  } else if (digits.startsWith("0")) {
+    local = digits.slice(1);
+  }
+  
+  if (local.length === 10) {
+    return `+92 (${local.slice(0, 3)}) ${local.slice(3, 6)}-${local.slice(6)}`;
+  }
+  if (local.length === 9) {
+    return `+92 (${local.slice(0, 3)}) ${local.slice(3, 6)}-${local.slice(6)}`;
+  }
+  
+  if (local.length >= 3) {
+    return `+92 (${local.slice(0, 3)}) ${local.slice(3)}`;
+  }
+  return phone;
+}
+
 export function formatDateTime(value: string | null): string {
   if (!value) {
     return "To Be Confirmed";
@@ -10,7 +41,7 @@ export function formatDateTime(value: string | null): string {
   const timeStr = d.toLocaleTimeString("en-US", { timeZone: "Asia/Karachi", hour: "2-digit", minute: "2-digit", hour12: true });
   
   if (value.length <= 10) return dateStr;
-  return `${dateStr} • ${timeStr} PKT`;
+  return `${dateStr} | ${timeStr} PKT`;
 }
 
 export function toTitleCase(str: string): string {

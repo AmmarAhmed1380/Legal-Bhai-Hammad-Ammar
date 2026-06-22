@@ -848,14 +848,21 @@ export class PostgresProductStore {
     if (!matter || !(await this.canAccessMatter(session, matter.id, matter.firmId))) {
       return null;
     }
-    const [parties, hearings, documents, threadResult, lawyerResult] = await Promise.all([
+    const [parties, hearings, documents, threadResult, lawyerResult, clientResult] = await Promise.all([
       this.pool.query("SELECT id, matter_id, party_type, display_name, contact_ref FROM matter_parties WHERE matter_id = $1 ORDER BY created_at", [matterId]),
       this.listHearings(session, matterId),
       this.listDocuments(session, { matterId }),
       this.pool.query("SELECT id, matter_id, participant_type, status FROM message_threads WHERE matter_id = $1", [matterId]),
       matter.leadLawyerId
         ? this.pool.query("SELECT id, phone, email, display_name, language, status FROM product_users WHERE id = $1", [matter.leadLawyerId])
-        : Promise.resolve({ rows: [] as QueryResultRow[] }),
+        : Promise.resolve({ rows: [] as any[] }),
+      this.pool.query(
+        `SELECT c.id, c.phone, c.display_name, c.language, c.status
+         FROM client_accounts c
+         JOIN client_memberships cm ON cm.client_account_id = c.id
+         WHERE cm.matter_id = $1`,
+        [matterId],
+      ),
     ]);
     return {
       ...matter,
@@ -864,6 +871,7 @@ export class PostgresProductStore {
       hearings,
       documents,
       thread: threadResult.rows[0] ? mapRow<MessageThread>(threadResult.rows[0]) : null,
+      clients: mapRows<ClientAccount>(clientResult.rows),
     };
   }
 
@@ -2041,7 +2049,7 @@ export class PostgresProductStore {
     return {
       metrics: {
         openMatters: matters.filter((matter) => matter.status === "open").length,
-        upcomingHearings: matters.filter((matter) => matter.nextHearingAt && new Date(matter.nextHearingAt).getTime() >= now && new Date(matter.nextHearingAt).getTime() <= boundary).length,
+        upcomingHearings: matters.filter((matter) => matter.nextHearingAt && new Date(matter.nextHearingAt).getTime() > now).length,
         unreadAlerts: alerts.filter((alert) => !alert.readAt).length,
         outstandingInvoiceTotal: 0,
         overdueInvoiceTotal: 0,

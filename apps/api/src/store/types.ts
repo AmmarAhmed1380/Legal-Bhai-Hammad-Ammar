@@ -34,6 +34,7 @@ export interface MatterDetail extends Matter {
   hearings: Hearing[];
   documents: ProductDocument[];
   thread: MessageThread | null;
+  clients?: ClientAccount[];
 }
 
 export interface SearchHit {

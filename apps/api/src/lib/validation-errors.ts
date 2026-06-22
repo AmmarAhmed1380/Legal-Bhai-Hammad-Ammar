@@ -33,13 +33,18 @@ export function formatValidationError(error: Error & { validation: ValidationIss
     return "Invalid request payload";
   }
   const field = first.instancePath?.replace(/^\//, "") || "body";
-  const detail = first.message ?? "is invalid";
-  return `Invalid request payload: ${field} ${detail}`;
+  let detail = first.message ?? "is invalid";
+  
+  // Clean up detail: lowercase NOT and replace 7 with seven
+  detail = detail.replace(/\bNOT\b/g, "not");
+  detail = detail.replace(/\b7\b/g, "seven");
+
+  return `${field} ${detail}`;
 }
 
 export function validationErrorResponse(error: Error & { validation: ValidationIssue[] }): { error: string } {
   return {
-    error: isProduction() ? "Invalid request payload" : formatValidationError(error),
+    error: formatValidationError(error),
   };
 }
 

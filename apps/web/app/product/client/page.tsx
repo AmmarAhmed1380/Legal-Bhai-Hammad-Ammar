@@ -73,13 +73,14 @@ const CLIENT_PHONES = [
 const STORAGE_KEY = "legalbahi-client-auth";
 
 
-import { formatCourtId, formatDateTime, toTitleCase } from "./components/helpers";
+import { formatCourtId, formatDateTime, formatPakistanDisplayPhone, toTitleCase } from "./components/helpers";
 import PortalOtpPrompt from "./components/PortalOtpPrompt";
 import ClientSidebar from "./components/ClientSidebar";
 import HearingsTab from "./components/HearingsTab";
 import DocumentsTab from "./components/DocumentsTab";
 import ChatTab from "./components/ChatTab";
 import DocumentViewerModal from "./components/DocumentViewerModal";
+import MatterTimelineHeader from "./components/MatterTimelineHeader";
 
 const UPLOAD_CATEGORIES = [
   { value: "Identity Document", label: "Identity Document (CNIC, Passport)" },
@@ -559,13 +560,13 @@ function ProductClientWorkspace() {
           const parsed = JSON.parse(body);
           if (parsed.error) errorMessage = parsed.error;
           else errorMessage = body;
-        } catch {}
+        } catch { }
         throw new Error(errorMessage);
       }
 
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
-      
+
       // Find document title and mimeType
       const doc = selectedMatter?.documents.find((d) => d.id === documentId);
       const docTitle = doc?.title || "Document Viewer";
@@ -602,13 +603,43 @@ function ProductClientWorkspace() {
     setMessages([]);
   }
 
-  const subTabStyle = (isActive: boolean): CSSProperties => ({
+  const subTabButtonStyle = (isActive: boolean): CSSProperties => ({
+    padding: "8px 14px",
+    fontSize: "13px",
+    fontWeight: 700,
+    borderRadius: "8px",
+    border: "none",
+    backgroundColor: isActive ? "#ffffff" : "transparent",
+    color: isActive ? "var(--primary)" : "var(--text-secondary)",
+    cursor: "pointer",
+    boxShadow: isActive ? "0 2px 8px rgba(0, 0, 0, 0.05)" : "none",
+    transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
     flex: 1,
-    border: isActive ? "1px solid var(--primary)" : "1px solid var(--border)",
-    background: isActive ? "var(--primary)" : "var(--surface)",
-    color: isActive ? "#ffffff" : "var(--text-secondary)",
-    boxShadow: isActive ? "0 10px 22px rgba(15, 110, 86, 0.18)" : "0 4px 12px rgba(15, 23, 42, 0.04)",
+    justifyContent: "center",
+    transform: "translateY(0)",
   });
+
+  const handleSubTabMouseEnter = (e: React.MouseEvent<HTMLButtonElement>, isActive: boolean) => {
+    e.currentTarget.style.transform = "translateY(-2px)";
+    if (isActive) {
+      e.currentTarget.style.boxShadow = "0 6px 16px rgba(15, 110, 86, 0.15)";
+    } else {
+      e.currentTarget.style.backgroundColor = "rgba(0, 0, 0, 0.04)";
+    }
+  };
+
+  const handleSubTabMouseLeave = (e: React.MouseEvent<HTMLButtonElement>, isActive: boolean) => {
+    e.currentTarget.style.transform = "translateY(0)";
+    if (isActive) {
+      e.currentTarget.style.boxShadow = "0 2px 8px rgba(0, 0, 0, 0.05)";
+    } else {
+      e.currentTarget.style.backgroundColor = "transparent";
+    }
+  };
+
 
   if (incomingPortalToken) {
     return (
@@ -652,66 +683,87 @@ function ProductClientWorkspace() {
                   {workspaceSuccess}
                 </div>
               ) : null}
-              <div className="panel" style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "8px" }}>
-                <div className="eyebrow" style={{ margin: 0 }}>Matter timeline</div>
-                <h2 style={{ margin: 0, fontSize: "24px", fontWeight: 800 }}>{selectedMatter.rawCaseNumber}</h2>
-                <div style={{ margin: 0, fontSize: "14px", lineHeight: "1.4", color: "var(--text-secondary)" }}>{selectedMatter.title}</div>
-                <div className="info-list" style={{ gap: "8px", marginTop: "4px" }}>
-                  <div><strong>Stage:</strong> {toTitleCase(selectedMatter.stage)}</div>
-                  <div><strong>Next Hearing:</strong> {formatDateTime(selectedMatter.nextHearingAt)}</div>
-                  <div><strong>Court:</strong> {formatCourtId(selectedMatter.courtId)}</div>
+              <MatterTimelineHeader matter={selectedMatter} />
+
+              {/* Matter Sub-Navigation */}
+              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", width: "100%", marginBottom: "16px", paddingTop: "4px" }}>
+                <div style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  backgroundColor: "rgba(0, 0, 0, 0.03)",
+                  padding: "6px",
+                  borderRadius: "12px",
+                  width: "100%",
+                  border: "1px solid var(--border)",
+                  overflow: "visible"
+                }}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSubTab("hearings")}
+                    style={subTabButtonStyle(activeSubTab === "hearings")}
+                    onMouseEnter={(e) => handleSubTabMouseEnter(e, activeSubTab === "hearings")}
+                    onMouseLeave={(e) => handleSubTabMouseLeave(e, activeSubTab === "hearings")}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                      <line x1="16" y1="2" x2="16" y2="6" />
+                      <line x1="8" y1="2" x2="8" y2="6" />
+                      <line x1="3" y1="10" x2="21" y2="10" />
+                    </svg>
+                    Hearings
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSubTab("documents")}
+                    style={subTabButtonStyle(activeSubTab === "documents")}
+                    onMouseEnter={(e) => handleSubTabMouseEnter(e, activeSubTab === "documents")}
+                    onMouseLeave={(e) => handleSubTabMouseLeave(e, activeSubTab === "documents")}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                    </svg>
+                    Shared Documents
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSubTab("chat")}
+                    style={subTabButtonStyle(activeSubTab === "chat")}
+                    onMouseEnter={(e) => handleSubTabMouseEnter(e, activeSubTab === "chat")}
+                    onMouseLeave={(e) => handleSubTabMouseLeave(e, activeSubTab === "chat")}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                    Chat with Counsel
+                  </button>
                 </div>
               </div>
 
-              {/* Matter Sub-Navigation */}
-              <div style={{ display: "flex", gap: 12, marginBottom: 4 }}>
-                <button
-                  type="button"
-                  className={activeSubTab === "hearings" ? "button" : "button-secondary"}
-                  onClick={() => setActiveSubTab("hearings")}
-                  style={subTabStyle(activeSubTab === "hearings")}
-                >
-                  Hearings
-                </button>
-                <button
-                  type="button"
-                  className={activeSubTab === "documents" ? "button" : "button-secondary"}
-                  onClick={() => setActiveSubTab("documents")}
-                  style={subTabStyle(activeSubTab === "documents")}
-                >
-                  Shared Documents
-                </button>
-                <button
-                  type="button"
-                  className={activeSubTab === "chat" ? "button" : "button-secondary"}
-                  onClick={() => setActiveSubTab("chat")}
-                  style={subTabStyle(activeSubTab === "chat")}
-                >
-                  Chat with Counsel
-                </button>
+              <div>
+                {activeSubTab === "hearings" && (
+                  <HearingsTab selectedMatter={selectedMatter} />
+                )}
+
+                {activeSubTab === "documents" && (
+                  <DocumentsTab
+                    selectedMatter={selectedMatter}
+                    openDocument={(docId) => void openDocument(docId, incomingPortalToken, portalAuth)}
+                    onInitiateUpload={() => setIsUploadModalOpen(true)}
+                    isUploading={isUploading}
+                  />
+                )}
+
+                {activeSubTab === "chat" && (
+                  <ChatTab
+                    messages={messages}
+                    draft={draft}
+                    setDraft={setDraft}
+                    sendMessage={sendMessage}
+                  />
+                )}
               </div>
-
-              {activeSubTab === "hearings" && (
-                <HearingsTab selectedMatter={selectedMatter} />
-              )}
-
-              {activeSubTab === "documents" && (
-                <DocumentsTab
-                  selectedMatter={selectedMatter}
-                  openDocument={(docId) => void openDocument(docId, incomingPortalToken, portalAuth)}
-                  onInitiateUpload={() => setIsUploadModalOpen(true)}
-                  isUploading={isUploading}
-                />
-              )}
-
-              {activeSubTab === "chat" && (
-                <ChatTab
-                  messages={messages}
-                  draft={draft}
-                  setDraft={setDraft}
-                  sendMessage={sendMessage}
-                />
-              )}
             </section>
           ) : null}
         </section>
@@ -871,11 +923,16 @@ function ProductClientWorkspace() {
     <main className="page-shell">
       <div className="top-bar">
         <div>
-          <div className="eyebrow">Client Workspace</div>
+          <div className="eyebrow" style={{ marginBottom: 2 }}>Client Portal</div>
           <h1 className="title" style={{ marginBottom: 4 }}>
             {profile.clientAccount.displayName}
           </h1>
-          <p className="muted">{profile.firm?.name ?? "Legal Bhai"}</p>
+          <p className="muted" style={{ margin: "2px 0 0", fontSize: 14 }}>
+            {profile.firm?.name ?? "Legal Bhai"}
+          </p>
+          <p style={{ margin: "4px 0 0", fontWeight: 600, fontSize: 14, color: "var(--text-secondary)" }}>
+            {formatPakistanDisplayPhone(profile.clientAccount.phone)}
+          </p>
         </div>
         <div className="actions">
           <button className="button" type="button" onClick={() => void signOut()}>
@@ -908,66 +965,87 @@ function ProductClientWorkspace() {
                 {workspaceSuccess}
               </div>
             ) : null}
-            <div className="panel" style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "8px" }}>
-              <div className="eyebrow" style={{ margin: 0 }}>Matter timeline</div>
-              <h2 style={{ margin: 0, fontSize: "24px", fontWeight: 800 }}>{selectedMatter.rawCaseNumber}</h2>
-              <div style={{ margin: 0, fontSize: "14px", lineHeight: "1.4", color: "var(--text-secondary)" }}>{selectedMatter.title}</div>
-              <div className="info-list" style={{ gap: "8px", marginTop: "4px" }}>
-                <div><strong>Stage:</strong> {toTitleCase(selectedMatter.stage)}</div>
-                <div><strong>Next Hearing:</strong> {formatDateTime(selectedMatter.nextHearingAt)}</div>
-                <div><strong>Court:</strong> {formatCourtId(selectedMatter.courtId)}</div>
+            <MatterTimelineHeader matter={selectedMatter} />
+
+            {/* Matter Sub-Navigation */}
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", width: "100%", marginBottom: "16px", paddingTop: "4px" }}>
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                backgroundColor: "rgba(0, 0, 0, 0.03)",
+                padding: "6px",
+                borderRadius: "12px",
+                width: "100%",
+                border: "1px solid var(--border)",
+                overflow: "visible"
+              }}>
+                <button
+                  type="button"
+                  onClick={() => setActiveSubTab("hearings")}
+                  style={subTabButtonStyle(activeSubTab === "hearings")}
+                  onMouseEnter={(e) => handleSubTabMouseEnter(e, activeSubTab === "hearings")}
+                  onMouseLeave={(e) => handleSubTabMouseLeave(e, activeSubTab === "hearings")}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                    <line x1="16" y1="2" x2="16" y2="6" />
+                    <line x1="8" y1="2" x2="8" y2="6" />
+                    <line x1="3" y1="10" x2="21" y2="10" />
+                  </svg>
+                  Hearings
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveSubTab("documents")}
+                  style={subTabButtonStyle(activeSubTab === "documents")}
+                  onMouseEnter={(e) => handleSubTabMouseEnter(e, activeSubTab === "documents")}
+                  onMouseLeave={(e) => handleSubTabMouseLeave(e, activeSubTab === "documents")}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                  </svg>
+                  Shared Documents
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveSubTab("chat")}
+                  style={subTabButtonStyle(activeSubTab === "chat")}
+                  onMouseEnter={(e) => handleSubTabMouseEnter(e, activeSubTab === "chat")}
+                  onMouseLeave={(e) => handleSubTabMouseLeave(e, activeSubTab === "chat")}
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  </svg>
+                  Chat with Counsel
+                </button>
               </div>
             </div>
 
-            {/* Matter Sub-Navigation */}
-            <div style={{ display: "flex", gap: 12, marginBottom: 4 }}>
-              <button
-                type="button"
-                className={activeSubTab === "hearings" ? "button" : "button-secondary"}
-                onClick={() => setActiveSubTab("hearings")}
-                style={subTabStyle(activeSubTab === "hearings")}
-              >
-                Hearings
-              </button>
-              <button
-                type="button"
-                className={activeSubTab === "documents" ? "button" : "button-secondary"}
-                onClick={() => setActiveSubTab("documents")}
-                style={subTabStyle(activeSubTab === "documents")}
-              >
-                Shared Documents
-              </button>
-              <button
-                type="button"
-                className={activeSubTab === "chat" ? "button" : "button-secondary"}
-                onClick={() => setActiveSubTab("chat")}
-                style={subTabStyle(activeSubTab === "chat")}
-              >
-                Chat with Counsel
-              </button>
+            <div>
+              {activeSubTab === "hearings" && (
+                <HearingsTab selectedMatter={selectedMatter} />
+              )}
+
+              {activeSubTab === "documents" && (
+                <DocumentsTab
+                  selectedMatter={selectedMatter}
+                  openDocument={(docId) => void openDocument(docId)}
+                  onInitiateUpload={() => setIsUploadModalOpen(true)}
+                  isUploading={isUploading}
+                />
+              )}
+
+              {activeSubTab === "chat" && (
+                <ChatTab
+                  messages={messages}
+                  draft={draft}
+                  setDraft={setDraft}
+                  sendMessage={sendMessage}
+                />
+              )}
             </div>
-
-            {activeSubTab === "hearings" && (
-              <HearingsTab selectedMatter={selectedMatter} />
-            )}
-
-            {activeSubTab === "documents" && (
-              <DocumentsTab
-                selectedMatter={selectedMatter}
-                openDocument={(docId) => void openDocument(docId)}
-                onInitiateUpload={() => setIsUploadModalOpen(true)}
-                isUploading={isUploading}
-              />
-            )}
-
-            {activeSubTab === "chat" && (
-              <ChatTab
-                messages={messages}
-                draft={draft}
-                setDraft={setDraft}
-                sendMessage={sendMessage}
-              />
-            )}
           </section>
         ) : null}
       </section>

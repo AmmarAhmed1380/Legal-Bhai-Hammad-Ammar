@@ -84,8 +84,9 @@ export default function DocumentsTab({
           display: "flex",
           gap: "8px",
           overflowX: "auto",
-          paddingBottom: "8px",
-          marginBottom: "20px",
+          paddingTop: "6px",
+          paddingBottom: "10px",
+          marginBottom: "16px",
           borderBottom: "1px solid var(--border)",
         }}>
           {filterTypes.map((type) => {
@@ -97,7 +98,7 @@ export default function DocumentsTab({
                 onClick={() => setActiveFilter(type)}
                 style={{
                   padding: "8px 16px",
-                  borderRadius: "20px",
+                  borderRadius: "8px",
                   border: isActive ? "1px solid var(--primary)" : "1px solid var(--border)",
                   background: isActive ? "var(--primary)" : "var(--surface)",
                   color: isActive ? "#ffffff" : "var(--text-secondary)",
@@ -105,7 +106,28 @@ export default function DocumentsTab({
                   fontWeight: 600,
                   cursor: "pointer",
                   whiteSpace: "nowrap",
-                  transition: "all 0.15s ease",
+                  transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                   transform: "translateY(0)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = "translateY(-2px)";
+                  if (isActive) {
+                    e.currentTarget.style.boxShadow = "0 6px 16px rgba(15, 110, 86, 0.3)";
+                  } else {
+                    e.currentTarget.style.background = "rgba(0, 0, 0, 0.02)";
+                    e.currentTarget.style.borderColor = "var(--primary)";
+                    e.currentTarget.style.color = "var(--primary)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "translateY(0)";
+                  if (isActive) {
+                    e.currentTarget.style.boxShadow = "none";
+                  } else {
+                    e.currentTarget.style.background = "var(--surface)";
+                    e.currentTarget.style.borderColor = "var(--border)";
+                    e.currentTarget.style.color = "var(--text-secondary)";
+                  }
                 }}
               >
                 {type}
@@ -126,7 +148,7 @@ export default function DocumentsTab({
       ) : (
         <div style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
           gap: "16px",
           marginTop: "16px"
         }}>
@@ -139,44 +161,37 @@ export default function DocumentsTab({
                 display: "flex",
                 flexDirection: "column",
                 background: "var(--surface)",
-                backdropFilter: "blur(12px)",
                 border: "1px solid var(--border)",
-                borderRadius: "14px",
-                transition: "all 0.2s ease",
+                borderRadius: "10px",
                 overflow: "hidden",
-                minHeight: "160px",
-                boxShadow: "0 8px 20px rgba(15, 23, 42, 0.07)",
+                minHeight: "150px",
+                boxShadow: "0 2px 6px rgba(0, 0, 0, 0.02)",
+                transition: "transform 0.2s ease",
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.transform = "translateY(-4px)";
-                e.currentTarget.style.boxShadow = "0 16px 30px rgba(15, 110, 86, 0.12)";
+                e.currentTarget.style.transform = "translateY(-2px)";
               }}
               onMouseLeave={(e) => {
                 e.currentTarget.style.transform = "none";
-                e.currentTarget.style.boxShadow = "0 8px 20px rgba(15, 23, 42, 0.07)";
               }}
             >
-              {/* Top Section: Large File Type Thumbnail */}
+              {/* Top Section: Compact File Type Thumbnail */}
               <div style={{
-                height: "90px",
+                height: "70px",
                 background: "rgba(15, 110, 86, 0.04)",
                 borderBottom: "1px solid var(--border)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                position: "relative",
                 color: "var(--primary)"
               }}>
                 {document.mimeType.toLowerCase() === "application/pdf" ? (
-                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                     <polyline points="14 2 14 8 20 8"></polyline>
-                    <line x1="16" y1="13" x2="8" y2="13"></line>
-                    <line x1="16" y1="17" x2="8" y2="17"></line>
-                    <polyline points="10 9 9 9 8 9"></polyline>
                   </svg>
                 ) : (
-                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                     <circle cx="8.5" cy="8.5" r="1.5"></circle>
                     <polyline points="21 15 16 10 5 21"></polyline>
@@ -184,54 +199,17 @@ export default function DocumentsTab({
                 )}
               </div>
 
-              {/* Bottom Section: Title Info */}
-              <div style={{
-                padding: "12px 14px 13px",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "8px",
-                flex: 1
-              }}>
-                <div style={{
-                  fontWeight: 700,
-                  color: "var(--text-primary)",
-                  fontSize: "13px",
-                  textAlign: "center",
-                  wordBreak: "break-all",
-                  display: "-webkit-box",
-                  WebkitLineClamp: 2,
-                  WebkitBoxOrient: "vertical",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  lineHeight: "1.4"
-                }} title={document.title}>
-                  {document.title}
+              {/* Bottom Section: Compact Title & Meta */}
+              <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: "4px", flex: 1, justifyContent: "space-between" }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: "12px", wordBreak: "break-all", marginBottom: "4px" }}>
+                    {document.title}
+                  </div>
+                  <div style={{ fontSize: "10px", color: "var(--text-secondary)", marginBottom: "4px" }}>
+                    Uploaded by: {document.uploaderType === "client" ? "Client" : "Lawyer"}
+                  </div>
                 </div>
-
-                <div style={{
-                  fontSize: "11px",
-                  fontWeight: 500,
-                  color: "var(--text-secondary)",
-                  marginTop: "-2px",
-                  marginBottom: "2px",
-                }}>
-                  Uploaded by: {document.uploaderType === "client" ? "Client" : "Lawyer"}
-                </div>
-
-                <span style={{
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  padding: "4px 10px",
-                  borderRadius: "20px",
-                  background: "#f3f4f6", // gray-100
-                  color: "#374151", // gray-700
-                  border: "1px solid #e5e7eb", // gray-200
-                  display: "inline-flex",
-                  alignItems: "center",
-                  boxShadow: "0 1px 3px rgba(0, 0, 0, 0.02)"
-                }}>
+                <span style={{ fontSize: "10px", color: "var(--text-secondary)", alignSelf: "flex-start", background: "#f3f4f6", padding: "2px 6px", borderRadius: "10px" }}>
                   {toTitleCase(document.type)}
                 </span>
               </div>

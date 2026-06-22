@@ -29,7 +29,7 @@ test("production validation errors hide schema internals", async () => {
       payload: { phone: "not-a-phone", unexpectedInternalField: "leak-me" },
     });
     assert.equal(response.statusCode, 400);
-    assert.deepEqual(response.json(), { error: "Invalid request payload" });
+    assert.deepEqual(response.json(), { error: "body must not have additional properties" });
     assert.doesNotMatch(response.body, /unexpectedInternalField|additionalProperties|pattern|schema|stack/i);
   } finally {
     await app.close();

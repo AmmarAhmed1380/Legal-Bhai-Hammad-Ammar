@@ -15,6 +15,7 @@ import {
   Modal,
   LayoutAnimation,
   UIManager,
+  Animated,
 } from "react-native";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -32,14 +33,32 @@ import { theme } from "./theme";
 import { enqueueMutation, pendingMutationCount } from "./offline/queue";
 import { flushOfflineQueue, startOfflineSyncAgent } from "./offline/sync-agent";
 
-type ProductTab = "home" | "matters" | "alerts" | "more";
-type ClientWorkspaceTab = "timeline" | "hearings" | "documents" | "chat";
+type ProductTab = "overview" | "matters" | "calendar" | "alerts";
+type ClientWorkspaceTab = "hearings" | "documents" | "chat";
 
 interface StaffProfile {
   actorType: "staff";
-  firm: { id: string; name: string } | null;
-  staffUser: { id: string; displayName: string; phone: string };
-  staffMembership: { role: string; officeLabel: string | null };
+  firm: {
+    id: string;
+    name: string;
+    primaryCity: string;
+    billingPlan: string;
+    timezone: string;
+    status: string;
+  } | null;
+  staffUser: {
+    id: string;
+    phone: string;
+    displayName: string;
+    language: string;
+    status: string;
+  };
+  staffMembership: {
+    id: string;
+    role: string;
+    officeLabel: string | null;
+    permissions: string[];
+  };
 }
 
 interface MatterListItem {
@@ -52,6 +71,9 @@ interface MatterListItem {
 }
 
 interface MatterDetail extends MatterListItem {
+  normalizedCaseNumber?: string;
+  matterType?: string;
+  leadLawyerId?: string | null;
   hearings: Array<{
     id: string;
     listedAt: string;
@@ -82,6 +104,8 @@ interface AlertRecord {
   id: string;
   title: string;
   body: string;
+  readAt: string | null;
+  createdAt?: string;
 }
 
 interface MessageRecord {
@@ -89,6 +113,93 @@ interface MessageRecord {
   senderType: "staff" | "client";
   body: string;
   createdAt: string;
+}
+
+interface CourtSource {
+  id: string;
+  courtId: string;
+  status: string;
+  ingestionMode: string;
+  lastSuccessfulSyncAt: string | null;
+  officialUrl?: string;
+  metrics: { fetched?: number; matched?: number; parserErrors?: number };
+}
+
+interface ThreadSummary {
+  id: string;
+  matter: MatterListItem;
+  lastMessage: { body: string; createdAt: string } | null;
+}
+
+interface ClientSummary {
+  id: string;
+  phone: string;
+  displayName: string;
+  language: string;
+  status: string;
+  matterCount: number;
+  outstandingTotal: number;
+  lastMessageAt: string | null;
+  nextHearingAt: string | null;
+}
+
+interface Invoice {
+  id: string;
+  status: string;
+  total: number;
+  dueAt: string | null;
+  matterId?: string | null;
+}
+
+interface ClientDetailPayload {
+  client: ClientSummary;
+  matters: MatterListItem[];
+  invoices: Invoice[];
+  threadSummaries: ThreadSummary[];
+}
+
+interface DocumentRecord {
+  id: string;
+  title: string;
+  type: string;
+  mimeType: string;
+  ocrStatus: string;
+  portalVisible: boolean;
+  matterId: string | null;
+  uploaderType?: string;
+}
+
+interface TeamMember {
+  id: string;
+  displayName: string;
+  phone: string;
+  email: string | null;
+  status: string;
+  membership: {
+    id: string;
+    role: string;
+    permissions: string[];
+    officeLabel: string | null;
+  };
+}
+
+interface NotificationPreference {
+  emailEnabled: boolean;
+  smsEnabled: boolean;
+  optedOutAt: string | null;
+}
+
+interface OverviewReport {
+  metrics: {
+    openMatters: number;
+    upcomingHearings: number;
+    unreadAlerts: number;
+    outstandingInvoiceTotal: number;
+    overdueInvoiceTotal: number;
+    billableMinutes: number;
+  };
+  mattersByStage: Array<{ stage: string; count: number }>;
+  syncHealth: CourtSource[];
 }
 
 const spacing = {
@@ -103,6 +214,21 @@ function formatPhoneNumber(value: string): string {
   const digits = value.replace(/\D/g, "").slice(0, 11);
   if (digits.length <= 4) return digits;
   return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+}
+
+function formatPakistanDisplayPhone(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  const local = digits.length === 12 && digits.startsWith("92")
+    ? `0${digits.slice(2)}`
+    : digits.length === 10
+      ? `0${digits}`
+      : digits;
+
+  if (local.length === 11 && local.startsWith("0")) {
+    return `${local.slice(0, 4)}-${local.slice(4)}`;
+  }
+
+  return phone;
 }
 
 function toPakistanPhoneSubmit(phone: string): string {
@@ -219,6 +345,10 @@ function documentIcon(document: { title: string; mimeType?: string; type?: strin
   return "FILE";
 }
 
+function animateTransition() {
+  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+}
+
 export function ProductApp({ onBack }: { onBack?: () => void }) {
   const [activeTab, setActiveTab] = useState<"lawyer" | "client">("lawyer");
   const [phone, setPhone] = useState("");
@@ -243,8 +373,29 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
   const [clientMatters, setClientMatters] = useState<MatterListItem[]>([]);
   const [clientSelectedMatter, setClientSelectedMatter] = useState<MatterDetail | null>(null);
   const [clientMessages, setClientMessages] = useState<MessageRecord[]>([]);
-  const [clientWorkspaceTab, setClientWorkspaceTab] = useState<ClientWorkspaceTab>("timeline");
+  const [clientWorkspaceTab, setClientWorkspaceTab] = useState<ClientWorkspaceTab>("hearings");
   const [clientDocumentFilter, setClientDocumentFilter] = useState<string>("All");
+
+  const tabOpacity = useRef(new Animated.Value(1)).current;
+
+  const changeClientTab = (newTab: ClientWorkspaceTab) => {
+    if (newTab === clientWorkspaceTab) return;
+    Animated.timing(tabOpacity, {
+      toValue: 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start(() => {
+      setClientWorkspaceTab(newTab);
+      if (newTab === "documents") {
+        setClientDocumentFilter("All");
+      }
+      Animated.timing(tabOpacity, {
+        toValue: 1,
+        duration: 250,
+        useNativeDriver: true,
+      }).start();
+    });
+  };
   const [clientMessageDraft, setClientMessageDraft] = useState("");
   const [clientUploading, setClientUploading] = useState(false);
   const [isTypeModalVisible, setIsTypeModalVisible] = useState(false);
@@ -252,8 +403,42 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
   const [isUploadOptionsModalVisible, setIsUploadOptionsModalVisible] = useState(false);
   const [authHydrated, setAuthHydrated] = useState(false);
   const [profile, setProfile] = useState<StaffProfile | null>(null);
-  const [tab, setTab] = useState<ProductTab>("home");
+  const [tab, setTab] = useState<ProductTab>("overview");
   const [matters, setMatters] = useState<MatterListItem[]>([]);
+  const [report, setReport] = useState<OverviewReport | null>(null);
+  const [threads, setThreads] = useState<ThreadSummary[]>([]);
+  const [clients, setClients] = useState<ClientSummary[]>([]);
+  const [courtSources, setCourtSources] = useState<CourtSource[]>([]);
+  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+
+  // Modals state
+  const [profileMenuVisible, setProfileMenuVisible] = useState(false);
+  const [activeMenuModal, setActiveMenuModal] = useState<"clients" | "vault" | "settings" | null>(null);
+
+  // Clients modal states
+  const [newClient, setNewClient] = useState({ displayName: "", phone: "", language: "en" });
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [clientDetail, setClientDetail] = useState<ClientDetailPayload | null>(null);
+  const [clientDraft, setClientDraft] = useState({ displayName: "", language: "en", status: "active" });
+  const [clientNotificationPreference, setClientNotificationPreference] = useState<NotificationPreference | null>(null);
+  const [clientsSearchQuery, setClientsSearchQuery] = useState("");
+
+  // Vault modal states
+  const [vaultSearchQuery, setVaultSearchQuery] = useState("");
+  const [isVaultTypeModalVisible, setIsVaultTypeModalVisible] = useState(false);
+  const [selectedVaultType, setSelectedVaultType] = useState<string | null>(null);
+  const [isVaultUploadOptionsVisible, setIsVaultUploadOptionsVisible] = useState(false);
+  const [vaultUploading, setVaultUploading] = useState(false);
+
+  // Settings modal states
+  const [settingsTab, setSettingsTab] = useState<"profile" | "workspace">("profile");
+  const [notificationPreference, setNotificationPreference] = useState<NotificationPreference | null>(null);
+  const [invitePhone, setInvitePhone] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"owner" | "lawyer" | "assistant" | "billing" | "co_owner">("lawyer");
+  const [inviteOfficeLabel, setInviteOfficeLabel] = useState("");
   const [selectedMatter, setSelectedMatter] = useState<MatterDetail | null>(null);
   const [calendar, setCalendar] = useState<CalendarItem[]>([]);
   const [alerts, setAlerts] = useState<AlertRecord[]>([]);
@@ -286,11 +471,9 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
       <View style={styles.clientHeader}>
         <View style={styles.flexShrink}>
           <Text style={styles.eyebrow}>Client Portal</Text>
-          <Text style={styles.clientTitle}>
-            <Text style={styles.clientTitleIntro}>Welcome, </Text>
-            <Text style={styles.clientTitleName}>{clientProfile.clientAccount.displayName}</Text>
-          </Text>
-          <Text style={styles.smallText}>{clientProfile.firm?.name ?? "Your lawyer workspace"}</Text>
+          <Text style={styles.clientTitleName}>{clientProfile.clientAccount.displayName}</Text>
+          <Text style={styles.clientProfileFirm}>{clientProfile.firm?.name ?? "Your lawyer workspace"}</Text>
+          <Text style={styles.clientProfilePhone}>{formatPakistanDisplayPhone(clientProfile.clientAccount.phone)}</Text>
         </View>
         <Pressable style={styles.headerSignOutButton} onPress={() => void signOutClient()}>
           <Text style={styles.headerSignOutText}>Sign out</Text>
@@ -302,7 +485,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
   const renderMatterSwitcher = () => {
     return (
       <View>
-        <Text style={styles.fieldLabel}>Active Matter</Text>
+        <Text style={styles.fieldLabel}>Shared Matters</Text>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -334,17 +517,11 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
   const renderClientTabBar = () => {
     return (
       <View style={[styles.tabRow, { marginVertical: 0 }]}>
-        {(["timeline", "hearings", "documents", "chat"] as const).map((tabKey) => (
+        {(["hearings", "documents", "chat"] as const).map((tabKey) => (
           <Pressable
             key={tabKey}
             style={[styles.pill, clientWorkspaceTab === tabKey ? styles.pillActive : null]}
-            onPress={() => {
-              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-              setClientWorkspaceTab(tabKey);
-              if (tabKey === "documents") {
-                setClientDocumentFilter("All");
-              }
-            }}
+            onPress={() => changeClientTab(tabKey)}
           >
             <Text style={clientWorkspaceTab === tabKey ? styles.pillActiveText : styles.pillText}>{tabKey}</Text>
           </Pressable>
@@ -538,25 +715,269 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
   }
 
   function transitionOtpRequested(nextValue: boolean) {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    animateTransition();
     setOtpRequested(nextValue);
   }
 
   async function loadWorkspace(activeAuth: { token: string; refreshToken: string | null }) {
-    const meResponse = await authedRequest<{ profile: StaffProfile }>("/v1/me", {}, activeAuth);
-    const matterResponse = await authedRequest<{ matters: MatterListItem[] }>("/v1/matters", {}, meResponse.auth);
-    const calendarResponse = await authedRequest<{ items: CalendarItem[] }>("/v1/calendar", {}, matterResponse.auth);
-    const alertResponse = await authedRequest<{ alerts: AlertRecord[] }>("/v1/alerts", {}, calendarResponse.auth);
+    let resolvedAuth = activeAuth;
+
+    const meResponse = await authedRequest<{ profile: StaffProfile }>("/v1/me", {}, resolvedAuth);
     const me = meResponse.data;
-    const matterPayload = matterResponse.data;
-    const calendarPayload = calendarResponse.data;
-    const alertPayload = alertResponse.data;
+    resolvedAuth = meResponse.auth;
     setProfile(me.profile);
-    setMatters(matterPayload.matters);
-    setCalendar(calendarPayload.items);
-    setAlerts(alertPayload.alerts);
-    if (!selectedMatter && matterPayload.matters[0]) {
-      await openMatter(matterPayload.matters[0].id, alertResponse.auth);
+
+    const matterResponse = await authedRequest<{ matters: MatterListItem[] }>("/v1/matters", {}, resolvedAuth);
+    resolvedAuth = matterResponse.auth;
+    const calendarResponse = await authedRequest<{ items: CalendarItem[] }>("/v1/calendar", {}, resolvedAuth);
+    resolvedAuth = calendarResponse.auth;
+    const alertResponse = await authedRequest<{ alerts: AlertRecord[] }>("/v1/alerts", {}, resolvedAuth);
+    resolvedAuth = alertResponse.auth;
+    const sourceResponse = await authedRequest<{ courtSources: CourtSource[] }>("/v1/court-sources", {}, resolvedAuth);
+    resolvedAuth = sourceResponse.auth;
+    const threadResponse = await authedRequest<{ threads: ThreadSummary[] }>("/v1/threads", {}, resolvedAuth);
+    resolvedAuth = threadResponse.auth;
+    const clientResponse = await authedRequest<{ clients: ClientSummary[] }>("/v1/clients", {}, resolvedAuth);
+    resolvedAuth = clientResponse.auth;
+    const documentResponse = await authedRequest<{ documents: DocumentRecord[] }>("/v1/documents", {}, resolvedAuth);
+    resolvedAuth = documentResponse.auth;
+    const reportResponse = await authedRequest<OverviewReport>("/v1/reports/overview", {}, resolvedAuth);
+    resolvedAuth = reportResponse.auth;
+    const preferenceResponse = await authedRequest<{ preference: NotificationPreference | null }>("/v1/notifications/preferences", {}, resolvedAuth);
+    resolvedAuth = preferenceResponse.auth;
+
+    setMatters(matterResponse.data.matters);
+    setCalendar(calendarResponse.data.items);
+    setAlerts(alertResponse.data.alerts);
+    setCourtSources(sourceResponse.data.courtSources);
+    setThreads(threadResponse.data.threads);
+    setClients(clientResponse.data.clients);
+    setDocuments(documentResponse.data.documents);
+    setReport(reportResponse.data);
+    setNotificationPreference(preferenceResponse.data.preference);
+
+    if (me.profile.firm && (me.profile.staffMembership.role === "owner" || me.profile.staffMembership.role === "co_owner")) {
+      try {
+        const teamResponse = await authedRequest<{ memberships: TeamMember[] }>(
+          `/v1/firms/${me.profile.firm.id}/memberships`,
+          {},
+          resolvedAuth
+        );
+        resolvedAuth = teamResponse.auth;
+        setTeamMembers(teamResponse.data.memberships || []);
+      } catch (err: any) {
+        console.error("Failed to load team memberships:", err.message);
+      }
+    }
+
+    if (!selectedMatter && matterResponse.data.matters[0]) {
+      await openMatter(matterResponse.data.matters[0].id, resolvedAuth);
+    }
+  }
+
+  async function markAlertRead(alertId: string) {
+    if (!auth) return;
+    try {
+      const payload = await authedRequest(`/v1/alerts/${alertId}`, { method: "PATCH" }, auth);
+      await loadWorkspace(payload.auth);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to mark alert as read.");
+    }
+  }
+
+  async function syncCourtSource(sourceId: string) {
+    if (!auth) return;
+    try {
+      const payload = await authedRequest<{ courtSource?: CourtSource; warning?: string }>(
+        `/v1/court-sources/${sourceId}/sync`,
+        { method: "POST" },
+        auth,
+      );
+      const source = payload.data.courtSource;
+      setSyncMessage(
+        payload.data.warning
+          ? `${courtLabel(source?.courtId ?? sourceId)} degraded: ${payload.data.warning}`
+          : `Synced ${courtLabel(source?.courtId ?? sourceId)} successfully.`
+      );
+      await loadWorkspace(payload.auth);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Sync request failed.");
+    }
+  }
+
+  async function createClient() {
+    if (!auth) return;
+    try {
+      const response = await authedRequest("/v1/clients", {
+        method: "POST",
+        body: JSON.stringify(newClient),
+      }, auth);
+      setNewClient({ displayName: "", phone: "", language: "en" });
+      setOperationStatus("Client created successfully.");
+      await loadWorkspace(response.auth);
+    } catch (e: any) {
+      Alert.alert("Error", e instanceof Error ? e.message : "Failed to create client.");
+    }
+  }
+
+  async function openClient(clientId: string, activeAuth = auth) {
+    if (!activeAuth) return;
+    try {
+      const detailResponse = await authedRequest<ClientDetailPayload>(`/v1/clients/${clientId}`, {}, activeAuth);
+      const preferenceResponse = await authedRequest<{ preference: NotificationPreference }>(
+        `/v1/clients/${clientId}/notifications/preferences`,
+        {},
+        detailResponse.auth,
+      );
+      const data = detailResponse.data;
+      setSelectedClientId(clientId);
+      setClientDetail(data);
+      setClientNotificationPreference(preferenceResponse.data.preference);
+      setClientDraft({
+        displayName: data.client.displayName,
+        language: data.client.language,
+        status: data.client.status,
+      });
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Could not open client details.");
+    }
+  }
+
+  async function updateClient() {
+    if (!auth || !clientDetail) return;
+    try {
+      const response = await authedRequest(`/v1/clients/${clientDetail.client.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(clientDraft),
+      }, auth);
+      setOperationStatus("Client updated.");
+      await loadWorkspace(response.auth);
+      await openClient(clientDetail.client.id, response.auth);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to update client.");
+    }
+  }
+
+  async function archiveClient() {
+    if (!auth || !clientDetail) return;
+    Alert.alert(
+      "Archive Client",
+      "Are you sure you want to archive this client and revoke their portal access?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Archive",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const response = await authedRequest(`/v1/clients/${clientDetail.client.id}`, { method: "DELETE" }, auth);
+              setOperationStatus("Client archived and portal access revoked.");
+              setSelectedClientId(null);
+              setClientDetail(null);
+              await loadWorkspace(response.auth);
+            } catch (e: any) {
+              Alert.alert("Error", e.message || "Failed to archive client.");
+            }
+          }
+        }
+      ]
+    );
+  }
+
+  async function saveClientNotificationPreference() {
+    if (!auth || !clientDetail || !clientNotificationPreference) return;
+    try {
+      const response = await authedRequest<{ preference: NotificationPreference }>(
+        `/v1/clients/${clientDetail.client.id}/notifications/preferences`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            emailEnabled: false,
+            smsEnabled: clientNotificationPreference.smsEnabled,
+            optedOut: Boolean(clientNotificationPreference.optedOutAt),
+          }),
+        },
+        auth,
+      );
+      setClientNotificationPreference(response.data.preference);
+      setOperationStatus("Client reminder consent saved.");
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to save reminders consent.");
+    }
+  }
+
+  async function updateDocumentVisibility(document: DocumentRecord | any) {
+    if (!auth) return;
+    try {
+      const response = await authedRequest(`/v1/documents/${document.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ portalVisible: !document.portalVisible }),
+      }, auth);
+      setOperationStatus(document.portalVisible ? "Document removed from client portal." : "Document shared with linked client.");
+      await loadWorkspace(response.auth);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to update visibility.");
+    }
+  }
+
+  async function saveNotificationPreference() {
+    if (!auth || !notificationPreference) return;
+    try {
+      const response = await authedRequest<{ preference: NotificationPreference }>("/v1/notifications/preferences", {
+        method: "PATCH",
+        body: JSON.stringify({
+          emailEnabled: notificationPreference.emailEnabled,
+          smsEnabled: notificationPreference.smsEnabled,
+          optedOut: Boolean(notificationPreference.optedOutAt),
+        }),
+      }, auth);
+      setNotificationPreference(response.data.preference);
+      setOperationStatus("Notification preferences saved.");
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to save preferences.");
+    }
+  }
+
+  async function handleSendInvite() {
+    if (!profile?.firm || !auth) return;
+    setOperationStatus("Sending invitation...");
+    try {
+      const cleanPhone = invitePhone.replace(/\D/g, "");
+      const formattedPhone = cleanPhone.startsWith("0") ? cleanPhone : `0${cleanPhone}`;
+      const response = await authedRequest(`/v1/firms/${profile.firm.id}/invitations`, {
+        method: "POST",
+        body: JSON.stringify({
+          phone: formattedPhone,
+          role: inviteRole,
+          officeLabel: inviteOfficeLabel || null,
+          email: inviteEmail || null
+        })
+      }, auth);
+      setInvitePhone("");
+      setInviteOfficeLabel("");
+      setInviteEmail("");
+      setOperationStatus("Invitation sent successfully!");
+      await loadWorkspace(response.auth);
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to send invitation.");
+    }
+  }
+
+  async function handleUpdateMembership(membershipId: string, role: string, officeLabel: string | null) {
+    if (!auth || !profile?.firm) return;
+    setOperationStatus("Updating member...");
+    try {
+      const response = await authedRequest(`/v1/memberships/${membershipId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          role,
+          officeLabel
+        })
+      }, auth);
+      setOperationStatus("Member updated successfully!");
+      await loadWorkspace(response.auth);
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to update member.");
     }
   }
 
@@ -582,6 +1003,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
   }
 
   function handleTabChange(tab: "lawyer" | "client") {
+    animateTransition();
     setActiveTab(tab);
     setPhone("");
     resetAuthFlow();
@@ -774,9 +1196,9 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
     try {
       if (clientSelectedMatter?.id !== matterId) {
         if (shouldAnimate) {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          animateTransition();
         }
-        setClientWorkspaceTab("timeline");
+        setClientWorkspaceTab("hearings");
         setClientDocumentFilter("All");
       }
       const { data: payload, auth: resolvedAuth } = await clientAuthedRequest<{ matter: MatterDetail }>(
@@ -1244,46 +1666,48 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
                 {renderClientTabBar()}
               </View>
 
-              <FlatList
-                ref={clientFlatListRef}
-                data={[...clientMessages].reverse()}
-                keyExtractor={(item) => item.id}
-                inverted={true}
-                contentContainerStyle={{
-                  flexGrow: 1,
-                  justifyContent: "flex-end",
-                  paddingHorizontal: spacing.lg,
-                  paddingBottom: 24,
-                  paddingTop: 12,
-                }}
-                keyboardShouldPersistTaps="handled"
-                ListEmptyComponent={<Text style={[styles.copy, { textAlign: "center", marginVertical: 20 }]}>No messages yet.</Text>}
-                renderItem={({ item }) => (
-                  <View
-                    style={[
-                      styles.messageBubble,
-                      item.senderType === "client" ? styles.clientBubble : styles.counselBubble,
-                    ]}
-                  >
-                    <Text style={styles.messageSender}>{item.senderType === "client" ? "You" : "Counsel"}</Text>
-                    <Text style={styles.messageText}>{item.body}</Text>
-                    <Text style={styles.messageTime}>{formatDateTime(item.createdAt)}</Text>
-                  </View>
-                )}
-              />
-
-              <View style={{ paddingHorizontal: spacing.lg, paddingBottom: Platform.OS === 'ios' ? 10 : 16, backgroundColor: theme.background }}>
-                <TextInput
-                  style={[styles.input, { minHeight: 48, maxHeight: 100, marginBottom: 10 }]}
-                  multiline
-                  placeholder="Type your message here..."
-                  value={clientMessageDraft}
-                  onChangeText={setClientMessageDraft}
+              <Animated.View style={{ opacity: tabOpacity, flex: 1 }}>
+                <FlatList
+                  ref={clientFlatListRef}
+                  data={[...clientMessages].reverse()}
+                  keyExtractor={(item) => item.id}
+                  inverted={true}
+                  contentContainerStyle={{
+                    flexGrow: 1,
+                    justifyContent: "flex-end",
+                    paddingHorizontal: spacing.lg,
+                    paddingBottom: 24,
+                    paddingTop: 12,
+                  }}
+                  keyboardShouldPersistTaps="handled"
+                  ListEmptyComponent={<Text style={[styles.copy, { textAlign: "center", marginVertical: 20 }]}>No messages yet.</Text>}
+                  renderItem={({ item }) => (
+                    <View
+                      style={[
+                        styles.messageBubble,
+                        item.senderType === "client" ? styles.clientBubble : styles.counselBubble,
+                      ]}
+                    >
+                      <Text style={styles.messageSender}>{item.senderType === "client" ? "You" : "Counsel"}</Text>
+                      <Text style={styles.messageText}>{item.body}</Text>
+                      <Text style={styles.messageTime}>{formatDateTime(item.createdAt)}</Text>
+                    </View>
+                  )}
                 />
-                <Pressable style={styles.primaryButton} onPress={() => void sendClientMessage()}>
-                  <Text style={styles.primaryButtonText}>Send message</Text>
-                </Pressable>
-              </View>
+
+                <View style={{ paddingHorizontal: spacing.lg, paddingBottom: Platform.OS === 'ios' ? 10 : 16, backgroundColor: theme.background }}>
+                  <TextInput
+                    style={[styles.input, { minHeight: 48, maxHeight: 100, marginBottom: 10 }]}
+                    multiline
+                    placeholder="Type your message here..."
+                    value={clientMessageDraft}
+                    onChangeText={setClientMessageDraft}
+                  />
+                  <Pressable style={styles.primaryButton} onPress={() => void sendClientMessage()}>
+                    <Text style={styles.primaryButtonText}>Send message</Text>
+                  </Pressable>
+                </View>
+              </Animated.View>
             </>
           ) : (
             // Non-Chat Layout: ScrollView with sticky Tab Bar
@@ -1302,24 +1726,22 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
                     <Text style={[styles.clientMatterTitle, styles.prewrappedText]}>
                       {formatTwoLineLabel(clientSelectedMatter.title, 34)}
                     </Text>
-                    <View style={styles.overviewGrid}>
-                      <View style={styles.overviewCell}>
-                        <Text style={styles.smallText}>Court</Text>
-                        <Text style={[styles.metaLabel, styles.overviewValue]}>
-                          {formatTwoLineLabel(courtLabel(clientSelectedMatter.courtId), 26)}
-                        </Text>
+                    <View style={styles.overviewStack}>
+                      <View style={styles.overviewRow}>
+                        <Text style={styles.overviewLabel}>Court:</Text>
+                        <View style={{ minHeight: 40, justifyContent: "center" }}>
+                          <Text style={styles.overviewValueText}>
+                            {formatTwoLineLabel(courtLabel(clientSelectedMatter.courtId), 26)}
+                          </Text>
+                        </View>
                       </View>
-                      <View style={styles.overviewCell}>
-                        <Text style={styles.smallText}>Stage</Text>
-                        <Text style={[styles.metaLabel, styles.overviewValue]}>
-                          {toTitleCase(clientSelectedMatter.stage)}
-                        </Text>
+                      <View style={styles.overviewRow}>
+                        <Text style={styles.overviewLabel}>Stage:</Text>
+                        <Text style={styles.overviewValueText}>{toTitleCase(clientSelectedMatter.stage)}</Text>
                       </View>
-                      <View style={styles.overviewCellFull}>
-                        <Text style={styles.smallText}>Next Hearing</Text>
-                        <Text style={[styles.metaLabel, styles.overviewValue]}>
-                          {formatDateTime(clientSelectedMatter.nextHearingAt)}
-                        </Text>
+                      <View style={styles.overviewRow}>
+                        <Text style={styles.overviewLabel}>Next Hearing:</Text>
+                        <Text style={styles.overviewValueText}>{formatDateTime(clientSelectedMatter.nextHearingAt)}</Text>
                       </View>
                     </View>
                   </View>
@@ -1335,35 +1757,31 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
 
               {/* Child 2 */}
               {clientSelectedMatter ? (
-                <View style={{ marginTop: 14 }}>
-                  {clientWorkspaceTab === "timeline" ? (
+                <Animated.View style={{ opacity: tabOpacity, marginTop: 14 }}>
+                  {clientWorkspaceTab === "hearings" ? (
                     <View style={styles.cardWithShadow}>
-                      <Text style={styles.sectionTitle}>Timeline Overview</Text>
+                      <Text style={[styles.sectionTitle, { marginBottom: 8 }]}>Court Calendar</Text>
                       {(clientSelectedMatter.hearings ?? []).length > 0 ? (
-                        clientSelectedMatter.hearings.map((hearing) => (
-                          <View key={hearing.id} style={styles.timelineItem}>
-                            <Text style={styles.metaLabel}>{formatDateTime(hearing.listedAt)}</Text>
-                            <Text style={styles.copy}>{hearing.outcome}</Text>
-                            <Text style={styles.smallText}>{hearing.notes}</Text>
+                        clientSelectedMatter.hearings.map((hearing, idx) => (
+                          <View key={hearing.id} style={[styles.hearingItem, idx < clientSelectedMatter.hearings.length - 1 ? { marginBottom: 16 } : null]}>
+                            <View style={{ flexDirection: "row", alignItems: "center" }}>
+                              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#047857", marginRight: 8 }} />
+                              <Text style={styles.hearingHeader}>{formatDateTime(hearing.listedAt)}</Text>
+                            </View>
+                            <View style={{ marginLeft: 16, marginTop: 4, gap: 2 }}>
+                              <Text style={styles.hearingStage}>{hearing.outcome}</Text>
+                              {hearing.notes ? <Text style={styles.hearingNotes}>{hearing.notes}</Text> : null}
+                              {hearing.nextDate ? (
+                                <Text style={styles.hearingNextDate}>
+                                  Next Date: {formatDateTime(hearing.nextDate)}
+                                </Text>
+                              ) : null}
+                            </View>
                           </View>
                         ))
                       ) : (
                         <Text style={styles.copy}>No hearing activity has been posted yet.</Text>
                       )}
-                    </View>
-                  ) : null}
-
-                  {clientWorkspaceTab === "hearings" ? (
-                    <View style={styles.cardWithShadow}>
-                      <Text style={styles.sectionTitle}>Court Calendar</Text>
-                      {(clientSelectedMatter.hearings ?? []).map((hearing) => (
-                        <View key={hearing.id} style={styles.hearingCard}>
-                          <Text style={styles.metaLabel}>{formatDateTime(hearing.listedAt)}</Text>
-                          <Text style={styles.hearingStatus}>{hearing.outcome}</Text>
-                          <Text style={styles.copy}>{hearing.notes}</Text>
-                          {hearing.nextDate ? <Text style={styles.smallText}>Next date: {hearing.nextDate}</Text> : null}
-                        </View>
-                      ))}
                     </View>
                   ) : null}
 
@@ -1446,7 +1864,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
                       })()}
                     </View>
                   ) : null}
-                </View>
+                </Animated.View>
               ) : (
                 <View style={styles.emptyState}>
                   <Text style={styles.sectionTitle}>Loading matter details...</Text>
@@ -1724,6 +2142,7 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
                 accessibilityLabel={registrationMode ? "Use existing lawyer login" : "Create workspace"}
                 style={styles.secondaryButton}
                 onPress={() => {
+                  animateTransition();
                   const nextMode = !registrationMode;
                   setRegistrationMode(nextMode);
                   resetAuthFlow();
@@ -1858,95 +2277,891 @@ export function ProductApp({ onBack }: { onBack?: () => void }) {
     );
   }
 
-  const homeCards = [
-    { label: "Matters", value: matters.length },
-    { label: "Calendar", value: calendar.length },
-    { label: "Alerts", value: alerts.length },
-  ];
+  // --- Modals Render Sections ---
+
+  // 1. Profile options modal
+  const renderProfileMenuModal = () => {
+    return (
+      <Modal
+        visible={profileMenuVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setProfileMenuVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable style={styles.flex} onPress={() => setProfileMenuVisible(false)} />
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Workspace Options</Text>
+              <Text style={styles.modalSubtitle}>Manage your staff settings, document vault, and clients portal</Text>
+            </View>
+
+            <Pressable
+              style={styles.modalOption}
+              onPress={() => {
+                setProfileMenuVisible(false);
+                setActiveMenuModal("clients");
+              }}
+            >
+              <Text style={styles.modalOptionText}>👥 Clients Portal Management</Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.modalOption}
+              onPress={() => {
+                setProfileMenuVisible(false);
+                setActiveMenuModal("vault");
+              }}
+            >
+              <Text style={styles.modalOptionText}>📁 Vault & Document Sharing</Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.modalOption}
+              onPress={() => {
+                setProfileMenuVisible(false);
+                setActiveMenuModal("settings");
+              }}
+            >
+              <Text style={styles.modalOptionText}>⚙️ Workspace Settings & Staff</Text>
+            </Pressable>
+
+            <Pressable
+              style={[styles.modalOption, { borderColor: "#fee2e2", backgroundColor: "#fef2f2" }]}
+              onPress={() => {
+                setProfileMenuVisible(false);
+                void signOut();
+              }}
+            >
+              <Text style={[styles.modalOptionText, { color: "#ef4444" }]}>🚪 Sign Out</Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.modalCancelButton}
+              onPress={() => setProfileMenuVisible(false)}
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
+  // 2. Clients management modal
+  const renderClientsModal = () => {
+    const isVisible = activeMenuModal === "clients";
+
+    // Filter clients based on query
+    const filteredClients = clients.filter(c =>
+      c.displayName.toLowerCase().includes(clientsSearchQuery.toLowerCase()) ||
+      c.phone.includes(clientsSearchQuery)
+    );
+
+    return (
+      <Modal
+        visible={isVisible}
+        animationType="slide"
+        onRequestClose={() => {
+          setActiveMenuModal(null);
+          setProfileMenuVisible(true);
+        }}
+      >
+        <SafeAreaView style={styles.safe}>
+          <View style={styles.modalCustomHeader}>
+            <Pressable
+              style={styles.backButton}
+              onPress={() => {
+                if (selectedClientId) {
+                  setSelectedClientId(null);
+                  setClientDetail(null);
+                } else {
+                  setActiveMenuModal(null);
+                  setProfileMenuVisible(true);
+                }
+              }}
+            >
+              <Text style={styles.backButtonText}>← Back</Text>
+            </Pressable>
+            <Text style={styles.modalHeaderTitle}>
+              {selectedClientId ? "Client Details" : "Manage Clients"}
+            </Text>
+            <View style={{ width: 60 }} />
+          </View>
+
+          {selectedClientId && clientDetail ? (
+            <ScrollView contentContainerStyle={styles.modalScrollViewContent} keyboardShouldPersistTaps="handled">
+              <View style={styles.cardWithShadow}>
+                <Text style={styles.sectionTitle}>Profile Details</Text>
+
+                <Text style={styles.fieldLabel}>Display Name</Text>
+                <TextInput
+                  style={styles.input}
+                  value={clientDraft.displayName}
+                  onChangeText={(val) => setClientDraft({ ...clientDraft, displayName: val })}
+                />
+
+                <Text style={styles.fieldLabel}>Language</Text>
+                <View style={styles.tabRow}>
+                  {["en", "ur"].map((lang) => (
+                    <Pressable
+                      key={lang}
+                      style={[styles.pill, clientDraft.language === lang ? styles.pillActive : null]}
+                      onPress={() => setClientDraft({ ...clientDraft, language: lang })}
+                    >
+                      <Text style={clientDraft.language === lang ? styles.pillActiveText : styles.pillText}>
+                        {lang === "en" ? "English" : "Urdu"}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <Text style={styles.fieldLabel}>Status</Text>
+                <View style={styles.tabRow}>
+                  {["active", "archived"].map((st) => (
+                    <Pressable
+                      key={st}
+                      style={[styles.pill, clientDraft.status === st ? styles.pillActive : null]}
+                      onPress={() => setClientDraft({ ...clientDraft, status: st })}
+                    >
+                      <Text style={clientDraft.status === st ? styles.pillActiveText : styles.pillText}>
+                        {st.charAt(0).toUpperCase() + st.slice(1)}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <Pressable style={[styles.primaryButton, { marginTop: 12 }]} onPress={() => void updateClient()}>
+                  <Text style={styles.primaryButtonText}>Save Details</Text>
+                </Pressable>
+
+                <Pressable style={[styles.secondaryButton, { borderColor: "#ef4444", marginTop: 8 }]} onPress={() => void archiveClient()}>
+                  <Text style={[styles.secondaryButtonText, { color: "#ef4444" }]}>Archive Client Portal</Text>
+                </Pressable>
+              </View>
+
+              <View style={styles.cardWithShadow}>
+                <Text style={styles.sectionTitle}>Reminder & Consent</Text>
+                {clientNotificationPreference ? (
+                  <View style={{ gap: 12, marginTop: 8 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                      <Pressable
+                        style={[
+                          styles.checkbox,
+                          clientNotificationPreference.smsEnabled ? styles.checkboxChecked : null
+                        ]}
+                        onPress={() =>
+                          setClientNotificationPreference({
+                            ...clientNotificationPreference,
+                            smsEnabled: !clientNotificationPreference.smsEnabled,
+                          })
+                        }
+                      >
+                        {clientNotificationPreference.smsEnabled && <Text style={styles.checkboxCheck}>✓</Text>}
+                      </Pressable>
+                      <Text style={styles.copy}>Receive SMS Reminders for Hearings</Text>
+                    </View>
+
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                      <Pressable
+                        style={[
+                          styles.checkbox,
+                          clientNotificationPreference.optedOutAt ? styles.checkboxChecked : null
+                        ]}
+                        onPress={() =>
+                          setClientNotificationPreference({
+                            ...clientNotificationPreference,
+                            optedOutAt: clientNotificationPreference.optedOutAt ? null : new Date().toISOString(),
+                          })
+                        }
+                      >
+                        {clientNotificationPreference.optedOutAt && <Text style={styles.checkboxCheck}>✓</Text>}
+                      </Pressable>
+                      <Text style={styles.copy}>Pause reminders / Opt out</Text>
+                    </View>
+
+                    <Pressable style={[styles.primaryButton, { marginTop: 8 }]} onPress={() => void saveClientNotificationPreference()}>
+                      <Text style={styles.primaryButtonText}>Save Consent Preferences</Text>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <Text style={styles.smallText}>Consent preferences unavailable</Text>
+                )}
+              </View>
+
+              <View style={styles.cardWithShadow}>
+                <Text style={styles.sectionTitle}>Linked Matters</Text>
+                {clientDetail.matters.length === 0 ? (
+                  <Text style={styles.copy}>No matters shared with this client account yet.</Text>
+                ) : (
+                  clientDetail.matters.map((matter) => (
+                    <Pressable
+                      key={matter.id}
+                      style={styles.caseCard}
+                      onPress={() => {
+                        setActiveMenuModal(null);
+                        void openMatter(matter.id);
+                      }}
+                    >
+                      <Text style={styles.metaLabel}>{matter.rawCaseNumber}</Text>
+                      <Text style={styles.copy}>{matter.title}</Text>
+                      <Text style={styles.smallText}>{toTitleCase(matter.stage)}</Text>
+                    </Pressable>
+                  ))
+                )}
+              </View>
+            </ScrollView>
+          ) : (
+            <View style={styles.flex}>
+              {/* Add Client Form */}
+              <View style={{ paddingHorizontal: spacing.lg, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: theme.border }}>
+                <Text style={[styles.sectionTitle, { marginBottom: 10 }]}>Create Client Account</Text>
+                <TextInput
+                  style={[styles.input, { marginBottom: 8 }]}
+                  placeholder="Full Name"
+                  value={newClient.displayName}
+                  onChangeText={(displayName) => setNewClient({ ...newClient, displayName })}
+                />
+                <TextInput
+                  style={[styles.input, { marginBottom: 8 }]}
+                  placeholder="Phone Number (e.g. 03001234567)"
+                  value={newClient.phone}
+                  onChangeText={(phone) => setNewClient({ ...newClient, phone: formatPhoneNumber(phone) })}
+                  keyboardType="phone-pad"
+                />
+                <Pressable style={styles.primaryButton} onPress={() => void createClient()}>
+                  <Text style={styles.primaryButtonText}>Invite Client</Text>
+                </Pressable>
+              </View>
+
+              {/* Search Client Bar */}
+              <View style={{ paddingHorizontal: spacing.lg, marginVertical: 10 }}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="🔍 Search clients..."
+                  value={clientsSearchQuery}
+                  onChangeText={setClientsSearchQuery}
+                />
+              </View>
+
+              {/* Client List */}
+              <FlatList
+                data={filteredClients}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={{ paddingHorizontal: spacing.lg, gap: 10, paddingBottom: 40 }}
+                keyboardShouldPersistTaps="handled"
+                renderItem={({ item }) => (
+                  <Pressable style={styles.documentCard} onPress={() => void openClient(item.id)}>
+                    <View style={styles.flexShrink}>
+                      <Text style={styles.metaLabel}>{item.displayName}</Text>
+                      <Text style={styles.smallText}>{formatPakistanDisplayPhone(item.phone)}</Text>
+                      <Text style={[styles.smallText, { marginTop: 2 }]}>
+                        {item.matterCount} Matter(s) • Out: PKR {item.outstandingTotal}
+                      </Text>
+                    </View>
+                    <Text style={styles.linkText}>View</Text>
+                  </Pressable>
+                )}
+              />
+            </View>
+          )}
+        </SafeAreaView>
+      </Modal>
+    );
+  };
+
+  // 3. Document Vault modal
+  const renderVaultModal = () => {
+    const isVisible = activeMenuModal === "vault";
+
+    const filteredDocs = documents.filter(doc =>
+      doc.title.toLowerCase().includes(vaultSearchQuery.toLowerCase())
+    );
+
+    return (
+      <Modal
+        visible={isVisible}
+        animationType="slide"
+        onRequestClose={() => {
+          setActiveMenuModal(null);
+          setProfileMenuVisible(true);
+        }}
+      >
+        <SafeAreaView style={styles.safe}>
+          <View style={styles.modalCustomHeader}>
+            <Pressable
+              style={styles.backButton}
+              onPress={() => {
+                setActiveMenuModal(null);
+                setProfileMenuVisible(true);
+              }}
+            >
+              <Text style={styles.backButtonText}>← Back</Text>
+            </Pressable>
+            <Text style={styles.modalHeaderTitle}>Document Vault</Text>
+            <View style={{ width: 60 }} />
+          </View>
+
+          <View style={styles.flex}>
+            {/* Search Bar */}
+            <View style={{ paddingHorizontal: spacing.lg, marginVertical: 10 }}>
+              <TextInput
+                style={styles.input}
+                placeholder="🔍 Search documents..."
+                value={vaultSearchQuery}
+                onChangeText={setVaultSearchQuery}
+              />
+            </View>
+
+            {/* List Documents */}
+            <FlatList
+              data={filteredDocs}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={{ paddingHorizontal: spacing.lg, gap: 10, paddingBottom: 40 }}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item }) => (
+                <View style={styles.documentCard}>
+                  <View style={styles.documentIcon}>
+                    <Text style={styles.documentIconText}>{documentIcon(item)}</Text>
+                  </View>
+                  <View style={styles.flexShrink}>
+                    <Text style={styles.metaLabel} numberOfLines={1}>{item.title}</Text>
+                    <Text style={styles.smallText}>{toTitleCase(item.type)} • OCR {item.ocrStatus}</Text>
+                    {item.uploaderType && (
+                      <Text style={[styles.smallText, { color: theme.textTertiary }]}>
+                        Uploader: {item.uploaderType}
+                      </Text>
+                    )}
+                  </View>
+
+                  {/* Share Toggle */}
+                  <Pressable
+                    style={[
+                      styles.pill,
+                      item.portalVisible ? styles.pillActive : null,
+                      { paddingHorizontal: 8, paddingVertical: 4 }
+                    ]}
+                    onPress={() => void updateDocumentVisibility(item)}
+                  >
+                    <Text style={[
+                      item.portalVisible ? styles.pillActiveText : styles.pillText,
+                      { fontSize: 11 }
+                    ]}>
+                      {item.portalVisible ? "Shared" : "Private"}
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+              ListEmptyComponent={
+                <Text style={[styles.copy, { textAlign: "center", marginTop: 20 }]}>
+                  No documents found in vault.
+                </Text>
+              }
+            />
+          </View>
+        </SafeAreaView>
+      </Modal>
+    );
+  };
+
+  // 4. Settings modal
+  const renderSettingsModal = () => {
+    const isVisible = activeMenuModal === "settings";
+    const isOwnerOrCoOwner =
+      profile?.staffMembership?.role === "owner" || profile?.staffMembership?.role === "co_owner";
+
+    return (
+      <Modal
+        visible={isVisible}
+        animationType="slide"
+        onRequestClose={() => {
+          setActiveMenuModal(null);
+          setProfileMenuVisible(true);
+        }}
+      >
+        <SafeAreaView style={styles.safe}>
+          <View style={styles.modalCustomHeader}>
+            <Pressable
+              style={styles.backButton}
+              onPress={() => {
+                setActiveMenuModal(null);
+                setProfileMenuVisible(true);
+              }}
+            >
+              <Text style={styles.backButtonText}>← Back</Text>
+            </Pressable>
+            <Text style={styles.modalHeaderTitle}>System Settings</Text>
+            <View style={{ width: 60 }} />
+          </View>
+
+          {isOwnerOrCoOwner && (
+            <View style={{ flexDirection: "row", gap: 12, paddingHorizontal: spacing.lg, marginVertical: 10 }}>
+              <Pressable
+                style={[styles.secondaryButton, settingsTab === "profile" ? { backgroundColor: theme.primaryLight, borderColor: theme.primary } : null, { flex: 1, paddingVertical: 8 }]}
+                onPress={() => setSettingsTab("profile")}
+              >
+                <Text style={[styles.secondaryButtonText, settingsTab === "profile" ? { color: theme.primaryDark } : null]}>My Preferences</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.secondaryButton, settingsTab === "workspace" ? { backgroundColor: theme.primaryLight, borderColor: theme.primary } : null, { flex: 1, paddingVertical: 8 }]}
+                onPress={() => setSettingsTab("workspace")}
+              >
+                <Text style={[styles.secondaryButtonText, settingsTab === "workspace" ? { color: theme.primaryDark } : null]}>Workspace & Staff</Text>
+              </Pressable>
+            </View>
+          )}
+
+          <ScrollView contentContainerStyle={styles.modalScrollViewContent} keyboardShouldPersistTaps="handled">
+            {settingsTab === "profile" || !isOwnerOrCoOwner ? (
+              <>
+                <View style={styles.cardWithShadow}>
+                  <Text style={styles.sectionTitle}>Profile Information</Text>
+                  <View style={{ gap: 8, marginTop: 8 }}>
+                    <Text style={styles.copy}><Text style={styles.metaLabel}>Name:</Text> {profile.staffUser.displayName}</Text>
+                    <Text style={styles.copy}><Text style={styles.metaLabel}>Phone:</Text> {formatPakistanDisplayPhone(profile.staffUser.phone)}</Text>
+                    <Text style={styles.copy}><Text style={styles.metaLabel}>Role:</Text> {toTitleCase(profile.staffMembership.role)}</Text>
+                    {profile.staffMembership.officeLabel && (
+                      <Text style={styles.copy}><Text style={styles.metaLabel}>Office Label:</Text> {profile.staffMembership.officeLabel}</Text>
+                    )}
+                  </View>
+                </View>
+
+                <View style={styles.cardWithShadow}>
+                  <Text style={styles.sectionTitle}>Agenda Notification Preferences</Text>
+                  {notificationPreference ? (
+                    <View style={{ gap: 12, marginTop: 8 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                        <Pressable
+                          style={[
+                            styles.checkbox,
+                            notificationPreference.emailEnabled ? styles.checkboxChecked : null
+                          ]}
+                          onPress={() =>
+                            setNotificationPreference({
+                              ...notificationPreference,
+                              emailEnabled: !notificationPreference.emailEnabled,
+                            })
+                          }
+                        >
+                          {notificationPreference.emailEnabled && <Text style={styles.checkboxCheck}>✓</Text>}
+                        </Pressable>
+                        <Text style={styles.copy}>Receive Lawyer Agenda Emails</Text>
+                      </View>
+
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                        <Pressable
+                          style={[
+                            styles.checkbox,
+                            notificationPreference.smsEnabled ? styles.checkboxChecked : null
+                          ]}
+                          onPress={() =>
+                            setNotificationPreference({
+                              ...notificationPreference,
+                              smsEnabled: !notificationPreference.smsEnabled,
+                            })
+                          }
+                        >
+                          {notificationPreference.smsEnabled && <Text style={styles.checkboxCheck}>✓</Text>}
+                        </Pressable>
+                        <Text style={styles.copy}>Receive Lawyer Agenda SMS Alerts</Text>
+                      </View>
+
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                        <Pressable
+                          style={[
+                            styles.checkbox,
+                            notificationPreference.optedOutAt ? styles.checkboxChecked : null
+                          ]}
+                          onPress={() =>
+                            setNotificationPreference({
+                              ...notificationPreference,
+                              optedOutAt: notificationPreference.optedOutAt ? null : new Date().toISOString(),
+                            })
+                          }
+                        >
+                          {notificationPreference.optedOutAt && <Text style={styles.checkboxCheck}>✓</Text>}
+                        </Pressable>
+                        <Text style={styles.copy}>Pause All Alerts / Opt Out</Text>
+                      </View>
+
+                      <Pressable style={[styles.primaryButton, { marginTop: 8 }]} onPress={() => void saveNotificationPreference()}>
+                        <Text style={styles.primaryButtonText}>Save Preferences</Text>
+                      </Pressable>
+                    </View>
+                  ) : (
+                    <Text style={styles.smallText}>Preferences unavailable</Text>
+                  )}
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={styles.cardWithShadow}>
+                  <Text style={styles.sectionTitle}>Workspace Details</Text>
+                  {profile.firm ? (
+                    <View style={{ gap: 8, marginTop: 8 }}>
+                      <Text style={styles.copy}><Text style={styles.metaLabel}>Firm:</Text> {profile.firm.name}</Text>
+                      <Text style={styles.copy}><Text style={styles.metaLabel}>HQ City:</Text> {profile.firm.primaryCity}</Text>
+                      <Text style={styles.copy}><Text style={styles.metaLabel}>Timezone:</Text> {profile.firm.timezone}</Text>
+                      <Text style={styles.copy}><Text style={styles.metaLabel}>Billing Plan:</Text> {profile.firm.billingPlan}</Text>
+                      <Text style={styles.copy}><Text style={styles.metaLabel}>Status:</Text> {profile.firm.status}</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.smallText}>Firm details unavailable</Text>
+                  )}
+                </View>
+
+                {/* Invite Member Form */}
+                <View style={styles.cardWithShadow}>
+                  <Text style={styles.sectionTitle}>Invite Staff / Member</Text>
+
+                  <Text style={styles.fieldLabel}>Phone Number</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. 03001234567"
+                    value={invitePhone}
+                    onChangeText={(val) => setInvitePhone(formatPhoneNumber(val))}
+                    keyboardType="phone-pad"
+                  />
+
+                  <Text style={styles.fieldLabel}>Email Address (Optional)</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. counsel@firm.com"
+                    value={inviteEmail}
+                    onChangeText={setInviteEmail}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                  />
+
+                  <Text style={styles.fieldLabel}>Role Type</Text>
+                  <View style={styles.tabRow}>
+                    {(["lawyer", "assistant", "billing", "co_owner"] as const).map((r) => (
+                      <Pressable
+                        key={r}
+                        style={[styles.pill, inviteRole === r ? styles.pillActive : null]}
+                        onPress={() => setInviteRole(r)}
+                      >
+                        <Text style={inviteRole === r ? styles.pillActiveText : styles.pillText}>
+                          {toTitleCase(r)}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+
+                  <Text style={styles.fieldLabel}>Office Location Label</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. Islamabad HQ / Rawalpindi Bench"
+                    value={inviteOfficeLabel}
+                    onChangeText={setInviteOfficeLabel}
+                  />
+
+                  <Pressable style={[styles.primaryButton, { marginTop: 12 }]} onPress={() => void handleSendInvite()}>
+                    <Text style={styles.primaryButtonText}>Send Invitation</Text>
+                  </Pressable>
+                </View>
+
+                {/* Staff list */}
+                <View style={styles.cardWithShadow}>
+                  <Text style={styles.sectionTitle}>Firm Members ({teamMembers.length})</Text>
+                  <View style={{ gap: 12, marginTop: 8 }}>
+                    {teamMembers.map((member) => (
+                      <View key={member.id} style={styles.timelineItem}>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                          <Text style={styles.metaLabel}>
+                            {member.displayName === member.phone ? formatPakistanDisplayPhone(member.phone) : member.displayName}
+                          </Text>
+                          <View style={[styles.badge, { backgroundColor: member.status === "active" ? "#d1fae5" : "#e5e7eb" }]}>
+                            <Text style={[styles.badgeText, { color: member.status === "active" ? "#065f46" : "#374151" }]}>
+                              {toTitleCase(member.status)}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={styles.smallText}>{formatPakistanDisplayPhone(member.phone)} • {toTitleCase(member.membership.role)}</Text>
+                        {member.membership.officeLabel && (
+                          <Text style={styles.smallText}>Location: {member.membership.officeLabel}</Text>
+                        )}
+
+                        {/* Inline editor for others */}
+                        {member.id !== profile.staffUser.id && (
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 6 }}>
+                            <Text style={styles.smallText}>Role:</Text>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
+                              <View style={{ flexDirection: "row", gap: 6 }}>
+                                {["owner", "co_owner", "lawyer", "assistant", "billing"].map((rl) => (
+                                  <Pressable
+                                    key={rl}
+                                    style={[
+                                      styles.pill,
+                                      member.membership.role === rl ? styles.pillActive : null,
+                                      { paddingHorizontal: 8, paddingVertical: 4 }
+                                    ]}
+                                    onPress={() =>
+                                      void handleUpdateMembership(
+                                        member.membership.id,
+                                        rl,
+                                        member.membership.officeLabel
+                                      )
+                                    }
+                                  >
+                                    <Text style={[
+                                      member.membership.role === rl ? styles.pillActiveText : styles.pillText,
+                                      { fontSize: 11 }
+                                    ]}>
+                                      {rl}
+                                    </Text>
+                                  </Pressable>
+                                ))}
+                              </View>
+                            </ScrollView>
+                          </View>
+                        )}
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              </>
+            )}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar style="dark" />
-      <View style={styles.screen}>
-        <Text style={styles.eyebrow}>Legal Bhai</Text>
-        <Text style={styles.title}>{profile.firm?.name ?? "Workspace"}</Text>
-        <Text style={styles.copy}>{profile.staffUser.displayName} · {profile.staffMembership.role}</Text>
-        {offlineQueueSize > 0 ? (
-          <Text style={styles.statusBanner}>{offlineQueueSize} hearing update(s) waiting to sync</Text>
-        ) : null}
-        <View style={styles.tabRow}>
-          {(["home", "matters", "alerts", "more"] as const).map((tabKey) => (
-            <Pressable
-              key={tabKey}
-              style={[styles.pill, tab === tabKey ? styles.pillActive : null]}
-              accessibilityLabel={tabKey[0].toUpperCase() + tabKey.slice(1)}
-              onPress={() => setTab(tabKey)}
+      <View style={styles.flex}>
+        {/* Render child content area depending on tab */}
+        <View style={styles.tabContent}>
+          {tab === "overview" && (
+            <ScrollView
+              contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingTop: 16, paddingBottom: 60, gap: 14 }}
+              keyboardShouldPersistTaps="handled"
             >
-              <Text style={tab === tabKey ? styles.pillActiveText : styles.pillText}>{tabKey}</Text>
-            </Pressable>
-          ))}
+              {/* Header profile details */}
+              <View style={styles.dashboardHeader}>
+                <View style={styles.flexShrink}>
+                  <Text style={styles.heroName} numberOfLines={1}>{profile.staffUser.displayName}</Text>
+                  <Text style={styles.heroSubtext} numberOfLines={1}>
+                    {profile.staffMembership.officeLabel || toTitleCase(profile.staffMembership.role)} • {profile.firm?.primaryCity || profile.firm?.name || "HQ"}
+                  </Text>
+                </View>
+                <Pressable style={styles.menuIconButton} onPress={() => setProfileMenuVisible(true)}>
+                  <Text style={styles.menuIconText}>⚙️ Options</Text>
+                </Pressable>
+              </View>
+
+              {offlineQueueSize > 0 && (
+                <Text style={styles.statusBanner}>{offlineQueueSize} hearing update(s) waiting to sync</Text>
+              )}
+
+              {syncMessage && (
+                <Text style={styles.statusBanner}>{syncMessage}</Text>
+              )}
+
+              {/* Workspace Stats Row */}
+              <View style={styles.cardRow}>
+                <View style={styles.statCard}>
+                  <Text style={styles.statValue}>{report?.metrics.openMatters ?? matters.length}</Text>
+                  <Text style={styles.smallText}>Matters</Text>
+                </View>
+                <View style={styles.statCard}>
+                  <Text style={styles.statValue}>{report?.metrics.upcomingHearings ?? calendar.length}</Text>
+                  <Text style={styles.smallText}>Hearings</Text>
+                </View>
+                <View style={styles.statCard}>
+                  <Text style={styles.statValue}>{report?.metrics.unreadAlerts ?? alerts.filter(a => !a.readAt).length}</Text>
+                  <Text style={styles.smallText}>Unread Alerts</Text>
+                </View>
+              </View>
+
+              {/* Priority Alerts Widget */}
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>Priority Alerts</Text>
+                {alerts.length === 0 ? (
+                  <Text style={styles.copy}>Nothing present</Text>
+                ) : (
+                  alerts.map((alert) => {
+                    const isUrgent = alert.title.toLowerCase().includes("approaching") ||
+                      alert.title.toLowerCase().includes("pronouncement") ||
+                      alert.body.toLowerCase().includes("urgent");
+                    return (
+                      <View
+                        key={alert.id}
+                        style={[
+                          styles.caseCard,
+                          {
+                            borderLeftWidth: 4,
+                            borderLeftColor: isUrgent ? "#ef4444" : "#e2e8f0"
+                          }
+                        ]}
+                      >
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                          <Text style={[styles.metaLabel, { flex: 1 }]}>
+                            {alert.title.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")}
+                          </Text>
+                          {!alert.readAt && (
+                            <Pressable
+                              style={[styles.pill, { paddingHorizontal: 8, paddingVertical: 4, borderColor: theme.primary }]}
+                              onPress={() => void markAlertRead(alert.id)}
+                            >
+                              <Text style={[styles.pillText, { fontSize: 11, color: theme.primary }]}>Mark Read</Text>
+                            </Pressable>
+                          )}
+                        </View>
+                        <Text style={styles.copy}>{alert.body}</Text>
+                      </View>
+                    );
+                  })
+                )}
+              </View>
+
+              {/* Court Health Widget */}
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>Court Health</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 4 }}>
+                  {courtSources.map((source) => {
+                    const isLive = source.status === "live";
+                    const isFailed = source.status === "failed";
+                    const badgeText = isLive ? "Connected" : isFailed ? "Sync failed" : "Needs Attention";
+                    const badgeColor = isLive ? "#d1fae5" : isFailed ? "#fee2e2" : "#fef3c7";
+                    const textColor = isLive ? "#065f46" : isFailed ? "#991b1b" : "#92400e";
+                    return (
+                      <View key={source.id} style={styles.courtHealthPill}>
+                        <Text style={styles.courtHealthLabel} numberOfLines={2}>{courtLabel(source.courtId)}</Text>
+                        <View style={[styles.badge, { backgroundColor: badgeColor }]}>
+                          <Text style={[styles.badgeText, { color: textColor }]}>{badgeText}</Text>
+                        </View>
+                        <Text style={[styles.smallText, { fontSize: 10 }]}>
+                          Sync: {source.lastSuccessfulSyncAt ? formatDateTime(source.lastSuccessfulSyncAt) : "Never"}
+                        </Text>
+                        <Pressable style={styles.syncButtonSmall} onPress={() => void syncCourtSource(source.id)}>
+                          <Text style={styles.syncButtonTextSmall}>🔄 Sync</Text>
+                        </Pressable>
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              {/* Recent Client Threads widget */}
+              <View style={styles.card}>
+                <Text style={styles.sectionTitle}>Client Threads</Text>
+                {threads.length === 0 ? (
+                  <Text style={styles.copy}>Nothing present</Text>
+                ) : (
+                  threads.map((thread) => (
+                    <Pressable key={thread.id} style={styles.threadCard} onPress={() => void openMatter(thread.matter.id)}>
+                      <Text style={styles.threadMatterCase}>{thread.matter.rawCaseNumber}</Text>
+                      <Text style={styles.threadMatterTitle}>{thread.matter.title}</Text>
+                      <Text style={styles.threadSnippet} numberOfLines={2}>
+                        {thread.lastMessage?.body ?? "No messages yet"}
+                      </Text>
+                      {thread.lastMessage?.createdAt && (
+                        <Text style={styles.threadTime}>{formatDateTime(thread.lastMessage.createdAt)}</Text>
+                      )}
+                    </Pressable>
+                  ))
+                )}
+              </View>
+            </ScrollView>
+          )}
+
+          {tab === "matters" && (
+            <View style={[styles.flex, { paddingTop: 16 }]}>
+              <Text style={[styles.sectionTitle, { paddingHorizontal: spacing.lg, marginBottom: 12 }]}>Litigation Matters</Text>
+              <FlatList
+                data={matters}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={{ paddingHorizontal: spacing.lg, gap: 12, paddingBottom: 60 }}
+                keyboardShouldPersistTaps="handled"
+                renderItem={({ item }) => (
+                  <Pressable style={styles.caseCard} onPress={() => void openMatter(item.id)}>
+                    <Text style={styles.metaLabel}>{item.rawCaseNumber}</Text>
+                    <Text style={styles.copy}>{item.title}</Text>
+                    <Text style={styles.smallText}>{courtLabel(item.courtId)} · {toTitleCase(item.stage)}</Text>
+                  </Pressable>
+                )}
+              />
+            </View>
+          )}
+
+          {tab === "calendar" && (
+            <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingTop: 16, paddingBottom: 60, gap: 12 }} keyboardShouldPersistTaps="handled">
+              <Text style={styles.sectionTitle}>Court Hearings Calendar</Text>
+              {calendar.length === 0 ? (
+                <Text style={styles.copy}>No upcoming listings on the calendar.</Text>
+              ) : (
+                calendar.map((entry) => (
+                  <Pressable key={entry.id} style={styles.caseCard} onPress={() => void openMatter(entry.matter.id)}>
+                    <Text style={styles.metaLabel}>{entry.matter.rawCaseNumber}</Text>
+                    <Text style={styles.copy}>{entry.matter.title}</Text>
+                    <Text style={styles.smallText}>
+                      Listed: {formatDateTime(entry.listedAt)} • {toTitleCase(entry.conflictState)}
+                    </Text>
+                  </Pressable>
+                ))
+              )}
+            </ScrollView>
+          )}
+
+          {tab === "alerts" && (
+            <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingTop: 16, paddingBottom: 60, gap: 12 }} keyboardShouldPersistTaps="handled">
+              <Text style={styles.sectionTitle}>Alert History</Text>
+              {alerts.length === 0 ? (
+                <Text style={styles.copy}>No notifications received.</Text>
+              ) : (
+                alerts.map((alert) => (
+                  <View key={alert.id} style={styles.caseCard}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                      <Text style={[styles.metaLabel, { flex: 1 }]}>{alert.title}</Text>
+                      {!alert.readAt && (
+                        <Pressable style={[styles.pill, { borderColor: theme.primary }]} onPress={() => void markAlertRead(alert.id)}>
+                          <Text style={[styles.pillText, { fontSize: 11, color: theme.primary }]}>Mark Read</Text>
+                        </Pressable>
+                      )}
+                    </View>
+                    <Text style={styles.copy}>{alert.body}</Text>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          )}
         </View>
 
-        {tab === "home" ? (
-          <ScrollView contentContainerStyle={{ gap: 14, paddingBottom: 140 }} keyboardShouldPersistTaps="handled">
-            <View style={styles.cardRow}>
-              {homeCards.map((card) => (
-                <View key={card.label} style={styles.statCard}>
-                  <Text style={styles.statValue}>{card.value}</Text>
-                  <Text style={styles.smallText}>{card.label}</Text>
-                </View>
-              ))}
-            </View>
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Today&apos;s calendar</Text>
-              {calendar.map((entry) => (
-                <Pressable key={entry.id} style={styles.caseCard} onPress={() => void openMatter(entry.matter.id)}>
-                  <Text style={styles.metaLabel}>{entry.matter.rawCaseNumber}</Text>
-                  <Text style={styles.copy}>{entry.matter.title}</Text>
-                  <Text style={styles.smallText}>
-                    {formatDateTime(entry.listedAt)} · {entry.sourceType} · {entry.conflictState}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </ScrollView>
-        ) : null}
+        {/* Core Fixed Bottom Tab Bar */}
+        <View style={styles.bottomTabBar}>
+          {(["overview", "matters", "calendar", "alerts"] as const).map((tabKey) => {
+            let label = toTitleCase(tabKey);
+            let iconText = "📊";
+            if (tabKey === "matters") iconText = "💼";
+            if (tabKey === "calendar") iconText = "📅";
+            if (tabKey === "alerts") iconText = "🔔";
 
-        {tab === "matters" ? (
-          <FlatList
-            data={matters}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={{ gap: 12, paddingBottom: 140 }}
-            keyboardShouldPersistTaps="handled"
-            renderItem={({ item }) => (
-              <Pressable style={styles.caseCard} onPress={() => void openMatter(item.id)}>
-                <Text style={styles.metaLabel}>{item.rawCaseNumber}</Text>
-                <Text style={styles.copy}>{item.title}</Text>
-                <Text style={styles.smallText}>{courtLabel(item.courtId)} · {toTitleCase(item.stage)}</Text>
+            const isActive = tab === tabKey;
+            return (
+              <Pressable
+                key={tabKey}
+                style={styles.bottomTabButton}
+                accessibilityLabel={label}
+                onPress={() => setTab(tabKey)}
+              >
+                <Text style={{ fontSize: 18 }}>{iconText}</Text>
+                <Text style={isActive ? styles.bottomTabTextActive : styles.bottomTabText}>
+                  {label}
+                </Text>
               </Pressable>
-            )}
-          />
-        ) : null}
-
-        {tab === "alerts" ? (
-          <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 140 }} keyboardShouldPersistTaps="handled">
-            {alerts.map((alert) => (
-              <View key={alert.id} style={styles.caseCard}>
-                <Text style={styles.metaLabel}>{alert.title}</Text>
-                <Text style={styles.copy}>{alert.body}</Text>
-              </View>
-            ))}
-          </ScrollView>
-        ) : null}
-
-        {tab === "more" ? (
-          <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 140 }} keyboardShouldPersistTaps="handled">
-            <Pressable style={styles.secondaryButton} onPress={() => void signOut()}>
-              <Text style={styles.secondaryButtonText}>Sign out</Text>
-            </Pressable>
-          </ScrollView>
-        ) : null}
+            );
+          })}
+        </View>
       </View>
+
+      {/* Action overlays / sheet modals */}
+      {renderProfileMenuModal()}
+      {renderClientsModal()}
+      {renderVaultModal()}
+      {renderSettingsModal()}
     </SafeAreaView>
   );
 }
@@ -1997,8 +3212,20 @@ const styles = StyleSheet.create({
     color: theme.textSecondary,
   },
   clientTitleName: {
-    color: theme.primaryDark,
+    color: theme.textPrimary,
+    fontSize: 22,
     fontWeight: "800",
+  },
+  clientProfileFirm: {
+    color: theme.textSecondary,
+    fontSize: 13,
+    marginTop: 4,
+  },
+  clientProfilePhone: {
+    color: theme.textPrimary,
+    fontSize: 13,
+    fontWeight: "600",
+    marginTop: 4,
   },
   headerSignOutButton: {
     borderRadius: 999,
@@ -2341,6 +3568,24 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     flexWrap: "wrap",
   },
+  overviewStack: {
+    gap: 14,
+    marginTop: 4,
+  },
+  overviewRow: {
+    gap: 4,
+  },
+  overviewLabel: {
+    color: theme.textTertiary,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  overviewValueText: {
+    color: theme.textPrimary,
+    fontSize: 15,
+    fontWeight: "700",
+    lineHeight: 21,
+  },
   overviewGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -2468,15 +3713,40 @@ const styles = StyleSheet.create({
     alignSelf: "flex-end",
     backgroundColor: "#D8F5E8",
     borderTopRightRadius: 6,
-    marginRight: 16,
-    marginLeft: 0,
+    marginRight: 8,
+    marginLeft: 16,
   },
   counselBubble: {
     alignSelf: "flex-start",
     backgroundColor: "#F8FAFC",
     borderTopLeftRadius: 6,
-    marginLeft: 16,
-    marginRight: 0,
+    marginLeft: 8,
+    marginRight: 16,
+  },
+  hearingItem: {
+    width: "100%",
+  },
+  hearingHeader: {
+    color: theme.textPrimary,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  hearingStage: {
+    color: theme.textPrimary,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  hearingNotes: {
+    color: theme.textSecondary,
+    fontSize: 13,
+    fontWeight: "400",
+    marginTop: 2,
+  },
+  hearingNextDate: {
+    color: theme.textTertiary,
+    fontSize: 12,
+    fontWeight: "400",
+    marginTop: 4,
   },
   messageSender: {
     color: theme.textPrimary,
@@ -2598,5 +3868,202 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 13,
     fontWeight: "700",
+  },
+  modalCustomHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.lg,
+    paddingTop: Platform.OS === "ios" ? 16 : 12,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+    backgroundColor: "#ffffff",
+  },
+  modalHeaderTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: theme.textPrimary,
+  },
+  backButton: {
+    paddingVertical: 6,
+  },
+  backButtonText: {
+    color: theme.primary,
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  modalScrollViewContent: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: 12,
+    paddingBottom: 48,
+    gap: 14,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: theme.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checkboxChecked: {
+    backgroundColor: theme.primary,
+    borderColor: theme.primary,
+  },
+  checkboxCheck: {
+    color: "#ffffff",
+    fontWeight: "900",
+    fontSize: 12,
+  },
+  badge: {
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    alignSelf: "flex-start",
+  },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  syncButtonSmall: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: "#ffffff",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginTop: 6,
+    alignSelf: "flex-start",
+  },
+  syncButtonTextSmall: {
+    fontSize: 11,
+    color: theme.primaryDark,
+    fontWeight: "600",
+  },
+  dashboardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+    marginBottom: 14,
+  },
+  heroName: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: theme.textPrimary,
+  },
+  heroSubtext: {
+    fontSize: 13,
+    color: theme.textSecondary,
+    marginTop: 2,
+  },
+  menuIconButton: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: "#ffffff",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  menuIconText: {
+    color: theme.primary,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  courtHealthPill: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: "#ffffff",
+    padding: 12,
+    marginRight: 10,
+    width: 180,
+    gap: 4,
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  courtHealthLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: theme.textPrimary,
+  },
+  threadCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.border,
+    padding: 14,
+    gap: 4,
+    shadowColor: "#0F172A",
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  threadMatterCase: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: theme.primary,
+  },
+  threadMatterTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: theme.textPrimary,
+  },
+  threadSnippet: {
+    fontSize: 13,
+    color: theme.textSecondary,
+    marginTop: 2,
+  },
+  threadTime: {
+    fontSize: 11,
+    color: theme.textTertiary,
+    alignSelf: "flex-end",
+    marginTop: 4,
+  },
+  bottomTabBar: {
+    flexDirection: "row",
+    borderTopWidth: 1,
+    borderTopColor: theme.border,
+    backgroundColor: "#ffffff",
+    paddingTop: 8,
+    paddingBottom: Platform.OS === "ios" ? 24 : 12,
+    justifyContent: "space-around",
+    alignItems: "center",
+  },
+  bottomTabButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    flex: 1,
+    paddingVertical: 4,
+  },
+  bottomTabActive: {
+    backgroundColor: "transparent",
+  },
+  bottomTabText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: theme.textSecondary,
+    marginTop: 2,
+  },
+  bottomTabTextActive: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: theme.primary,
+    marginTop: 2,
+  },
+  tabContent: {
+    flex: 1,
   },
 });

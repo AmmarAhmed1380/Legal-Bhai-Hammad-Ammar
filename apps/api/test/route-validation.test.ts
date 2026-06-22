@@ -40,7 +40,7 @@ test("Fastify schemas reject unknown body fields with 400", async () => {
       },
     });
     assert.equal(response.statusCode, 400);
-    assert.match(JSON.parse(response.body).error, /Invalid request payload/i);
+    assert.match(JSON.parse(response.body).error, /must not have additional properties/i);
   } finally {
     await app.close();
     store.close();

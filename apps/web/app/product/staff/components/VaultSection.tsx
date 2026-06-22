@@ -1,5 +1,5 @@
-import { type Dispatch, type SetStateAction } from "react";
-import { type DocumentRecord, type SearchHit } from "../page";
+import { type Dispatch, type SetStateAction, useState, type CSSProperties } from "react";
+import { type DocumentRecord, type SearchHit, type MatterListItem } from "../page";
 import { formatMimeType, getDownloadFilename, toTitleCase } from "./helpers";
 
 interface VaultSectionProps {
@@ -17,6 +17,14 @@ interface VaultSectionProps {
   setZoomScale: Dispatch<SetStateAction<number>>;
   isCloseHovered: boolean;
   setIsCloseHovered: Dispatch<SetStateAction<boolean>>;
+  matters: MatterListItem[];
+  uploadVaultDocument: (
+    file: File,
+    title: string,
+    type: string,
+    portalVisible: boolean,
+    matterId: string | null
+  ) => Promise<void>;
 }
 
 export default function VaultSection({
@@ -34,11 +42,81 @@ export default function VaultSection({
   setZoomScale,
   isCloseHovered,
   setIsCloseHovered,
+  matters,
+  uploadVaultDocument,
 }: VaultSectionProps) {
+  const [isUploadDocOpen, setIsUploadDocOpen] = useState(false);
+  const [docTitle, setDocTitle] = useState("");
+  const [docType, setDocType] = useState("general");
+  const [docFile, setDocFile] = useState<File | null>(null);
+  const [docPortalVisible, setDocPortalVisible] = useState(false);
+  const [docMatterId, setDocMatterId] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+
+  const modalOverlayStyle: CSSProperties = {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(10, 37, 30, 0.4)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1000,
+    backdropFilter: "blur(8px)",
+  };
+
+  const modalContentStyle: CSSProperties = {
+    backgroundColor: "#ffffff",
+    borderRadius: "18px",
+    border: "1px solid var(--border)",
+    padding: "32px",
+    width: "90%",
+    maxWidth: "520px",
+    maxHeight: "85vh",
+    overflowY: "auto",
+    position: "relative",
+    boxShadow: "0 24px 80px rgba(26, 26, 25, 0.2)",
+  };
+
+  const labelStyle: CSSProperties = {
+    fontSize: "11px",
+    fontWeight: 700,
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
+    color: "var(--text-secondary)",
+    marginBottom: "6px",
+    display: "block",
+  };
+
   return (
     <section>
       <div className="panel" style={{ width: "100%" }}>
-        <h2 style={{ marginTop: 0 }}>Document Vault</h2>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <h2 style={{ marginTop: 0, marginBottom: 0 }}>Document Vault</h2>
+          <button
+            className="button"
+            type="button"
+            onClick={() => setIsUploadDocOpen(true)}
+            style={{
+              padding: "8px 16px",
+              fontSize: "13px",
+              fontWeight: 700,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              borderRadius: "10px"
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+            Upload Document
+          </button>
+        </div>
         <div className="field-row" style={{ marginBottom: 16 }}>
           <input
             value={vaultSearch}
@@ -70,38 +148,104 @@ export default function VaultSection({
                   type="button"
                   onClick={() => void openDocument(hit.id)}
                 >
-                  {hit.title} • {hit.subtitle}
+                  {hit.title}<span className="bullet-separator">•</span>{hit.subtitle}
                 </button>
               ))}
             </div>
           </div>
         ) : null}
-        <div className="grid">
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+            gap: "16px",
+          }}
+        >
           {documents.map((document) => (
-            <div key={document.id} className="case-card" style={{ padding: 14 }}>
-              <div className="top-bar" style={{ marginBottom: 8 }}>
-                <strong>{document.title}</strong>
-                <span className={`badge ${document.portalVisible ? "live" : "conflict"}`}>
-                  {document.portalVisible ? "Portal Shared" : "Internal"}
+            <div
+              key={document.id}
+              onClick={() => openDocument(document.id)}
+              style={{
+                cursor: "pointer",
+                display: "flex",
+                flexDirection: "column",
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "10px",
+                overflow: "hidden",
+                minHeight: "150px",
+                boxShadow: "0 2px 6px rgba(0, 0, 0, 0.02)",
+                transition: "transform 0.2s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translateY(-2px)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "none";
+              }}
+            >
+              <div
+                style={{
+                  height: "70px",
+                  background: "rgba(15, 110, 86, 0.04)",
+                  borderBottom: "1px solid var(--border)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "var(--primary)",
+                  position: "relative",
+                }}
+              >
+                {document.mimeType.toLowerCase() === "application/pdf" ? (
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                  </svg>
+                ) : (
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                    <polyline points="21 15 16 10 5 21"></polyline>
+                  </svg>
+                )}
+                <span
+                  className={`badge ${document.portalVisible ? "live" : "conflict"}`}
+                  style={{
+                    position: "absolute",
+                    top: "6px",
+                    right: "6px",
+                    fontSize: "8px",
+                    padding: "2px 4px",
+                  }}
+                >
+                  {document.portalVisible ? "Shared" : "Internal"}
                 </span>
               </div>
-              <p className="muted">
-                {toTitleCase(document.type)} · {formatMimeType(document.mimeType)}
-              </p>
-              <div className="actions">
+              <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: "4px", flex: 1, justifyContent: "space-between" }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: "12px", wordBreak: "break-all", marginBottom: "4px" }}>
+                    {document.title}
+                  </div>
+                  <span style={{ fontSize: "10px", color: "var(--text-secondary)", background: "#f3f4f6", padding: "2px 6px", borderRadius: "10px" }}>
+                    {toTitleCase(document.type)}
+                  </span>
+                </div>
                 <button
                   className="button-secondary"
                   type="button"
-                  onClick={() => void openDocument(document.id)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void updateDocumentVisibility(document);
+                  }}
+                  style={{
+                    fontSize: "10px",
+                    padding: "4px 0",
+                    width: "100%",
+                    marginTop: "6px",
+                    borderRadius: "6px",
+                  }}
                 >
-                  Open
-                </button>
-                <button
-                  className="button-secondary"
-                  type="button"
-                  onClick={() => void updateDocumentVisibility(document)}
-                >
-                  {document.portalVisible ? "Make Internal" : "Share With Client"}
+                  {document.portalVisible ? "Make Internal" : "Share Client"}
                 </button>
               </div>
             </div>
@@ -360,12 +504,12 @@ export default function VaultSection({
             <div
               style={{
                 flex: 1,
-                backgroundColor: "#eae7dc",
+                backgroundColor: "var(--primary-light)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 overflow: "auto",
-                padding: "10px",
+                padding: viewingDocument.mimeType?.startsWith("image/") ? "10px" : "0",
               }}
             >
               {viewingDocument.mimeType?.startsWith("image/") ? (
@@ -392,6 +536,212 @@ export default function VaultSection({
                   title={viewingDocument.title}
                 />
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Document Upload Modal */}
+      {isUploadDocOpen && (
+        <div style={modalOverlayStyle}>
+          <div style={modalContentStyle}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h2 style={{ marginTop: 0, marginBottom: 0, fontSize: "22px", fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>Upload Document to Vault</h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsUploadDocOpen(false);
+                  setDocFile(null);
+                  setDocTitle("");
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "6px",
+                  borderRadius: "50%",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "var(--text-secondary)",
+                  transition: "background-color 0.2s ease, color 0.2s ease"
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.backgroundColor = "rgba(0,0,0,0.05)";
+                  e.currentTarget.style.color = "var(--text-primary)";
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.backgroundColor = "transparent";
+                  e.currentTarget.style.color = "var(--text-secondary)";
+                }}
+                title="Close dialog"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+
+            <div className="field">
+              <label style={labelStyle}>Title</label>
+              <input
+                value={docTitle}
+                onChange={(event) => setDocTitle(event.target.value)}
+                placeholder="Uses file name when blank"
+              />
+            </div>
+            <div className="field">
+              <label style={labelStyle}>Type</label>
+              <div style={{ position: "relative", width: "100%" }}>
+                <select
+                  value={docType}
+                  onChange={(event) => {
+                    setDocType(event.target.value);
+                    event.target.blur();
+                  }}
+                  style={{ width: "100%", appearance: "none", backgroundImage: "none", paddingRight: "40px" }}
+                >
+                  <option value="general">General</option>
+                  <option value="hearing_order">Hearing order</option>
+                  <option value="pleading">Pleading</option>
+                  <option value="evidence">Evidence</option>
+                  <option value="notice">Court Notice</option>
+                  <option value="invoice">Invoice</option>
+                  <option value="cnic">Identity Document (CNIC)</option>
+                  <option value="receipt">Receipt</option>
+                  <option value="cause_list">Cause List</option>
+                  <option value="note">Office Note</option>
+                </select>
+                <div style={{ position: "absolute", right: "16px", top: "50%", transform: "translateY(-50%)", pointerEvents: "none", display: "flex", alignItems: "center", color: "var(--text-secondary)" }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <div className="field">
+              <label style={labelStyle}>Associate with Matter (Optional)</label>
+              <div style={{ position: "relative", width: "100%" }}>
+                <select
+                  value={docMatterId}
+                  onChange={(event) => {
+                    setDocMatterId(event.target.value);
+                    event.target.blur();
+                  }}
+                  style={{ width: "100%", appearance: "none", backgroundImage: "none", paddingRight: "40px" }}
+                >
+                  <option value="">General / Unlinked</option>
+                  {matters.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.rawCaseNumber} - {m.title}
+                    </option>
+                  ))}
+                </select>
+                <div style={{ position: "absolute", right: "16px", top: "50%", transform: "translateY(-50%)", pointerEvents: "none", display: "flex", alignItems: "center", color: "var(--text-secondary)" }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <div className="field">
+              <label style={labelStyle}>File</label>
+              <div
+                style={{
+                  border: "2px dashed var(--border)",
+                  borderRadius: "12px",
+                  padding: "20px 16px",
+                  textAlign: "center",
+                  background: "rgba(255, 255, 255, 0.5)",
+                  cursor: "pointer",
+                  transition: "all 0.2s ease",
+                  position: "relative"
+                }}
+                onClick={() => document.getElementById("vault-file-input")?.click()}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.borderColor = "var(--primary)";
+                  e.currentTarget.style.backgroundColor = "rgba(15, 110, 86, 0.02)";
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.borderColor = "var(--border)";
+                  e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.5)";
+                }}
+              >
+                <input
+                  id="vault-file-input"
+                  type="file"
+                  accept="image/*,.pdf,.doc,.docx"
+                  style={{ display: "none" }}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    setDocFile(file);
+                  }}
+                />
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: "8px", opacity: 0.8, display: "inline-block" }}>
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <div style={{ fontSize: "13px", fontWeight: 700, color: "var(--text-primary)" }}>
+                  {docFile ? docFile.name : "Select or Drop file..."}
+                </div>
+                <div style={{ fontSize: "11px", color: "var(--text-tertiary)", marginTop: "4px" }}>
+                  {docFile ? `${(docFile.size / 1024 / 1024).toFixed(2)} MB` : "Support PDF, doc/docx, or images up to 10MB"}
+                </div>
+              </div>
+            </div>
+
+            <label className="checkbox-field" style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "20px", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={docPortalVisible}
+                disabled={!docMatterId}
+                onChange={(event) => setDocPortalVisible(event.target.checked)}
+                style={{ width: "16px", height: "16px", accentColor: "var(--primary)" }}
+              />
+              Share with Linked Client(s) {!docMatterId && <span style={{ fontSize: "10px", color: "var(--text-tertiary)" }}>(requires matter linkage)</span>}
+            </label>
+
+            <div className="actions" style={{ display: "flex", gap: "12px", marginTop: "24px" }}>
+              <button
+                className="button-secondary"
+                type="button"
+                disabled={isUploading}
+                onClick={() => {
+                  setIsUploadDocOpen(false);
+                  setDocFile(null);
+                  setDocTitle("");
+                }}
+                style={{ flex: 1, padding: "14px" }}
+              >
+                Cancel
+              </button>
+              <button
+                className="button"
+                type="button"
+                disabled={!docFile || isUploading}
+                onClick={async () => {
+                  if (!docFile) return;
+                  setIsUploading(true);
+                  try {
+                    await uploadVaultDocument(docFile, docTitle, docType, docPortalVisible && !!docMatterId, docMatterId || null);
+                    setIsUploadDocOpen(false);
+                    setDocFile(null);
+                    setDocTitle("");
+                    setDocPortalVisible(false);
+                    setDocMatterId("");
+                  } catch (err) {
+                    console.error(err);
+                  } finally {
+                    setIsUploading(false);
+                  }
+                }}
+                style={{ flex: 1, padding: "14px" }}
+              >
+                {isUploading ? "Uploading..." : "Upload Document"}
+              </button>
             </div>
           </div>
         </div>

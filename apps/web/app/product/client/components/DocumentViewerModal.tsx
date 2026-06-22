@@ -103,7 +103,7 @@ export default function DocumentViewerModal({
                   onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
                   title="Zoom Out"
                 >
-                  <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4"/></svg>
+                  <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4" /></svg>
                 </button>
                 <span style={{
                   fontSize: "12px",
@@ -136,7 +136,7 @@ export default function DocumentViewerModal({
                   onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
                   title="Zoom In"
                 >
-                  <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
+                  <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
                 </button>
                 <button
                   type="button"
@@ -196,7 +196,7 @@ export default function DocumentViewerModal({
               title="Download File"
             >
               <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
               </svg>
             </a>
             {/* Close Button */}
@@ -223,19 +223,19 @@ export default function DocumentViewerModal({
               title="Close"
             >
               <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
         </div>
         <div style={{
           flex: 1,
-          backgroundColor: "#eae7dc",
+          backgroundColor: "var(--primary-light)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           overflow: "auto",
-          padding: "10px"
+          padding: (isImage || isDocx) ? "10px" : "0"
         }}>
           {isImage ? (
             <img

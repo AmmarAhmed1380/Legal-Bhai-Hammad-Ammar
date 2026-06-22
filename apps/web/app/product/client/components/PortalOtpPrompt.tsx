@@ -71,7 +71,7 @@ export default function PortalOtpPrompt({
             </button>
             <label style={{ margin: 0, fontWeight: 600 }}>OTP for {portalMaskedPhone}</label>
           </div>
-          <div style={{ display: "flex", gap: "8px", justifyContent: "center", marginBottom: 20 }}>
+          <div className="otp-digit-row">
             {portalOtpDigits.map((digit, idx) => (
               <input
                 key={idx}
@@ -84,16 +84,7 @@ export default function PortalOtpPrompt({
                 onChange={(e) => handlePortalOtpChange(idx, e.target.value)}
                 onKeyDown={(e) => handlePortalOtpKeyDown(idx, e)}
                 onPaste={handlePortalOtpPaste}
-                style={{
-                  width: "48px",
-                  height: "48px",
-                  fontSize: "20px",
-                  fontWeight: "700",
-                  textAlign: "center",
-                  borderRadius: "10px",
-                  border: "1px solid var(--border)",
-                  background: "rgba(255, 255, 255, 0.8)"
-                }}
+                className="otp-digit-input"
               />
             ))}
           </div>

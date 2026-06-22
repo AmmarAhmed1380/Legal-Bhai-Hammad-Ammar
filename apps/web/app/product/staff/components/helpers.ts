@@ -18,6 +18,22 @@ export function toTitleCase(str: string): string {
   return str.split(/[\s_]+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
 }
 
+export function formatSourceType(sourceType: string | null | undefined): string {
+  if (!sourceType) return "";
+  switch (sourceType) {
+    case "live_ihc":
+      return "Islamabad High Court";
+    case "live_rwp_district":
+      return "Rawalpindi District & Sessions Courts";
+    case "live_lhc_rwp":
+      return "Lahore High Court Rawalpindi Bench";
+    case "manual_staff":
+      return "Manual Entry";
+    default:
+      return toTitleCase(sourceType.replace(/_/g, " "));
+  }
+}
+
 export function formatMimeType(mime: string): string {
   if (!mime) return "";
   if (mime.toLowerCase().startsWith("image/")) return "Image";
@@ -67,11 +83,11 @@ export function formatDateTime(value: string | null): string {
   const d = new Date(value);
   if (isNaN(d.getTime())) return value;
   
-  const dateStr = d.toLocaleDateString("en-GB", { timeZone: "Asia/Karachi", day: "2-digit", month: "short", year: "numeric" });
+  const dateStr = d.toLocaleDateString("en-US", { timeZone: "Asia/Karachi", day: "numeric", month: "short", year: "numeric" });
   const timeStr = d.toLocaleTimeString("en-US", { timeZone: "Asia/Karachi", hour: "2-digit", minute: "2-digit", hour12: true });
   
   if (value.length <= 10) return dateStr; // If it's just YYYY-MM-DD
-  return `${dateStr} • ${timeStr} PKT`;
+  return `${dateStr} | ${timeStr} PKT`;
 }
 
 export function formatRole(role: string): string {
