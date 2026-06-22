@@ -7,7 +7,7 @@ import { type FastifyReply, type FastifyRequest } from "fastify";
 
 import { DEMO_CODE, STAGES, type NotificationType, type Stage, type User } from "@wakeel/shared";
 import { readBearerToken, signDemoToken, verifyDemoToken } from "./lib/auth.js";
-import { envFlag, getJwtSecret, isProduction, validateProductionEnvironment } from "./lib/config.js";
+import { envFlag, getJwtSecret, isInvestorStaging, isProduction, validateProductionEnvironment } from "./lib/config.js";
 import { createFastifyServer } from "./lib/fastify-server.js";
 import { fetchIhcCauseListHtml, normalizeIhcCaseNumber, parseIhcCauseList } from "./lib/ihc.js";
 import { sanitizeInput } from "./lib/input-sanitizer.js";
@@ -168,7 +168,7 @@ export function buildServer(providedDemoStore?: DemoStore) {
       reply.code(404).send({ error: "Not found" });
       return;
     }
-    if (isProduction() && DEFERRED_PRODUCT_ROUTE_PREFIXES.some((prefix) => request.url === prefix || request.url.startsWith(`${prefix}/`) || request.url.startsWith(`${prefix}?`))) {
+    if (isProduction() && !isInvestorStaging() && DEFERRED_PRODUCT_ROUTE_PREFIXES.some((prefix) => request.url === prefix || request.url.startsWith(`${prefix}/`) || request.url.startsWith(`${prefix}?`))) {
       reply.code(404).send({ error: "Not found" });
       return;
     }
@@ -207,11 +207,29 @@ export function buildServer(providedDemoStore?: DemoStore) {
     reply.code(statusCode).send({ error: message });
   });
 
+  // Read CORS_ORIGINS from .env.production directly (NSSM env injection unreliable).
+  // Fall back to allowing any origin in investor-staging mode so the demo is never blocked.
+  const corsAllowedOrigins: Set<string> = new Set(
+    (process.env.CORS_ORIGINS ?? "")
+      .split(",")
+      .map((o) => o.trim())
+      .filter(Boolean)
+  );
+  // Also add PUBLIC_WEB_URL so it's always allowed even if CORS_ORIGINS is stale.
+  if (process.env.PUBLIC_WEB_URL) corsAllowedOrigins.add(process.env.PUBLIC_WEB_URL.trim());
+
   app.register(cors, {
-    origin: [
-      "https://legal-bhai-hammad-ammar-web.vercel.app",
-      "http://localhost:3000",
-    ],
+    origin: (origin, cb) => {
+      // Allow same-origin requests (no Origin header) and localhost always.
+      if (!origin || origin.startsWith("http://localhost") || origin.startsWith("http://127.0.0.1")) {
+        return cb(null, true);
+      }
+      // Allow if explicitly in the list.
+      if (corsAllowedOrigins.has(origin)) return cb(null, true);
+      // In investor-staging mode allow any HTTPS origin so the demo always works.
+      if (isInvestorStaging() && origin.startsWith("https://")) return cb(null, true);
+      return cb(new Error(`CORS: origin ${origin} not allowed`), false);
+    },
     methods: ["GET", "PUT", "POST", "PATCH", "DELETE", "OPTIONS", "HEAD"],
     credentials: true,
     allowedHeaders: ["Origin", "X-Requested-With", "Content-Type", "Accept", "Authorization"],

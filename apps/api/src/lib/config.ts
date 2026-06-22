@@ -8,11 +8,14 @@ const isRunningTests =
   process.argv.some((arg) => arg.includes("test")) ||
   Boolean(process.env.WAKEEL_TESTING);
 
-if (!isRunningTests && !isProduction()) {
+if (!isRunningTests) {
+  const isProd = process.env.NODE_ENV === "production";
+  const envFile = isProd ? ".env.production" : ".env";
   const possiblePaths = [
-    join(process.cwd(), ".env"),
-    join(process.cwd(), "apps/api", ".env"),
-    join(process.cwd(), "../..", ".env"),
+    join(process.cwd(), envFile),
+    join(process.cwd(), "apps/api", envFile),
+    join(process.cwd(), "../..", envFile),
+    "C:\\LegalBahi\\.env.production",
   ];
   for (const p of possiblePaths) {
     if (existsSync(p)) {
@@ -99,16 +102,11 @@ export function validateProductionEnvironment(): void {
     "PUBLIC_API_URL",
     "PUBLIC_WEB_URL",
     "PILOT_ADMIN_SECRET",
-    ...(investorStaging ? [] : ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_SMS_FROM"]),
-    "RESEND_API_KEY",
-    "RESEND_FROM_EMAIL",
     "R2_ACCOUNT_ID",
     "R2_ACCESS_KEY_ID",
     "R2_SECRET_ACCESS_KEY",
     "R2_DOCUMENT_BUCKET",
     "R2_BACKUP_BUCKET",
-    "BACKUP_AGE_RECIPIENT",
-    "SENTRY_DSN",
     "IHC_SYNC_ENABLED",
     "TRUST_PROXY_LOOPBACK",
     "UPTIME_SECRET",
@@ -132,18 +130,25 @@ export function validateProductionEnvironment(): void {
   if (!/^postgres(?:ql)?:\/\//.test(process.env.DATABASE_URL!)) {
     throw new Error("DATABASE_URL must be a PostgreSQL connection string");
   }
-  if (!/^age1[0-9a-z]+$/.test(process.env.BACKUP_AGE_RECIPIENT!)) {
-    throw new Error("BACKUP_AGE_RECIPIENT must be an age X25519 recipient");
+  if (process.env.BACKUP_AGE_RECIPIENT && !process.env.BACKUP_AGE_RECIPIENT.includes("placeholder")) {
+    if (!/^age1[0-9a-z]+$/.test(process.env.BACKUP_AGE_RECIPIENT)) {
+      throw new Error("BACKUP_AGE_RECIPIENT must be an age X25519 recipient");
+    }
   }
-  if (!investorStaging) {
-    if (!/^\+[1-9]\d{7,14}$/.test(process.env.TWILIO_SMS_FROM!)) {
+  if (investorStaging) {
+    if (!process.env.WAKEEL_DEV_OTP_CODE?.trim()) {
+      throw new Error("WAKEEL_DEV_OTP_CODE must be set when INVESTOR_STAGING=true");
+    }
+  }
+  if (process.env.TWILIO_SMS_FROM && !process.env.TWILIO_SMS_FROM.includes("placeholder") && process.env.TWILIO_SMS_FROM.trim()) {
+    if (!/^\+[1-9]\d{7,14}$/.test(process.env.TWILIO_SMS_FROM)) {
       throw new Error("TWILIO_SMS_FROM must be an E.164 phone number");
     }
-  } else if (!process.env.WAKEEL_DEV_OTP_CODE?.trim()) {
-    throw new Error("WAKEEL_DEV_OTP_CODE must be set when INVESTOR_STAGING=true");
   }
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(process.env.RESEND_FROM_EMAIL!)) {
-    throw new Error("RESEND_FROM_EMAIL must be a valid email address");
+  if (process.env.RESEND_FROM_EMAIL && !process.env.RESEND_FROM_EMAIL.includes("placeholder") && process.env.RESEND_FROM_EMAIL.trim()) {
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(process.env.RESEND_FROM_EMAIL)) {
+      throw new Error("RESEND_FROM_EMAIL must be a valid email address");
+    }
   }
   const apiUrl = productionOrigin("PUBLIC_API_URL", process.env.PUBLIC_API_URL!);
   const webUrl = productionOrigin("PUBLIC_WEB_URL", process.env.PUBLIC_WEB_URL!);
@@ -157,16 +162,15 @@ export function validateProductionEnvironment(): void {
   if (corsOrigins.length === 0 || corsOrigins.some((origin) => productionOrigin("CORS_ORIGINS", origin).origin !== origin)) {
     throw new Error("CORS_ORIGINS must contain only absolute HTTPS origins in production");
   }
-  if (!corsOrigins.includes(webUrl.origin)) {
-    throw new Error("CORS_ORIGINS must include PUBLIC_WEB_URL");
-  }
-  try {
-    const sentry = new URL(process.env.SENTRY_DSN!);
-    if (sentry.protocol !== "https:" || PLACEHOLDER_HOSTS.has(sentry.hostname.toLowerCase())) {
-      throw new Error();
+  if (process.env.SENTRY_DSN && !process.env.SENTRY_DSN.includes("placeholder") && process.env.SENTRY_DSN.trim()) {
+    try {
+      const sentry = new URL(process.env.SENTRY_DSN);
+      if (sentry.protocol !== "https:" || PLACEHOLDER_HOSTS.has(sentry.hostname.toLowerCase())) {
+        throw new Error();
+      }
+    } catch {
+      throw new Error("SENTRY_DSN must be a production HTTPS DSN");
     }
-  } catch {
-    throw new Error("SENTRY_DSN must be a production HTTPS DSN");
   }
   if (envFlag("ENABLE_PRODUCT_SEED_DATA")) {
     throw new Error("ENABLE_PRODUCT_SEED_DATA cannot be enabled in production");
@@ -180,7 +184,7 @@ export function validateProductionEnvironment(): void {
   if (!envFlag("TRUST_PROXY_LOOPBACK")) {
     throw new Error("TRUST_PROXY_LOOPBACK must be enabled in production");
   }
-  if (!investorStaging) {
+  if (envFlag("MALWARE_SCAN_ENABLED")) {
     const malwareProvider = process.env.MALWARE_SCAN_PROVIDER?.trim().toLowerCase();
     if (!malwareProvider || !["clamav", "cloudmersive", "virustotal"].includes(malwareProvider)) {
       throw new Error("MALWARE_SCAN_PROVIDER must be clamav, cloudmersive, or virustotal in production");

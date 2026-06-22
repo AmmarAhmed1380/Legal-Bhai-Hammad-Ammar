@@ -113,7 +113,7 @@ function Install-LegalBahiService {
   if ($LASTEXITCODE -ne 0) { throw "NSSM failed to set the $Name directory" }
   & $Nssm set $Name AppEnvironmentExtra $EnvironmentEntries
   if ($LASTEXITCODE -ne 0) { throw "NSSM failed to set the $Name environment" }
-  & $Nssm set $Name ObjectName "LocalService"
+  & $Nssm set $Name ObjectName "LocalSystem"
   if ($LASTEXITCODE -ne 0) { throw "NSSM failed to set the $Name service account" }
   & $Nssm set $Name AppExit Default Restart
   if ($LASTEXITCODE -ne 0) { throw "NSSM failed to set the $Name restart policy" }
@@ -144,7 +144,13 @@ Install-LegalBahiService -Name "LegalBahiWorker" -Application $NodeExe -Argument
 Install-LegalBahiService -Name "LegalBahiWeb" -Arguments "--workspace @wakeel/web run start" -EnvironmentEntries $WebEnvironmentEntries
 
 foreach ($Name in @("LegalBahiApi", "LegalBahiWorker", "LegalBahiWeb")) {
-  & $Nssm stop $Name 2>$null | Out-Null
+  $Service = Get-Service -Name $Name -ErrorAction SilentlyContinue
+  if ($Service) {
+    $OldPreference = $ErrorActionPreference
+    $ErrorActionPreference = "SilentlyContinue"
+    & $Nssm stop $Name 2>$null | Out-Null
+    $ErrorActionPreference = $OldPreference
+  }
   Start-Sleep -Seconds 2
   & $Nssm start $Name
   if ($LASTEXITCODE -ne 0) { throw "NSSM failed to start $Name" }

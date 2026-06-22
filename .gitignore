@@ -47,3 +47,7 @@ backups
 *.p12
 *.pfx
 *.key
+
+# VPS Credentials
+VPS Login.txt
+VPS login.txt

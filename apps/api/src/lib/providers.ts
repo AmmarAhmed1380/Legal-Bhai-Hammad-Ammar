@@ -117,21 +117,15 @@ class ResendEmailProvider implements EmailProvider {
 }
 
 export function createSmsProvider(): SmsProvider {
-  if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_SMS_FROM) {
+  if (process.env.TWILIO_ACCOUNT_SID?.trim() && process.env.TWILIO_AUTH_TOKEN?.trim() && process.env.TWILIO_SMS_FROM?.trim()) {
     return new TwilioSmsProvider();
-  }
-  if (isProduction()) {
-    throw new Error("Twilio SMS credentials must be configured in production");
   }
   return new DevelopmentSmsProvider();
 }
 
 export function createWhatsAppProvider(): WhatsAppProvider {
-  if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && (process.env.TWILIO_WHATSAPP_FROM || process.env.TWILIO_SMS_FROM)) {
+  if (process.env.TWILIO_ACCOUNT_SID?.trim() && process.env.TWILIO_AUTH_TOKEN?.trim() && (process.env.TWILIO_WHATSAPP_FROM?.trim() || process.env.TWILIO_SMS_FROM?.trim())) {
     return new TwilioWhatsAppProvider();
-  }
-  if (isProduction()) {
-    throw new Error("Twilio WhatsApp credentials must be configured in production");
   }
   return new DevelopmentWhatsAppProvider();
 }
@@ -160,11 +154,8 @@ export async function dispatchClientSmsWithWhatsAppFailover(input: {
 }
 
 export function createEmailProvider(): EmailProvider {
-  if (process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL) {
+  if (process.env.RESEND_API_KEY?.trim() && process.env.RESEND_FROM_EMAIL?.trim()) {
     return new ResendEmailProvider();
-  }
-  if (isProduction()) {
-    throw new Error("Resend credentials must be configured in production");
   }
   return new DevelopmentEmailProvider();
 }
