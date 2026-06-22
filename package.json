@@ -7,7 +7,7 @@
   ],
   "scripts": {
     "dev:api": "npm --workspace @wakeel/api run dev",
-    "dev:web": "cmd /c \"set NODE_ENV=development&& npm --workspace @wakeel/web run dev\"",
+    "dev:web": "cross-env NODE_ENV=development npm --workspace @wakeel/web run dev",
     "dev:mobile": "npm --workspace @wakeel/mobile run dev",
     "restart:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/restart-servers.ps1",
     "lint": "node scripts/lint-repo.mjs",
@@ -48,6 +48,7 @@
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "cross-env": "^7.0.3",
     "tsx": "^4.22.4",
     "typescript": "latest",
     "yaml": "^2.9.0"

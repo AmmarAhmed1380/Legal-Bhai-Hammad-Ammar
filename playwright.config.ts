@@ -40,6 +40,7 @@ export default defineConfig({
     {
       command: `npm --workspace @wakeel/web run dev -- --hostname 127.0.0.1 --port ${webPort}`,
       env: {
+        NODE_ENV: "development",
         NEXT_PUBLIC_API_URL: `http://127.0.0.1:${apiPort}`,
         ENABLE_DEMO_SURFACES: "false",
         NEXT_PUBLIC_ENABLE_DEMO_SURFACES: "false",
