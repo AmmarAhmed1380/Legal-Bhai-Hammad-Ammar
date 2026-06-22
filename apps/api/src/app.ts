@@ -20,17 +20,6 @@ import { createStore, type DemoStore, todayInPakistan } from "./lib/store.js";
 import { captureError } from "./lib/telemetry.js";
 import { clientInputErrorResponse, isFastifyClientInputError, isFastifyValidationError, validationErrorResponse } from "./lib/validation-errors.js";
 
-const DEFAULT_DEV_CORS_ORIGINS = [
-  "http://localhost:3000",
-  "http://localhost:3001",
-  "http://localhost:8081",
-  "http://127.0.0.1:3000",
-  "http://127.0.0.1:3001",
-  "http://127.0.0.1:8081",
-  "http://localhost:19006",
-  "http://127.0.0.1:19006",
-];
-
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const DEMO_ROUTE_PREFIXES = ["/auth/demo", "/me", "/dashboard", "/cases", "/calendar/today", "/hearings", "/notifications", "/share", "/admin", "/sync", "/uploads"];
 const DEFERRED_PRODUCT_ROUTE_PREFIXES = [
@@ -73,23 +62,6 @@ export function publicErrorDetails(error: unknown, replyStatusCode: number): { s
 function resetUploadsDirectory(): void {
   rmSync(getUploadsDirectory(), { recursive: true, force: true });
   mkdirSync(getUploadsDirectory(), { recursive: true });
-}
-
-function resolveCorsOrigins(): string[] {
-  const configuredOrigins = (process.env.CORS_ORIGINS ?? "")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-
-  if (configuredOrigins.length > 0) {
-    return configuredOrigins;
-  }
-
-  if ((process.env.NODE_ENV ?? "development") === "production") {
-    throw new Error("CORS_ORIGINS must be set in production");
-  }
-
-  return DEFAULT_DEV_CORS_ORIGINS;
 }
 
 async function requireUser(request: FastifyRequest, reply: FastifyReply, store: DemoStore): Promise<User | null> {
@@ -189,7 +161,6 @@ export function buildServer(providedDemoStore?: DemoStore) {
   const productStore = createRuntimeProductStore();
   const publicApiUrl = process.env.PUBLIC_API_URL ?? `http://localhost:${process.env.PORT ?? "3001"}`;
   const publicWebUrl = process.env.PUBLIC_WEB_URL ?? publicApiUrl;
-  const corsOrigins = resolveCorsOrigins();
   const rateLimiter = new SlidingWindowRateLimiter();
 
   app.addHook("onRequest", async (request, reply) => {
@@ -237,15 +208,13 @@ export function buildServer(providedDemoStore?: DemoStore) {
   });
 
   app.register(cors, {
+    origin: [
+      "https://legal-bhai-hammad-ammar-web.vercel.app",
+      "http://localhost:3000",
+    ],
     methods: ["GET", "PUT", "POST", "PATCH", "DELETE", "OPTIONS", "HEAD"],
-    origin(origin, callback) {
-      if (!origin) {
-        callback(null, true);
-        return;
-      }
-
-      callback(null, corsOrigins.includes(origin));
-    },
+    credentials: true,
+    allowedHeaders: ["Origin", "X-Requested-With", "Content-Type", "Accept", "Authorization"],
   });
   app.register(multipart, {
     limits: {
