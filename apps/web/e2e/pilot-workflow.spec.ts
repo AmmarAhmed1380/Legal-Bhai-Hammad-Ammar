@@ -1,9 +1,30 @@
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const API_URL = "http://127.0.0.1:3401";
+const MOCK_OTP_CODE = "246810";
 
 function field(container: Locator, label: string): Locator {
   return container.locator(".field").filter({ hasText: label }).locator("input, textarea, select").first();
+}
+
+async function fillOtpCode(scope: Page | Locator) {
+  const otpInput = scope.locator(".otp-digit-input").first();
+  await expect(otpInput).toBeVisible();
+  await otpInput.click();
+  await otpInput.pressSequentially(MOCK_OTP_CODE);
+}
+
+async function verifyLawyerWorkspaceOtp(page: Page) {
+  const authCard = page.locator(".auth-card");
+  await expect(authCard.getByText("OTP Verification Code:")).toBeVisible();
+  await fillOtpCode(authCard);
+  await authCard.getByRole("button", { name: "Verify & Create Workspace" }).click();
+}
+
+async function verifyPortalOtp(page: Page) {
+  await expect(page.getByText(/^OTP for /)).toBeVisible();
+  await fillOtpCode(page);
+  await page.getByRole("button", { name: "Verify and open shared matter" }).click();
 }
 
 test("invited lawyer completes the web pilot workflow through client portal OTP", async ({ context, page, request }) => {
@@ -33,6 +54,7 @@ test("invited lawyer completes the web pilot workflow through client portal OTP"
   await field(authCard, "Firm / Chamber Name").fill(firmName);
   await field(authCard, "Primary City").fill("Islamabad");
   await page.getByRole("button", { name: "Request OTP" }).click();
+  await verifyLawyerWorkspaceOtp(page);
   await expect(page.getByRole("heading", { name: firmName })).toBeVisible();
 
   await page.goto("/matters");
@@ -78,6 +100,7 @@ test("invited lawyer completes the web pilot workflow through client portal OTP"
   await clientPage.goto(portalUrl!);
   await expect(clientPage.getByText(matterTitle)).not.toBeVisible();
   await clientPage.getByRole("button", { name: "Request portal OTP" }).click();
+  await verifyPortalOtp(clientPage);
 
   await expect(clientPage.getByText(matterTitle).first()).toBeVisible();
   await expect(clientPage.getByText(hearingNotes)).toBeVisible();

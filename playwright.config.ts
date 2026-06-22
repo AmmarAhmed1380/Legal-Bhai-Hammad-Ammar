@@ -32,6 +32,7 @@ export default defineConfig({
         ENABLE_DEMO_SURFACES: "false",
         ENABLE_PRODUCT_SEED_DATA: "false",
         WAKEEL_PRODUCT_DB_PATH: e2eDatabase,
+        WAKEEL_DEV_OTP_CODE: "246810",
       },
       url: `http://127.0.0.1:${apiPort}/health/ready`,
       timeout: 120_000,
