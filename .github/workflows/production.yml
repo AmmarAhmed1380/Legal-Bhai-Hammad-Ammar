@@ -32,4 +32,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm audit --omit=dev --audit-level=moderate
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
       - run: npm run verify

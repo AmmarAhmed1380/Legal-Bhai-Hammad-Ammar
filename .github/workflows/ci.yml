@@ -38,7 +38,8 @@ jobs:
       - run: npm run test:api
       - run: npm --workspace @wakeel/api run typecheck
       - run: npm --workspace @wakeel/web run build
-      - run: npx playwright install --with-deps chromium
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
       - run: npm run test:web:e2e
       - run: npm --workspace @wakeel/mobile exec tsc -- --noEmit
       - run: npm run test:mobile:flows
