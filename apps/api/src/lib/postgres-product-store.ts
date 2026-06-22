@@ -572,25 +572,24 @@ export class PostgresProductStore {
 
   async rotateRefreshToken(rawToken: string): Promise<{ session: Session; refreshToken: string; expiresAt: string } | null> {
     return this.transaction(async (client) => {
-      const isTest =
-        process.env.NODE_ENV === "test" ||
-        process.execArgv.includes("--test") ||
-        process.argv.some((arg) => arg.includes("test")) ||
-        Boolean(process.env.WAKEEL_TESTING);
-      const gracePeriodMs = isTest ? 0 : 15000;
-      const gracePeriod = new Date(Date.now() - gracePeriodMs).toISOString();
       const result = await client.query(
         `SELECT s.id, s.actor_type, s.actor_id, s.firm_id, s.auth_method, s.created_at, s.revoked_at, rt.id AS refresh_id
          FROM refresh_tokens rt JOIN app_sessions s ON s.id = rt.session_id
-         WHERE rt.token_hash = $1 AND (rt.revoked_at IS NULL OR rt.revoked_at >= $2) AND rt.expires_at >= now() AND s.revoked_at IS NULL
+         WHERE rt.token_hash = $1 AND rt.revoked_at IS NULL AND rt.expires_at >= now() AND s.revoked_at IS NULL
          LIMIT 1 FOR UPDATE OF rt`,
-        [hashValue(rawToken), gracePeriod],
+        [hashValue(rawToken)],
       );
       const row = result.rows[0];
       if (!row) {
         return null;
       }
-      await client.query("UPDATE refresh_tokens SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL", [row.refresh_id]);
+      const revoked = await client.query(
+        "UPDATE refresh_tokens SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL RETURNING id",
+        [row.refresh_id],
+      );
+      if (revoked.rowCount !== 1) {
+        return null;
+      }
       const refreshToken = randomUUID().replace(/-/g, "");
       const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
       await client.query(

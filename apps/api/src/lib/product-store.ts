@@ -1649,12 +1649,6 @@ export class ProductStore {
   }
 
   rotateRefreshToken(rawToken: string): { session: Session; refreshToken: string; expiresAt: string } | null {
-    const isTest =
-      process.env.NODE_ENV === "test" ||
-      process.execArgv.includes("--test") ||
-      process.argv.some((arg) => arg.includes("test")) ||
-      Boolean(process.env.WAKEEL_TESTING);
-    const gracePeriodMs = isTest ? 0 : 15000;
     const existing = this.db
       .prepare(`
         SELECT
@@ -1669,10 +1663,10 @@ export class ProductStore {
           s.revoked_at AS revokedAt
         FROM refresh_tokens rt
         JOIN app_sessions s ON s.id = rt.session_id
-        WHERE rt.token_hash = ? AND (rt.revoked_at IS NULL OR rt.revoked_at >= ?) AND rt.expires_at >= ? AND s.revoked_at IS NULL
+        WHERE rt.token_hash = ? AND rt.revoked_at IS NULL AND rt.expires_at >= ? AND s.revoked_at IS NULL
         LIMIT 1
       `)
-      .get(hashValue(rawToken), new Date(Date.now() - gracePeriodMs).toISOString(), nowIso()) as
+      .get(hashValue(rawToken), nowIso()) as
       | (ActiveRefreshToken & { createdAt: string; revokedAt: string | null })
       | undefined;
 
@@ -1680,7 +1674,12 @@ export class ProductStore {
       return null;
     }
 
-    this.db.prepare("UPDATE refresh_tokens SET revoked_at = ? WHERE id = ?").run(nowIso(), existing.id);
+    const revoked = this.db
+      .prepare("UPDATE refresh_tokens SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL")
+      .run(nowIso(), existing.id);
+    if (revoked.changes !== 1) {
+      return null;
+    }
 
     const rotated = this.createRefreshToken(existing.sessionId);
     if (!rotated) {
