@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,10 +17,19 @@ if (!password) {
   process.exit(1);
 }
 
+const localEnvFile = process.env.VPS_ENV_FILE ?? join(repoRoot, ".env.production");
+
 const uploads = [
-  [".env.production", `${vpsRoot}/.env.production`],
   ["infra/windows/Caddyfile", `${vpsRoot}/infra/windows/Caddyfile`],
 ];
+
+if (existsSync(localEnvFile)) {
+  uploads.unshift([localEnvFile, `${vpsRoot}/.env.production`]);
+} else {
+  console.warn(
+    "Skipping .env.production upload (file not found). Use VPS_ENV_FILE or keep secrets only on the VPS.",
+  );
+}
 
 const ssh = new NodeSSH();
 
@@ -66,11 +75,25 @@ for (const command of [
 const tempDir = mkdtempSync(join(tmpdir(), "legalbahi-vps-"));
 
 for (const [localPath, remotePath] of uploads) {
-  const content = readFileSync(join(repoRoot, localPath), "utf8");
-  const localTemp = join(tempDir, localPath.replace(/[/\\]/g, "_"));
+  const content = readFileSync(localPath, "utf8");
+  const label = localPath.startsWith(repoRoot) ? localPath.slice(repoRoot.length + 1) : localPath;
+  const localTemp = join(tempDir, label.replace(/[/\\]/g, "_"));
   writeFileSync(localTemp, content, "utf8");
   await ssh.putFile(localTemp, remotePath);
-  console.log(`Uploaded ${localPath} -> ${remotePath}`);
+  console.log(`Uploaded ${label} -> ${remotePath}`);
+}
+
+const windowsInfraLocal = join(repoRoot, "infra", "windows");
+const windowsInfraRemote = `${vpsRootWin}\\infra\\windows`;
+if (existsSync(windowsInfraLocal)) {
+  console.log(`Uploading infra/windows -> ${windowsInfraRemote}`);
+  const failed = await ssh.putDirectory(windowsInfraLocal, windowsInfraRemote, {
+    recursive: true,
+    concurrency: 8,
+  });
+  if (failed.length > 0) {
+    throw new Error(`Failed to upload ${failed.length} infra/windows file(s)`);
+  }
 }
 
 const powershell = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";

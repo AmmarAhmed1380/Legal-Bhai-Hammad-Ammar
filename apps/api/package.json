@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "node --env-file=../../.env --import tsx --watch src/server.ts",
     "migrate": "node --import tsx src/migrate.ts",
+    "seed:investor": "node --import tsx src/seed-investor-postgres.ts",
+    "migrate:seed-r2": "node --import tsx src/migrate-seed-to-r2.ts",
     "worker": "node --import tsx src/worker.ts",
     "start": "node --import tsx src/server.ts",
     "smoke:production": "node --import tsx src/production-smoke.ts",

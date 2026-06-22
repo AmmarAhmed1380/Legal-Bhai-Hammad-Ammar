@@ -107,6 +107,17 @@ export interface Matter {
   leadLawyerId: string | null;
 }
 
+/** Lean projection for matter list / sidebar roster views. */
+export interface MatterRosterSummary {
+  id: string;
+  courtId: string;
+  rawCaseNumber: string;
+  title: string;
+  stage: string;
+  status: ProductMatterStatus;
+  nextHearingAt: string | null;
+}
+
 export interface MatterParty {
   id: string;
   matterId: string;

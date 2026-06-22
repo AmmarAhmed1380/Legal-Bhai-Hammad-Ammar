@@ -1447,7 +1447,7 @@ test("matter CSV import previews validation and duplicates before confirmed impo
   });
   assert.equal(confirmResponse.statusCode, 200);
   const mattersResponse = await app.inject({ method: "GET", url: "/v1/matters", headers });
-  assert.ok((mattersResponse.json() as { matters: Array<{ normalizedCaseNumber: string }> }).matters.some((matter) => matter.normalizedCaseNumber === "WRIT PETITION 808/2026"));
+  assert.ok((mattersResponse.json() as { matters: Array<{ rawCaseNumber: string }> }).matters.some((matter) => matter.rawCaseNumber === "W.P. 808/2026"));
 });
 
 test("notification preferences and hearing update jobs are persisted", async () => {

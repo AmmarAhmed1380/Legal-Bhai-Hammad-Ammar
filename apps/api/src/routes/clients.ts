@@ -29,7 +29,7 @@ export function registerClientRoutes(ctx: ProductRouteContext): void {
     if (!requireClientSession(session, reply)) {
       return { error: "Forbidden" };
     }
-    const matters = await store.listMatters(session);
+    const matters = await store.listMatterRoster(session);
     if (process.env.NODE_ENV === "development") {
       console.log("[client-portal] /v1/clients/me/matters", {
         clientId: session.actorId,

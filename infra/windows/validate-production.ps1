@@ -7,6 +7,8 @@ param(
 $ErrorActionPreference = "Stop"
 . "$PSScriptRoot\load-environment.ps1" -EnvironmentFile $EnvironmentFile
 
+$InvestorStaging = $env:INVESTOR_STAGING -eq "true"
+
 function Require-ProductionValue {
   param([string]$Name)
   $Value = [System.Environment]::GetEnvironmentVariable($Name, "Process")
@@ -44,12 +46,14 @@ function Get-ProductionOrigin {
 
 $Required = @(
   "JWT_SECRET", "CORS_ORIGINS", "DATABASE_URL", "PUBLIC_API_URL", "PUBLIC_WEB_URL",
-  "PILOT_ADMIN_SECRET", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_SMS_FROM",
-  "RESEND_API_KEY", "RESEND_FROM_EMAIL", "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID",
+  "PILOT_ADMIN_SECRET", "RESEND_API_KEY", "RESEND_FROM_EMAIL", "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID",
   "R2_SECRET_ACCESS_KEY", "R2_DOCUMENT_BUCKET", "R2_BACKUP_BUCKET",
   "R2_BACKUP_ACCESS_KEY_ID", "R2_BACKUP_SECRET_ACCESS_KEY", "BACKUP_AGE_RECIPIENT",
   "SENTRY_DSN", "IHC_SYNC_ENABLED", "UPTIME_SECRET"
 )
+if (-not $InvestorStaging) {
+  $Required += @("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_SMS_FROM")
+}
 foreach ($Name in $Required) {
   Require-ProductionValue -Name $Name | Out-Null
 }
@@ -114,11 +118,17 @@ if ($env:R2_ACCESS_KEY_ID -eq $env:R2_BACKUP_ACCESS_KEY_ID -or $env:R2_SECRET_AC
 if ($env:BACKUP_AGE_RECIPIENT -notmatch "^age1") {
   throw "BACKUP_AGE_RECIPIENT must be an age X25519 recipient"
 }
-if ($env:TWILIO_ACCOUNT_SID -notmatch "^AC[A-Za-z0-9]+$") {
-  throw "TWILIO_ACCOUNT_SID must be a Twilio account SID"
-}
-if ($env:TWILIO_SMS_FROM -notmatch "^\+[1-9]\d{7,14}$") {
-  throw "TWILIO_SMS_FROM must be an E.164 phone number"
+if ($InvestorStaging) {
+  if (-not $env:WAKEEL_DEV_OTP_CODE) {
+    throw "WAKEEL_DEV_OTP_CODE must be set when INVESTOR_STAGING=true"
+  }
+} else {
+  if ($env:TWILIO_ACCOUNT_SID -notmatch "^AC[A-Za-z0-9]+$") {
+    throw "TWILIO_ACCOUNT_SID must be a Twilio account SID"
+  }
+  if ($env:TWILIO_SMS_FROM -notmatch "^\+[1-9]\d{7,14}$") {
+    throw "TWILIO_SMS_FROM must be an E.164 phone number"
+  }
 }
 if ($env:RESEND_FROM_EMAIL -notmatch "^[^@\s]+@[^@\s]+\.[^@\s]+$") {
   throw "RESEND_FROM_EMAIL must be a valid email address"
@@ -142,4 +152,4 @@ if ($ValidateCaddy) {
   }
 }
 
-Write-Host "LegalBahi production environment validation passed"
+Write-Host "LegalBahi production environment validation passed$(if ($InvestorStaging) { ' (investor staging)' })"

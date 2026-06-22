@@ -109,7 +109,7 @@ textarea {
 .dashboard-grid {
   display: grid;
   gap: 24px;
-  grid-template-columns: 380px minmax(0, 1fr);
+  grid-template-columns: 400px minmax(0, 1fr);
 }
 
 .stats-grid {
@@ -761,10 +761,20 @@ img.preview {
   display: inline-block;
 }
 
-.brand-hero-title {
+.brand-hero-name {
   font-size: 44px;
   font-weight: 800;
-  line-height: 1.15;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  margin: 0;
+  color: #ffffff;
+  font-family: "Plus Jakarta Sans", sans-serif;
+}
+
+.brand-hero-title {
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.2;
   letter-spacing: -0.02em;
   margin: 0 0 16px 0;
   color: #ffffff;
@@ -847,8 +857,38 @@ img.preview {
   transition: color 0.2s ease;
 }
 
-.brand-hero-footer-link:hover {
-  color: rgba(255, 255, 255, 0.85);
+.matters-roster-column {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  align-self: stretch;
+  overflow: hidden;
+}
+
+.matters-roster-list {
+  overflow-x: hidden;
+}
+
+.dashboard-grid .matters-roster-panel {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.brand-hero-panel .brand-hero-footer-link:hover {
+  color: #ffffff;
+}
+
+.form-error-banner {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #b91c1c;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .login-form-panel {

@@ -1,4 +1,4 @@
-import { type Dispatch, type SetStateAction, useState, type CSSProperties } from "react";
+import { type Dispatch, type SetStateAction, useRef, useState, type CSSProperties } from "react";
 import {
   type MatterListItem,
   type MatterDetail,
@@ -9,6 +9,29 @@ import {
 import { PRODUCT_API_BASE_URL } from "../../../../lib/product-api";
 import { courtLabel, formatDateTime, formatMimeType, formatSourceType, toTitleCase } from "./helpers";
 import CustomSelect from "./CustomSelect";
+
+type MatterDraft = {
+  courtId: string;
+  rawCaseNumber: string;
+  title: string;
+  stage: string;
+  status: string;
+  nextHearingAt: string;
+};
+
+function formatMutationError(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.startsWith("Unable to") ? error.message : `${fallback}: ${error.message}`;
+  }
+  return fallback;
+}
+
+function FormErrorBanner({ message }: { message: string | null }) {
+  if (!message) {
+    return null;
+  }
+  return <div className="form-error-banner">{message}</div>;
+}
 
 const PILOT_COURTS = [
   { id: "ihc", label: "Islamabad High Court" },
@@ -31,7 +54,7 @@ const OUTCOME_PRESETS = [
 interface MattersSectionProps {
   newMatter: { courtId: string; rawCaseNumber: string; title: string; nextHearingAt: string };
   setNewMatter: Dispatch<SetStateAction<{ courtId: string; rawCaseNumber: string; title: string; nextHearingAt: string }>>;
-  createMatter: () => void;
+  createMatter: (signal?: AbortSignal) => Promise<void>;
   csvImport: string;
   setCsvImport: Dispatch<SetStateAction<string>>;
   previewCsvImport: () => void;
@@ -45,9 +68,9 @@ interface MattersSectionProps {
   matters: MatterListItem[];
   openMatter: (matterId: string) => void;
   selectedMatter: MatterDetail | null;
-  matterDraft: { courtId: string; rawCaseNumber: string; title: string; stage: string; status: string; nextHearingAt: string };
-  setMatterDraft: Dispatch<SetStateAction<{ courtId: string; rawCaseNumber: string; title: string; stage: string; status: string; nextHearingAt: string }>>;
-  saveMatter: () => void;
+  matterDraft: MatterDraft;
+  setMatterDraft: Dispatch<SetStateAction<MatterDraft>>;
+  saveMatter: (patch?: MatterDraft, signal?: AbortSignal) => Promise<void>;
   archiveMatter: () => void;
   hearingListedAt: string;
   setHearingListedAt: Dispatch<SetStateAction<string>>;
@@ -59,7 +82,7 @@ interface MattersSectionProps {
   setHearingNextDate: Dispatch<SetStateAction<string>>;
   setHearingFile: Dispatch<SetStateAction<File | null>>;
   hearingFile: File | null;
-  captureHearing: () => void;
+  captureHearing: (signal?: AbortSignal) => Promise<void>;
   hearingStatus: string | null;
   matterClientId: string;
   setMatterClientId: Dispatch<SetStateAction<string>>;
@@ -83,7 +106,7 @@ interface MattersSectionProps {
   setDocumentUpload: Dispatch<SetStateAction<{ title: string; type: string; portalVisible: boolean }>>;
   setDocumentFile: Dispatch<SetStateAction<File | null>>;
   documentFile: File | null;
-  uploadDocument: () => void;
+  uploadDocument: (signal?: AbortSignal) => Promise<void>;
   openDocument: (docId: string) => void;
 }
 
@@ -157,6 +180,18 @@ export default function MattersSection({
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isCaptureHearingOpen, setIsCaptureHearingOpen] = useState(false);
   const [isUploadDocOpen, setIsUploadDocOpen] = useState(false);
+  const [isCreatingMatter, setIsCreatingMatter] = useState(false);
+  const [isSavingMatter, setIsSavingMatter] = useState(false);
+  const [isCapturingHearing, setIsCapturingHearing] = useState(false);
+  const [isUploadingDocument, setIsUploadingDocument] = useState(false);
+  const [createMatterError, setCreateMatterError] = useState<string | null>(null);
+  const [saveMatterError, setSaveMatterError] = useState<string | null>(null);
+  const [captureHearingError, setCaptureHearingError] = useState<string | null>(null);
+  const [uploadDocumentError, setUploadDocumentError] = useState<string | null>(null);
+  const createMatterAbortRef = useRef<AbortController | null>(null);
+  const saveMatterAbortRef = useRef<AbortController | null>(null);
+  const captureHearingAbortRef = useRef<AbortController | null>(null);
+  const uploadDocumentAbortRef = useRef<AbortController | null>(null);
   const [copiedPortalUrl, setCopiedPortalUrl] = useState(false);
 
   const tabButtonStyle = (isActive: boolean): CSSProperties => ({
@@ -239,16 +274,333 @@ export default function MattersSection({
     return "badge live";
   };
 
+  const runMutation = async (
+    abortRef: { current: AbortController | null },
+    setSubmitting: Dispatch<SetStateAction<boolean>>,
+    setError: Dispatch<SetStateAction<string | null>>,
+    action: (signal: AbortSignal) => Promise<void>,
+    fallbackMessage: string,
+  ): Promise<boolean> => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await action(controller.signal);
+      return true;
+    } catch (error) {
+      if (controller.signal.aborted) {
+        return false;
+      }
+      setError(formatMutationError(error, fallbackMessage));
+      return false;
+    } finally {
+      if (!controller.signal.aborted) {
+        setSubmitting(false);
+      }
+    }
+  };
+
+  const handleCreateMatter = async () => {
+    const ok = await runMutation(
+      createMatterAbortRef,
+      setIsCreatingMatter,
+      setCreateMatterError,
+      createMatter,
+      "Unable to create matter",
+    );
+    if (ok) {
+      setIsAddOpen(false);
+    }
+  };
+
+  const handleSaveMatter = async () => {
+    const ok = await runMutation(
+      saveMatterAbortRef,
+      setIsSavingMatter,
+      setSaveMatterError,
+      (signal) => saveMatter(matterDraft, signal),
+      "Unable to save matter",
+    );
+    if (ok) {
+      setIsEditOpen(false);
+    }
+  };
+
+  const handleCaptureHearing = async () => {
+    const ok = await runMutation(
+      captureHearingAbortRef,
+      setIsCapturingHearing,
+      setCaptureHearingError,
+      captureHearing,
+      "Unable to save hearing update",
+    );
+    if (ok) {
+      setIsCaptureHearingOpen(false);
+    }
+  };
+
+  const handleUploadDocument = async () => {
+    const ok = await runMutation(
+      uploadDocumentAbortRef,
+      setIsUploadingDocument,
+      setUploadDocumentError,
+      uploadDocument,
+      "Unable to upload document",
+    );
+    if (ok) {
+      setIsUploadDocOpen(false);
+    }
+  };
+
   const renderMattersSidebar = (alignWithTabPanel: boolean) => (
     <aside
       className={`panel${alignWithTabPanel ? " matters-roster-panel" : ""}`}
       style={{
         animation: "fadeIn 0.2s ease",
         boxSizing: "border-box",
-        ...(alignWithTabPanel ? { height: "100%", display: "flex", flexDirection: "column", minHeight: 0 } : {}),
+        ...(alignWithTabPanel ? { height: "100%", display: "flex", flexDirection: "column", minHeight: 0, minWidth: 0, overflowX: "hidden" } : {}),
       }}
     >
-      {/* Sidebar toggle button (floating/collapsed) */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <h2 style={{ marginTop: 0, marginBottom: 0, fontSize: "20px", fontWeight: 800 }}>Matters</h2>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <button
+            className="button"
+            type="button"
+            onClick={() => setIsAddOpen(true)}
+            style={{
+              padding: "6px 12px",
+              fontSize: "12px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "4px",
+              borderRadius: "8px"
+            }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            New
+          </button>
+          <button
+            className="button-secondary"
+            type="button"
+            onClick={() => setIsImportOpen(true)}
+            style={{
+              padding: "6px 12px",
+              fontSize: "12px",
+              borderRadius: "8px"
+            }}
+          >
+            Import
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsSidebarOpen(false)}
+            title="Hide matters list"
+            className="button-secondary"
+            style={{
+              padding: "6px 8px",
+              fontSize: "12px",
+              borderRadius: "8px",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <line x1="9" y1="3" x2="9" y2="21" />
+              <path d="M14 9l-3 3 3 3" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div className="field" style={{ marginBottom: 10 }}>
+        <input
+          type="text"
+          placeholder="Search case number or title..."
+          value={matterSearch}
+          onChange={(e) => setMatterSearch(e.target.value)}
+          style={{ padding: "8px 12px", fontSize: "14px" }}
+        />
+      </div>
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "4px",
+        backgroundColor: "rgba(0, 0, 0, 0.03)",
+        padding: "4px",
+        borderRadius: "10px",
+        border: "1px solid var(--border)",
+        marginBottom: 16
+      }}>
+        <button
+          className="button-secondary"
+          style={{
+            flex: 1,
+            padding: "6px 0",
+            fontSize: "12px",
+            fontWeight: 700,
+            borderRadius: "6px",
+            border: "none",
+            backgroundColor: matterStatusFilter === "all" ? "#ffffff" : "transparent",
+            color: matterStatusFilter === "all" ? "var(--primary)" : "var(--text-secondary)",
+            cursor: "pointer",
+            boxShadow: matterStatusFilter === "all" ? "0 2px 6px rgba(0, 0, 0, 0.05)" : "none",
+            transition: "all 0.2s ease",
+            textAlign: "center",
+          }}
+          onClick={() => setMatterStatusFilter("all")}
+        >
+          All
+        </button>
+        <button
+          className="button-secondary"
+          style={{
+            flex: 1,
+            padding: "6px 0",
+            fontSize: "12px",
+            fontWeight: 700,
+            borderRadius: "6px",
+            border: "none",
+            backgroundColor: matterStatusFilter === "open" ? "#ffffff" : "transparent",
+            color: matterStatusFilter === "open" ? "var(--primary)" : "var(--text-secondary)",
+            cursor: "pointer",
+            boxShadow: matterStatusFilter === "open" ? "0 2px 6px rgba(0, 0, 0, 0.05)" : "none",
+            transition: "all 0.2s ease",
+            textAlign: "center",
+          }}
+          onClick={() => setMatterStatusFilter("open")}
+        >
+          Open
+        </button>
+        <button
+          className="button-secondary"
+          style={{
+            flex: 1,
+            padding: "6px 0",
+            fontSize: "12px",
+            fontWeight: 700,
+            borderRadius: "6px",
+            border: "none",
+            backgroundColor: matterStatusFilter === "closed" ? "#ffffff" : "transparent",
+            color: matterStatusFilter === "closed" ? "var(--primary)" : "var(--text-secondary)",
+            cursor: "pointer",
+            boxShadow: matterStatusFilter === "closed" ? "0 2px 6px rgba(0, 0, 0, 0.05)" : "none",
+            transition: "all 0.2s ease",
+            textAlign: "center",
+          }}
+          onClick={() => setMatterStatusFilter("closed")}
+        >
+          Closed
+        </button>
+      </div>
+
+      <div
+        className={`case-list${alignWithTabPanel ? " matters-roster-list" : ""}`}
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "12px",
+          ...(alignWithTabPanel ? { flex: 1, minHeight: 0, minWidth: 0, overflowY: "auto", overflowX: "hidden", paddingTop: 8 } : {}),
+        }}
+      >
+              {matters
+                .filter((matter) => {
+                  const matchesSearch =
+                    matter.rawCaseNumber.toLowerCase().includes(matterSearch.toLowerCase()) ||
+                    matter.title.toLowerCase().includes(matterSearch.toLowerCase());
+                  const matchesStatus =
+                    matterStatusFilter === "all" ||
+                    (matterStatusFilter === "open" && matter.status === "open") ||
+                    (matterStatusFilter === "closed" &&
+                      (matter.status === "closed" || matter.status === "on_hold"));
+                  return matchesSearch && matchesStatus;
+                })
+                .map((matter) => {
+                  const isSelected = selectedMatter?.id === matter.id;
+                  return (
+                    <button
+                      key={matter.id}
+                      className="case-card"
+                      type="button"
+                      onClick={() => void openMatter(matter.id)}
+                      style={{
+                        textAlign: "left",
+                        cursor: "pointer",
+                        border: isSelected ? "1px solid var(--primary)" : "1px solid var(--border)",
+                        borderLeft: isSelected ? "4px solid var(--primary)" : "4px solid rgba(0, 0, 0, 0.08)",
+                        backgroundColor: isSelected ? "rgba(15, 110, 86, 0.04)" : "var(--surface)",
+                        width: "100%",
+                        minWidth: 0,
+                        maxWidth: "100%",
+                        padding: "16px",
+                        borderRadius: "14px",
+                        transform: "none",
+                        transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+                        boxShadow: isSelected ? "0 4px 12px rgba(15, 110, 86, 0.05)" : "none",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.boxShadow = "0 6px 16px rgba(15, 110, 86, 0.06)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.boxShadow = isSelected ? "0 4px 12px rgba(15, 110, 86, 0.05)" : "none";
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 8, minWidth: 0 }}>
+                        <strong style={{ fontSize: "14px", color: "var(--text-primary)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{matter.rawCaseNumber}</strong>
+                        <span className={getStageBadgeClass(matter.stage)} style={{ fontSize: "9px", padding: "2px 6px", flexShrink: 0 }}>
+                          {matter.stage.replace(/_/g, " ").toUpperCase()}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8, lineHeight: "1.4", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                        {matter.title}
+                      </div>
+                      <div className="muted" style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "11px", borderTop: "1px solid rgba(0,0,0,0.03)", paddingTop: "8px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2.5" style={{ opacity: 0.85 }}>
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                          </svg>
+                          <span style={{ textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+                            {courtLabel(matter.courtId)}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "4px", minWidth: 0, flex: 1 }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" style={{ opacity: 0.85, flexShrink: 0 }}>
+                              <circle cx="12" cy="12" r="10" />
+                              <polyline points="12 6 12 12 16 14" />
+                            </svg>
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {matter.nextHearingAt ? `Next: ${formatDateTime(matter.nextHearingAt)}` : "No upcoming hearings"}
+                            </span>
+                          </div>
+                          <span className={`badge ${matter.status === "open" ? "live" : "conflict"}`} style={{ fontSize: "9px", padding: "2px 8px", flexShrink: 0 }}>
+                            {matter.status.toUpperCase()}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+            </div>
+          </aside>
+  );
+
+  return (
+    <section
+      className="dashboard-grid"
+      style={{
+        gridTemplateColumns: isSidebarOpen ? "400px minmax(0, 1fr)" : "1fr",
+        gap: "24px",
+        alignItems: "stretch",
+      }}
+    >
       {!isSidebarOpen && (
         <button
           type="button"
@@ -291,237 +643,16 @@ export default function MattersSection({
           </svg>
         </button>
       )}
-      {/* Left Column: Active Matters Sidebar */}
-      {isSidebarOpen && (
-        <div style={{ position: "relative" }}>
-          <aside className="panel" style={{ animation: "fadeIn 0.2s ease", boxSizing: "border-box" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <h2 style={{ marginTop: 0, marginBottom: 0, fontSize: "20px", fontWeight: 800 }}>Matters</h2>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <button
-                  className="button"
-                  type="button"
-                  onClick={() => setIsAddOpen(true)}
-                  style={{
-                    padding: "6px 12px",
-                    fontSize: "12px",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "4px",
-                    borderRadius: "8px"
-                  }}
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                  </svg>
-                  New
-                </button>
-                <button
-                  className="button-secondary"
-                  type="button"
-                  onClick={() => setIsImportOpen(true)}
-                  style={{
-                    padding: "6px 12px",
-                    fontSize: "12px",
-                    borderRadius: "8px"
-                  }}
-                >
-                  Import
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsSidebarOpen(false)}
-                  title="Hide matters list"
-                  className="button-secondary"
-                  style={{
-                    padding: "6px 8px",
-                    fontSize: "12px",
-                    borderRadius: "8px",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                    <line x1="9" y1="3" x2="9" y2="21" />
-                    <path d="M14 9l-3 3 3 3" />
-                  </svg>
-                </button>
-              </div>
-            </div>
 
-            <div className="field" style={{ marginBottom: 10 }}>
-              <input
-                type="text"
-                placeholder="Search case number or title..."
-                value={matterSearch}
-                onChange={(e) => setMatterSearch(e.target.value)}
-                style={{ padding: "8px 12px", fontSize: "14px" }}
-              />
-            </div>
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "4px",
-              backgroundColor: "rgba(0, 0, 0, 0.03)",
-              padding: "4px",
-              borderRadius: "10px",
-              border: "1px solid var(--border)",
-              marginBottom: 16
-            }}>
-              <button
-                className="button-secondary"
-                style={{
-                  flex: 1,
-                  padding: "6px 0",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  borderRadius: "6px",
-                  border: "none",
-                  backgroundColor: matterStatusFilter === "all" ? "#ffffff" : "transparent",
-                  color: matterStatusFilter === "all" ? "var(--primary)" : "var(--text-secondary)",
-                  cursor: "pointer",
-                  boxShadow: matterStatusFilter === "all" ? "0 2px 6px rgba(0, 0, 0, 0.05)" : "none",
-                  transition: "all 0.2s ease",
-                  textAlign: "center",
-                }}
-                onClick={() => setMatterStatusFilter("all")}
-              >
-                All
-              </button>
-              <button
-                className="button-secondary"
-                style={{
-                  flex: 1,
-                  padding: "6px 0",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  borderRadius: "6px",
-                  border: "none",
-                  backgroundColor: matterStatusFilter === "open" ? "#ffffff" : "transparent",
-                  color: matterStatusFilter === "open" ? "var(--primary)" : "var(--text-secondary)",
-                  cursor: "pointer",
-                  boxShadow: matterStatusFilter === "open" ? "0 2px 6px rgba(0, 0, 0, 0.05)" : "none",
-                  transition: "all 0.2s ease",
-                  textAlign: "center",
-                }}
-                onClick={() => setMatterStatusFilter("open")}
-              >
-                Open
-              </button>
-              <button
-                className="button-secondary"
-                style={{
-                  flex: 1,
-                  padding: "6px 0",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  borderRadius: "6px",
-                  border: "none",
-                  backgroundColor: matterStatusFilter === "closed" ? "#ffffff" : "transparent",
-                  color: matterStatusFilter === "closed" ? "var(--primary)" : "var(--text-secondary)",
-                  cursor: "pointer",
-                  boxShadow: matterStatusFilter === "closed" ? "0 2px 6px rgba(0, 0, 0, 0.05)" : "none",
-                  transition: "all 0.2s ease",
-                  textAlign: "center",
-                }}
-                onClick={() => setMatterStatusFilter("closed")}
-              >
-                Closed
-              </button>
-            </div>
+      {!selectedMatter && isSidebarOpen ? renderMattersSidebar(false) : null}
 
-            <div className="case-list" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {matters
-                .filter((matter) => {
-                  const matchesSearch =
-                    matter.rawCaseNumber.toLowerCase().includes(matterSearch.toLowerCase()) ||
-                    matter.title.toLowerCase().includes(matterSearch.toLowerCase());
-                  const matchesStatus =
-                    matterStatusFilter === "all" ||
-                    (matterStatusFilter === "open" && matter.status === "open") ||
-                    (matterStatusFilter === "closed" &&
-                      (matter.status === "closed" || matter.status === "on_hold"));
-                  return matchesSearch && matchesStatus;
-                })
-                .map((matter) => {
-                  const isSelected = selectedMatter?.id === matter.id;
-                  return (
-                    <button
-                      key={matter.id}
-                      className="case-card"
-                      type="button"
-                      onClick={() => void openMatter(matter.id)}
-                      style={{
-                        textAlign: "left",
-                        cursor: "pointer",
-                        border: isSelected ? "1px solid var(--primary)" : "1px solid var(--border)",
-                        borderLeft: isSelected ? "4px solid var(--primary)" : "4px solid rgba(0, 0, 0, 0.08)",
-                        backgroundColor: isSelected ? "rgba(15, 110, 86, 0.04)" : "var(--surface)",
-                        width: "100%",
-                        padding: "16px",
-                        borderRadius: "14px",
-                        transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
-                        transform: isSelected ? "translateX(2px)" : "none",
-                        boxShadow: isSelected ? "0 4px 12px rgba(15, 110, 86, 0.05)" : "none",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.transform = isSelected ? "translateX(4px)" : "translateY(-1px)";
-                        e.currentTarget.style.boxShadow = "0 6px 16px rgba(15, 110, 86, 0.06)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.transform = isSelected ? "translateX(2px)" : "none";
-                        e.currentTarget.style.boxShadow = isSelected ? "0 4px 12px rgba(15, 110, 86, 0.05)" : "none";
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                        <strong style={{ fontSize: "14px", color: "var(--text-primary)" }}>{matter.rawCaseNumber}</strong>
-                        <span className={getStageBadgeClass(matter.stage)} style={{ fontSize: "9px", padding: "2px 6px" }}>
-                          {matter.stage.replace(/_/g, " ").toUpperCase()}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: 8, lineHeight: "1.4", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-                        {matter.title}
-                      </div>
-                      <div className="muted" style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "11px", borderTop: "1px solid rgba(0,0,0,0.03)", paddingTop: "8px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2.5" style={{ opacity: 0.85 }}>
-                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                          </svg>
-                          <span style={{ textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
-                            {courtLabel(matter.courtId)}
-                          </span>
-                        </div>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2.5" style={{ opacity: 0.85 }}>
-                              <circle cx="12" cy="12" r="10" />
-                              <polyline points="12 6 12 12 16 14" />
-                            </svg>
-                            <span>
-                              {matter.nextHearingAt ? `Next: ${formatDateTime(matter.nextHearingAt)}` : "No upcoming hearings"}
-                            </span>
-                          </div>
-                          <span className={`badge ${matter.status === "open" ? "live" : "conflict"}`} style={{ fontSize: "9px", padding: "2px 8px" }}>
-                            {matter.status.toUpperCase()}
-                          </span>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-            </div>
-          </aside>
-        </div>
-      )}
+      {selectedMatter && isSidebarOpen ? (
+        <div className="matters-roster-column">{renderMattersSidebar(true)}</div>
+      ) : null}
 
-      {/* Right Column: Active Matter Workspace */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-        {selectedMatter ? (
-          <section className="grid" style={{ gap: "20px" }}>
-            {/* Matter Detail Header Card */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "20px", minHeight: 0 }}>
+      {selectedMatter ? (
+        <>
             <div
               className="panel"
               style={{
@@ -664,7 +795,7 @@ export default function MattersSection({
             </div>
 
             {/* Sub-Navigation Tabs Menu (Segment-control style) */}
-            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", width: "100%", marginTop: "12px", marginBottom: "16px", paddingTop: "4px" }}>
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", width: "100%", marginBottom: "4px" }}>
               <div style={{
                 display: "flex",
                 alignItems: "center",
@@ -748,7 +879,7 @@ export default function MattersSection({
             </div>
 
             {/* Tab Contents */}
-            <div className="tab-content" style={{ marginTop: 0 }}>
+            <div className="tab-content" style={{ marginTop: 0, minHeight: 0 }}>
               {activeTab === "hearings" && (
                 <div className="panel" style={{ padding: "24px", position: "relative" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
@@ -1357,20 +1488,27 @@ export default function MattersSection({
                 </div>
               )}
             </div>
-          </section>
-        ) : (
-          <section className="panel" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "400px" }}>
-            <div className="muted" style={{ textAlign: "center", fontSize: "16px", fontWeight: 500 }}>
-              Select a matter to view details.
-            </div>
-          </section>
-        )}
+        </>
+      ) : (
+        <section className="panel" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "400px" }}>
+          <div className="muted" style={{ textAlign: "center", fontSize: "16px", fontWeight: 500 }}>
+            Select a matter to view details.
+          </div>
+        </section>
+      )}
       </div>
 
       {/* Reusable Dialog Modals */}
       {/* 1. Add Matter Modal */}
       {isAddOpen && (
-        <div style={modalOverlayStyle} onClick={() => setIsAddOpen(false)}>
+        <div
+          style={modalOverlayStyle}
+          onClick={() => {
+            createMatterAbortRef.current?.abort();
+            setCreateMatterError(null);
+            setIsAddOpen(false);
+          }}
+        >
           <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
               <h2 style={{ marginTop: 0, marginBottom: 0, fontSize: "22px", fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>New Matter</h2>
@@ -1453,11 +1591,17 @@ export default function MattersSection({
                 />
               </div>
             </div>
+            <FormErrorBanner message={createMatterError} />
             <div className="actions" style={{ display: "flex", gap: "12px", marginTop: "24px" }}>
               <button
                 className="button-secondary"
                 type="button"
-                onClick={() => setIsAddOpen(false)}
+                disabled={isCreatingMatter}
+                onClick={() => {
+                  createMatterAbortRef.current?.abort();
+                  setCreateMatterError(null);
+                  setIsAddOpen(false);
+                }}
                 style={{ flex: 1, padding: "14px" }}
               >
                 Cancel
@@ -1465,13 +1609,11 @@ export default function MattersSection({
               <button
                 className="button"
                 type="button"
-                onClick={() => {
-                  createMatter();
-                  setIsAddOpen(false);
-                }}
+                disabled={isCreatingMatter}
+                onClick={() => void handleCreateMatter()}
                 style={{ flex: 1, padding: "14px" }}
               >
-                Create Matter
+                {isCreatingMatter ? "Creating..." : "Create Matter"}
               </button>
             </div>
           </div>
@@ -1630,7 +1772,14 @@ export default function MattersSection({
 
       {/* 3. Edit Matter Modal */}
       {isEditOpen && selectedMatter && (
-        <div style={modalOverlayStyle} onClick={() => setIsEditOpen(false)}>
+        <div
+          style={modalOverlayStyle}
+          onClick={() => {
+            saveMatterAbortRef.current?.abort();
+            setSaveMatterError(null);
+            setIsEditOpen(false);
+          }}
+        >
           <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
               <h2 style={{ marginTop: 0, marginBottom: 0, fontSize: "22px", fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>Edit Matter</h2>
@@ -1744,11 +1893,17 @@ export default function MattersSection({
                 />
               </div>
             </div>
+            <FormErrorBanner message={saveMatterError} />
             <div className="actions" style={{ display: "flex", gap: "12px", marginTop: "24px" }}>
               <button
                 className="button-secondary"
                 type="button"
-                onClick={() => setIsEditOpen(false)}
+                disabled={isSavingMatter}
+                onClick={() => {
+                  saveMatterAbortRef.current?.abort();
+                  setSaveMatterError(null);
+                  setIsEditOpen(false);
+                }}
                 style={{ flex: 1, padding: "14px" }}
               >
                 Cancel
@@ -1756,13 +1911,11 @@ export default function MattersSection({
               <button
                 className="button"
                 type="button"
-                onClick={() => {
-                  saveMatter();
-                  setIsEditOpen(false);
-                }}
+                disabled={isSavingMatter}
+                onClick={() => void handleSaveMatter()}
                 style={{ flex: 1, padding: "14px" }}
               >
-                Save Changes
+                {isSavingMatter ? "Saving..." : "Save Changes"}
               </button>
             </div>
           </div>
@@ -1866,7 +2019,14 @@ export default function MattersSection({
 
       {/* 5. Capture Hearing Modal */}
       {isCaptureHearingOpen && (
-        <div style={modalOverlayStyle} onClick={() => setIsCaptureHearingOpen(false)}>
+        <div
+          style={modalOverlayStyle}
+          onClick={() => {
+            captureHearingAbortRef.current?.abort();
+            setCaptureHearingError(null);
+            setIsCaptureHearingOpen(false);
+          }}
+        >
           <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <h2 style={{ marginTop: 0, marginBottom: 0, fontSize: "22px", fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>Capture Hearing</h2>
@@ -2040,11 +2200,17 @@ export default function MattersSection({
               </div>
             </div>
 
+            <FormErrorBanner message={captureHearingError} />
             <div className="actions" style={{ display: "flex", gap: "12px", marginTop: "24px" }}>
               <button
                 className="button-secondary"
                 type="button"
-                onClick={() => setIsCaptureHearingOpen(false)}
+                disabled={isCapturingHearing}
+                onClick={() => {
+                  captureHearingAbortRef.current?.abort();
+                  setCaptureHearingError(null);
+                  setIsCaptureHearingOpen(false);
+                }}
                 style={{ flex: 1, padding: "14px" }}
               >
                 Cancel
@@ -2052,13 +2218,11 @@ export default function MattersSection({
               <button
                 className="button"
                 type="button"
-                onClick={() => {
-                  captureHearing();
-                  setIsCaptureHearingOpen(false);
-                }}
+                disabled={isCapturingHearing}
+                onClick={() => void handleCaptureHearing()}
                 style={{ flex: 1, padding: "14px" }}
               >
-                Save Hearing Update
+                {isCapturingHearing ? "Saving..." : "Save Hearing Update"}
               </button>
             </div>
             {hearingStatus ? (
@@ -2081,7 +2245,14 @@ export default function MattersSection({
 
       {/* 6. Document Upload Modal */}
       {isUploadDocOpen && (
-        <div style={modalOverlayStyle} onClick={() => setIsUploadDocOpen(false)}>
+        <div
+          style={modalOverlayStyle}
+          onClick={() => {
+            uploadDocumentAbortRef.current?.abort();
+            setUploadDocumentError(null);
+            setIsUploadDocOpen(false);
+          }}
+        >
           <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <h2 style={{ marginTop: 0, marginBottom: 0, fontSize: "22px", fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>Upload Private Document</h2>
@@ -2209,11 +2380,17 @@ export default function MattersSection({
               Share with Linked Client(s)
             </label>
 
+            <FormErrorBanner message={uploadDocumentError} />
             <div className="actions" style={{ display: "flex", gap: "12px", marginTop: "24px" }}>
               <button
                 className="button-secondary"
                 type="button"
-                onClick={() => setIsUploadDocOpen(false)}
+                disabled={isUploadingDocument}
+                onClick={() => {
+                  uploadDocumentAbortRef.current?.abort();
+                  setUploadDocumentError(null);
+                  setIsUploadDocOpen(false);
+                }}
                 style={{ flex: 1, padding: "14px" }}
               >
                 Cancel
@@ -2221,14 +2398,11 @@ export default function MattersSection({
               <button
                 className="button"
                 type="button"
-                disabled={!documentFile}
-                onClick={() => {
-                  uploadDocument();
-                  setIsUploadDocOpen(false);
-                }}
+                disabled={!documentFile || isUploadingDocument}
+                onClick={() => void handleUploadDocument()}
                 style={{ flex: 1, padding: "14px" }}
               >
-                Upload Document
+                {isUploadingDocument ? "Uploading..." : "Upload Document"}
               </button>
             </div>
           </div>

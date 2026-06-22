@@ -866,7 +866,7 @@ export default function ProductStaffPage() {
     await openMatter(selectedMatter.id, response.auth);
   }
 
-  async function captureHearing() {
+  async function captureHearing(signal?: AbortSignal) {
     if (!auth || !selectedMatter) {
       return;
     }
@@ -886,6 +886,7 @@ export default function ProductStaffPage() {
     const payload = await authedRequest(`/v1/matters/${selectedMatter.id}/hearings`, {
       method: "POST",
       body: form,
+      signal,
     }, auth);
 
     setHearingStatus(`Saved hearing update for ${selectedMatter.rawCaseNumber}.`);
@@ -897,7 +898,7 @@ export default function ProductStaffPage() {
     await loadWorkspace(payload.auth);
   }
 
-  async function createMatter() {
+  async function createMatter(signal?: AbortSignal) {
     if (!auth) return;
     const courtId = newMatter.courtId;
     const rawCaseNumber = newMatter.rawCaseNumber.trim();
@@ -905,35 +906,30 @@ export default function ProductStaffPage() {
     const nextHearingAt = newMatter.nextHearingAt;
 
     if (!courtId || !rawCaseNumber || !title || !nextHearingAt) {
-      setOperationStatus("All fields (Court, Case number, Title, and Next Date) are required.");
-      return;
+      throw new Error("All fields (Court, Case number, Title, and Next Date) are required.");
     }
 
     const caseNumberRegex = /^[A-Za-z .&()'-]+\s*\d+\s*\/\s*\d{4}$/;
     if (!caseNumberRegex.test(rawCaseNumber)) {
-      setOperationStatus("Case number must be in format: Type Number/Year (e.g., WP 123/2026 or C.R. 45/2025).");
-      return;
+      throw new Error("Case number must be in format: Type Number/Year (e.g., WP 123/2026 or C.R. 45/2025).");
     }
 
-    try {
-      const response = await authedRequest<{ matter: MatterListItem }>("/v1/matters", {
-        method: "POST",
-        body: JSON.stringify({
-          ...newMatter,
-          rawCaseNumber,
-          title,
-          nextHearingAt: nextHearingAt || null,
-          matterType: "litigation",
-          stage: "new",
-          status: "open",
-        }),
-      }, auth);
-      setNewMatter({ courtId: "ihc", rawCaseNumber: "", title: "", nextHearingAt: "" });
-      setOperationStatus(`Created ${response.data.matter.rawCaseNumber}.`);
-      await loadWorkspace(response.auth);
-    } catch (err: any) {
-      setOperationStatus(err.message || "Failed to create matter. Please check inputs.");
-    }
+    const response = await authedRequest<{ matter: MatterListItem }>("/v1/matters", {
+      method: "POST",
+      body: JSON.stringify({
+        ...newMatter,
+        rawCaseNumber,
+        title,
+        nextHearingAt: nextHearingAt || null,
+        matterType: "litigation",
+        stage: "new",
+        status: "open",
+      }),
+      signal,
+    }, auth);
+    setNewMatter({ courtId: "ihc", rawCaseNumber: "", title: "", nextHearingAt: "" });
+    setOperationStatus(`Created ${response.data.matter.rawCaseNumber}.`);
+    await loadWorkspace(response.auth);
   }
 
   async function previewCsvImport() {
@@ -979,23 +975,20 @@ export default function ProductStaffPage() {
     window.URL.revokeObjectURL(url);
   }
 
-  async function saveMatter(patch = matterDraft) {
+  async function saveMatter(patch = matterDraft, signal?: AbortSignal) {
     if (!auth || !selectedMatter) return;
 
-    // Validate fields
     const courtId = patch.courtId;
     const rawCaseNumber = patch.rawCaseNumber ? patch.rawCaseNumber.trim() : "";
     const title = patch.title ? patch.title.trim() : "";
 
     if (!courtId || !rawCaseNumber || !title) {
-      setOperationStatus("Court, Case number, and Title are required.");
-      return;
+      throw new Error("Court, Case number, and Title are required.");
     }
 
     const caseNumberRegex = /^[A-Za-z .&()'-]+\s*\d+\s*\/\s*\d{4}$/;
     if (!caseNumberRegex.test(rawCaseNumber)) {
-      setOperationStatus("Case number must be in format: Type Number/Year (e.g., WP 123/2026 or C.R. 45/2025).");
-      return;
+      throw new Error("Case number must be in format: Type Number/Year (e.g., WP 123/2026 or C.R. 45/2025).");
     }
 
     const response = await authedRequest<{ matter: MatterListItem }>(`/v1/matters/${selectedMatter.id}`, {
@@ -1006,6 +999,7 @@ export default function ProductStaffPage() {
         title,
         nextHearingAt: patch.nextHearingAt || null,
       }),
+      signal,
     }, auth);
     setOperationStatus(`Updated ${response.data.matter.rawCaseNumber}.`);
     await loadWorkspace(response.auth);
@@ -1015,7 +1009,7 @@ export default function ProductStaffPage() {
     await saveMatter({ ...matterDraft, status: "closed" });
   }
 
-  async function uploadDocument() {
+  async function uploadDocument(signal?: AbortSignal) {
     if (!auth || !selectedMatter || !documentFile) return;
     const form = new FormData();
     form.set("matterId", selectedMatter.id);
@@ -1023,7 +1017,7 @@ export default function ProductStaffPage() {
     form.set("title", documentUpload.title.trim() || documentFile.name);
     form.set("portalVisible", String(documentUpload.portalVisible));
     form.set("file", documentFile);
-    const response = await authedRequest("/v1/documents", { method: "POST", body: form }, auth);
+    const response = await authedRequest("/v1/documents", { method: "POST", body: form, signal }, auth);
     setDocumentUpload({ title: "", type: "hearing_order", portalVisible: false });
     setDocumentFile(null);
     setOperationStatus("Document uploaded successfully.");

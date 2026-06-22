@@ -1,44 +1,32 @@
-import { DatabaseSync } from "node:sqlite";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { createPrivateObjectStorage } from "./lib/storage.js";
+
+import { Pool } from "pg";
+import { DatabaseSync } from "node:sqlite";
+
+import { envFlag } from "./lib/config.js";
 import { readLegalSeedAsset } from "./lib/product-store.js";
+import { createPrivateObjectStorage } from "./lib/storage.js";
 
-async function runMigration() {
-  console.log("Starting document R2 migration...");
+interface SeedDocumentRow {
+  id: string;
+  title: string;
+  storage_key: string;
+  mime_type: string | null;
+}
 
-  // Detect SQLite database path
-  let dbPath = join(process.cwd(), "data", "legalbahi-product.sqlite");
-  if (!existsSync(dbPath)) {
-    dbPath = join(process.cwd(), "apps", "api", "data", "legalbahi-product.sqlite");
-  }
-  if (!existsSync(dbPath)) {
-    console.error("Error: Could not locate legalbahi-product.sqlite database file!");
-    process.exit(1);
-  }
-
-  console.log("Connecting to database:", dbPath);
-  const db = new DatabaseSync(dbPath);
-
-  // 1. Delete client-uploaded document (added from user side)
-  console.log("Deleting client-uploaded documents...");
-  const deleteResult = db.prepare("DELETE FROM documents WHERE uploaded_by LIKE 'client-%' OR id = '5c481fbc-ea1d-4da3-938d-86477ddef2f8'").run();
-  console.log(`Deleted ${deleteResult.changes} client-uploaded document(s).`);
-
-  // 2. Fetch seed documents to migrate to R2
-  const seedDocs = db.prepare("SELECT id, title, storage_key, mime_type FROM documents WHERE storage_key LIKE 'seed:%'").all() as any[];
-  console.log(`Found ${seedDocs.length} seed document(s) to migrate to R2.`);
-
+async function migrateSeedDocuments(
+  seedDocs: SeedDocumentRow[],
+  updateStorageKey: (id: string, storageKey: string) => Promise<void>,
+): Promise<void> {
   if (seedDocs.length === 0) {
     console.log("No seed documents require migration. Done.");
     return;
   }
 
-  // 3. Initialize R2 storage
   console.log("Initializing R2 storage...");
   const r2Storage = createPrivateObjectStorage();
 
-  // 4. Upload each seed document to R2 and update storage key in DB
   for (const doc of seedDocs) {
     console.log(`Migrating '${doc.title}' (${doc.storage_key})...`);
     const seedAsset = readLegalSeedAsset(doc.storage_key);
@@ -51,27 +39,65 @@ async function runMigration() {
       const newStorageKey = await r2Storage.put({
         fileName: doc.title,
         bytes: seedAsset.bytes,
-        contentType: doc.mimeType || seedAsset.contentType,
+        contentType: doc.mime_type || seedAsset.contentType,
       });
-
       console.log(`Successfully uploaded. New R2 storage key: ${newStorageKey}`);
-
-      // Update in DB
-      const updateResult = db.prepare("UPDATE documents SET storage_key = ? WHERE id = ?").run(newStorageKey, doc.id);
-      if (updateResult.changes > 0) {
-        console.log(`Updated document record id '${doc.id}' to storage key '${newStorageKey}' in DB.`);
-      } else {
-        console.error(`Error: Failed to update document record id '${doc.id}' in DB.`);
-      }
-    } catch (err: any) {
-      console.error(`Error: Failed to migrate '${doc.title}':`, err.message);
+      await updateStorageKey(doc.id, newStorageKey);
+      console.log(`Updated document record id '${doc.id}' to storage key '${newStorageKey}'.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Error: Failed to migrate '${doc.title}': ${message}`);
     }
   }
+}
 
+async function runMigration(): Promise<void> {
+  console.log("Starting document R2 migration...");
+
+  const usePostgres = envFlag("USE_POSTGRES_PRODUCT_STORE") || Boolean(process.env.DATABASE_URL?.startsWith("postgres"));
+  if (usePostgres) {
+    const databaseUrl = process.env.DATABASE_URL;
+    if (!databaseUrl) {
+      throw new Error("DATABASE_URL is required for Postgres seed document migration");
+    }
+    const pool = new Pool({ connectionString: databaseUrl });
+    try {
+      const result = await pool.query(
+        "SELECT id, title, storage_key, mime_type FROM documents WHERE storage_key LIKE 'seed:%'",
+      );
+      const seedDocs = result.rows as SeedDocumentRow[];
+      console.log(`Found ${seedDocs.length} seed document(s) to migrate to R2.`);
+      await migrateSeedDocuments(seedDocs, async (id, storageKey) => {
+        await pool.query("UPDATE documents SET storage_key = $1 WHERE id = $2", [storageKey, id]);
+      });
+    } finally {
+      await pool.end();
+    }
+    console.log("Migration completed successfully.");
+    return;
+  }
+
+  let dbPath = join(process.cwd(), "data", "legalbahi-product.sqlite");
+  if (!existsSync(dbPath)) {
+    dbPath = join(process.cwd(), "apps", "api", "data", "legalbahi-product.sqlite");
+  }
+  if (!existsSync(dbPath)) {
+    throw new Error("Could not locate legalbahi-product.sqlite database file");
+  }
+
+  console.log("Connecting to database:", dbPath);
+  const db = new DatabaseSync(dbPath);
+  const seedDocs = db.prepare(
+    "SELECT id, title, storage_key, mime_type FROM documents WHERE storage_key LIKE 'seed:%'",
+  ).all() as SeedDocumentRow[];
+  console.log(`Found ${seedDocs.length} seed document(s) to migrate to R2.`);
+  await migrateSeedDocuments(seedDocs, async (id, storageKey) => {
+    db.prepare("UPDATE documents SET storage_key = ? WHERE id = ?").run(storageKey, id);
+  });
   console.log("Migration completed successfully.");
 }
 
-runMigration().catch((err) => {
-  console.error("Fatal migration error:", err);
+runMigration().catch((error) => {
+  console.error("Fatal migration error:", error);
   process.exit(1);
 });

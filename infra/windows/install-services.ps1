@@ -13,6 +13,7 @@ if (-not (Test-Path $EnvironmentFile)) {
   throw "Production environment file was not found at $EnvironmentFile"
 }
 . "$PSScriptRoot\validate-production.ps1" -EnvironmentFile $EnvironmentFile -Root $Root -ValidateCaddy
+$InvestorStaging = $env:INVESTOR_STAGING -eq "true"
 $BuildMarker = Join-Path $Root "apps\web\.next\legalbahi-production-api.txt"
 if (-not (Test-Path $BuildMarker) -or (Get-Content $BuildMarker -Raw).Trim() -ne $env:NEXT_PUBLIC_API_URL) {
   throw "Production web build is missing or was built for a different API URL; run infra\windows\build-web.ps1"
@@ -36,11 +37,13 @@ $Environment["PORT"] = "3001"
 
 $Required = @(
   "JWT_SECRET", "CORS_ORIGINS", "DATABASE_URL", "PUBLIC_API_URL", "PUBLIC_WEB_URL",
-  "PILOT_ADMIN_SECRET", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_SMS_FROM",
-  "RESEND_API_KEY", "RESEND_FROM_EMAIL", "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID",
+  "PILOT_ADMIN_SECRET", "RESEND_API_KEY", "RESEND_FROM_EMAIL", "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID",
   "R2_SECRET_ACCESS_KEY", "R2_DOCUMENT_BUCKET", "R2_BACKUP_BUCKET", "SENTRY_DSN",
   "IHC_SYNC_ENABLED"
 )
+if (-not $InvestorStaging) {
+  $Required += @("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_SMS_FROM")
+}
 $Missing = $Required | Where-Object { -not $Environment.ContainsKey($_) -or -not $Environment[$_].Trim() }
 if ($Missing.Count -gt 0) {
   throw "Missing required production environment variables: $($Missing -join ', ')"
@@ -62,8 +65,9 @@ $RuntimeNames = @(
   "PILOT_ADMIN_SECRET", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_SMS_FROM",
   "RESEND_API_KEY", "RESEND_FROM_EMAIL", "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY",
   "R2_DOCUMENT_BUCKET", "R2_BACKUP_BUCKET", "BACKUP_AGE_RECIPIENT", "SENTRY_DSN", "IHC_SYNC_ENABLED",
-  "IHC_SYNC_INTERVAL_MINUTES", "TRUST_PROXY_LOOPBACK", "POSTGRES_SSL", "POSTGRES_POOL_SIZE",
-  "POSTGRES_STATEMENT_TIMEOUT_MS", "GOOGLE_CLOUD_VISION_API_KEY", "ENABLE_DEMO_SURFACES", "ENABLE_PRODUCT_SEED_DATA"
+  "IHC_SYNC_INTERVAL_MINUTES", "TRUST_PROXY_LOOPBACK", "UPTIME_SECRET", "POSTGRES_SSL", "POSTGRES_POOL_SIZE",
+  "POSTGRES_STATEMENT_TIMEOUT_MS", "GOOGLE_CLOUD_VISION_API_KEY", "ENABLE_DEMO_SURFACES", "ENABLE_PRODUCT_SEED_DATA",
+  "INVESTOR_STAGING", "WAKEEL_DEV_OTP_CODE", "USE_POSTGRES_PRODUCT_STORE", "MALWARE_SCAN_ENABLED", "MALWARE_SCAN_PROVIDER"
 )
 $RuntimeEnvironment = @{}
 foreach ($Name in $RuntimeNames) {
@@ -90,20 +94,22 @@ $WebEnvironmentEntries = ConvertTo-EnvironmentEntries $WebEnvironment
 function Install-LegalBahiService {
   param(
     [string]$Name,
+    [string]$Application = "C:\Program Files\nodejs\npm.cmd",
     [string]$Arguments,
+    [string]$AppDirectory = $Root,
     [string[]]$EnvironmentEntries
   )
 
   if (-not (Get-Service -Name $Name -ErrorAction SilentlyContinue)) {
-    & $Nssm install $Name "C:\Program Files\nodejs\npm.cmd" $Arguments
+    & $Nssm install $Name $Application $Arguments
     if ($LASTEXITCODE -ne 0) { throw "NSSM failed to install $Name" }
   } else {
-    & $Nssm set $Name Application "C:\Program Files\nodejs\npm.cmd"
+    & $Nssm set $Name Application $Application
     if ($LASTEXITCODE -ne 0) { throw "NSSM failed to set the $Name application" }
     & $Nssm set $Name AppParameters $Arguments
     if ($LASTEXITCODE -ne 0) { throw "NSSM failed to set the $Name arguments" }
   }
-  & $Nssm set $Name AppDirectory $Root
+  & $Nssm set $Name AppDirectory $AppDirectory
   if ($LASTEXITCODE -ne 0) { throw "NSSM failed to set the $Name directory" }
   & $Nssm set $Name AppEnvironmentExtra $EnvironmentEntries
   if ($LASTEXITCODE -ne 0) { throw "NSSM failed to set the $Name environment" }
@@ -130,15 +136,16 @@ function Install-LegalBahiService {
   if ($LASTEXITCODE -ne 0) { throw "NSSM failed to set log rotation size for $Name" }
 }
 
-Install-LegalBahiService -Name "LegalBahiApi" -Arguments "--workspace @wakeel/api run start" -EnvironmentEntries $ApiEnvironmentEntries
-Install-LegalBahiService -Name "LegalBahiWorker" -Arguments "--workspace @wakeel/api run worker" -EnvironmentEntries $ApiEnvironmentEntries
+$NodeExe = "C:\Program Files\nodejs\node.exe"
+$ApiDirectory = Join-Path $Root "apps\api"
+
+Install-LegalBahiService -Name "LegalBahiApi" -Application $NodeExe -Arguments "--import tsx src/server.ts" -AppDirectory $ApiDirectory -EnvironmentEntries $ApiEnvironmentEntries
+Install-LegalBahiService -Name "LegalBahiWorker" -Application $NodeExe -Arguments "--import tsx src/worker.ts" -AppDirectory $ApiDirectory -EnvironmentEntries $ApiEnvironmentEntries
 Install-LegalBahiService -Name "LegalBahiWeb" -Arguments "--workspace @wakeel/web run start" -EnvironmentEntries $WebEnvironmentEntries
 
 foreach ($Name in @("LegalBahiApi", "LegalBahiWorker", "LegalBahiWeb")) {
-  $Service = Get-Service -Name $Name
-  if ($Service.Status -eq "Running") {
-    Restart-Service -Name $Name -Force
-  } else {
-    Start-Service -Name $Name
-  }
+  & $Nssm stop $Name 2>$null | Out-Null
+  Start-Sleep -Seconds 2
+  & $Nssm start $Name
+  if ($LASTEXITCODE -ne 0) { throw "NSSM failed to start $Name" }
 }

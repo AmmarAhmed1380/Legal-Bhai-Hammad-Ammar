@@ -35,7 +35,7 @@ export function registerMatterRoutes(ctx: ProductRouteContext): void {
     if (!session) {
       return { error: "Unauthorized" };
     }
-    return { matters: await store.listMatters(session) };
+    return { matters: await store.listMatterRoster(session) };
   });
 
   app.post("/v1/matters", { schema: { body: bodyCreateMatter } }, async (request, reply) => {

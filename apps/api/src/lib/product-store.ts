@@ -17,6 +17,7 @@ import type {
   Invoice,
   Matter,
   MatterParty,
+  MatterRosterSummary,
   Message,
   MessageThread,
   PortalLink,
@@ -47,7 +48,7 @@ import type {
   StoredDocumentRow,
 } from "../store/types.js";
 import { decodeJson, encodeJson, hashValue, nowIso } from "../store/utils.js";
-import { envFlag, isProduction } from "./config.js";
+import { envFlag, isProduction, shouldExposeDevOtpCode } from "./config.js";
 import {
   getCourtSourceDefinition,
   normalizeCourtCaseNumber,
@@ -1253,7 +1254,7 @@ export class ProductStore {
 
     return {
       expiresAt,
-      devCode: process.env.NODE_ENV === "production" ? null : code,
+      devCode: shouldExposeDevOtpCode() ? code : null,
     };
   }
 
@@ -2481,18 +2482,26 @@ export class ProductStore {
       return null;
     }
 
-    const matters = this.listMatters(session);
-    const alerts = this.listAlerts(session);
+    const firmId = session.firmId;
+    const openMatters = Number(
+      (this.db.prepare(`SELECT COUNT(*) AS count FROM matters WHERE firm_id = ? AND status = 'open'`).get(firmId) as { count: number }).count,
+    );
+    const upcomingHearings = Number(
+      (this.db.prepare(
+        `SELECT COUNT(*) AS count FROM matters WHERE firm_id = ? AND next_hearing_at IS NOT NULL AND next_hearing_at > ?`,
+      ).get(firmId, nowIso()) as { count: number }).count,
+    );
+    const unreadAlerts = Number(
+      (this.db.prepare(`SELECT COUNT(*) AS count FROM alerts WHERE firm_id = ? AND read_at IS NULL`).get(firmId) as { count: number }).count,
+    );
+    const stageRows = this.db
+      .prepare(`SELECT stage, COUNT(*) AS count FROM matters WHERE firm_id = ? GROUP BY stage`)
+      .all(firmId) as Array<{ stage: string; count: number }>;
+
     const invoices = this.listInvoices(session);
     const timeEntries = this.listTimeEntries(session);
     const syncHealth = this.listCourtSources();
     const now = Date.now();
-    const upcomingBoundary = now + 7 * 24 * 60 * 60 * 1000;
-    const stageCounts = new Map<string, number>();
-
-    for (const matter of matters) {
-      stageCounts.set(matter.stage, (stageCounts.get(matter.stage) ?? 0) + 1);
-    }
 
     const outstandingInvoiceTotal = invoices
       .filter((invoice) => invoice.status === "draft" || invoice.status === "issued")
@@ -2504,21 +2513,15 @@ export class ProductStore {
 
     return {
       metrics: {
-        openMatters: matters.filter((matter) => matter.status === "open").length,
-        upcomingHearings: matters.filter((matter) => {
-          if (!matter.nextHearingAt) {
-            return false;
-          }
-          const hearingTime = new Date(matter.nextHearingAt).getTime();
-          return hearingTime > now;
-        }).length,
-        unreadAlerts: alerts.filter((alert) => !alert.readAt).length,
+        openMatters,
+        upcomingHearings,
+        unreadAlerts,
         outstandingInvoiceTotal,
         overdueInvoiceTotal,
         billableMinutes: timeEntries.filter((entry) => entry.billable).reduce((sum, entry) => sum + entry.minutes, 0),
       },
-      mattersByStage: Array.from(stageCounts.entries())
-        .map(([stage, count]) => ({ stage, count }))
+      mattersByStage: stageRows
+        .map((row) => ({ stage: row.stage, count: Number(row.count) }))
         .sort((left, right) => right.count - left.count),
       syncHealth,
     };
@@ -3378,12 +3381,12 @@ export class ProductStore {
     };
   }
 
-  listPortalMattersForAccess(rawToken: string, portalLinkId: string): Matter[] {
+  listPortalMattersForAccess(rawToken: string, portalLinkId: string): MatterRosterSummary[] {
     const access = this.getPortalAccess(rawToken);
     if (!access || access.link.id !== portalLinkId) {
       return [];
     }
-    return this.listMatters(access.session);
+    return this.listMatterRoster(access.session);
   }
 
   getPortalMatterForAccess(rawToken: string, portalLinkId: string, matterId: string): MatterDetail | null {

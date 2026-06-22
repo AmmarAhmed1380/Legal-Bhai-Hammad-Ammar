@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { Matter, MatterParty, ProductSession } from "@wakeel/shared";
+import type { Matter, MatterParty, MatterRosterSummary, ProductSession } from "@wakeel/shared";
 import { normalizeCourtCaseNumber } from "../../lib/court-sources.js";
 import type { ValidatedMatterCsvRow } from "../../lib/csv-import.js";
 
@@ -8,7 +8,47 @@ import type { CreateMatterInput, CsvImportPreview, MatterDetail } from "../types
 import { decodeJson, encodeJson, nowIso } from "../utils.js";
 import type { SqliteStoreCore } from "./core.js";
 
+const matterRosterSelect = `
+  id,
+  court_id AS courtId,
+  raw_case_number AS rawCaseNumber,
+  title,
+  stage,
+  status,
+  next_hearing_at AS nextHearingAt
+`;
+
 export const matterMethods = {
+  listMatterRoster(this: SqliteStoreCore, session: ProductSession): MatterRosterSummary[] {
+    if (session.actorType === "staff") {
+      return this.db
+        .prepare(`
+          SELECT ${matterRosterSelect}
+          FROM matters
+          WHERE firm_id = ?
+          ORDER BY next_hearing_at IS NULL, next_hearing_at, title
+        `)
+        .all(session.firmId) as unknown as MatterRosterSummary[];
+    }
+
+    return this.db
+      .prepare(`
+        SELECT
+          m.id,
+          m.court_id AS courtId,
+          m.raw_case_number AS rawCaseNumber,
+          m.title,
+          m.stage,
+          m.status,
+          m.next_hearing_at AS nextHearingAt
+        FROM matters m
+        JOIN client_memberships cm ON cm.matter_id = m.id
+        WHERE cm.client_account_id = ?
+        ORDER BY m.next_hearing_at IS NULL, m.next_hearing_at, m.title
+      `)
+      .all(session.actorId) as unknown as MatterRosterSummary[];
+  },
+
   listMatters(this: SqliteStoreCore, session: ProductSession): Matter[] {
     if (session.actorType === "staff") {
       return this.db

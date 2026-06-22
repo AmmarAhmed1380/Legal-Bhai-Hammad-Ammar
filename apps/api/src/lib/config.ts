@@ -8,7 +8,7 @@ const isRunningTests =
   process.argv.some((arg) => arg.includes("test")) ||
   Boolean(process.env.WAKEEL_TESTING);
 
-if (!isRunningTests) {
+if (!isRunningTests && !isProduction()) {
   const possiblePaths = [
     join(process.cwd(), ".env"),
     join(process.cwd(), "apps/api", ".env"),
@@ -31,6 +31,19 @@ const PLACEHOLDER_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "legalbahi.e
 
 export function isProduction(): boolean {
   return process.env.NODE_ENV === "production";
+}
+
+/** Production-like investor demo: real Postgres/R2, placeholder OTP, no Twilio SMS. */
+export function isInvestorStaging(): boolean {
+  return isProduction() && envFlag("INVESTOR_STAGING");
+}
+
+export function isOtpMockMode(): boolean {
+  return !isProduction() || isInvestorStaging();
+}
+
+export function shouldExposeDevOtpCode(): boolean {
+  return !isProduction() || isInvestorStaging();
 }
 
 export function envFlag(name: string, defaultValue = false): boolean {
@@ -77,6 +90,8 @@ export function validateProductionEnvironment(): void {
     return;
   }
 
+  const investorStaging = isInvestorStaging();
+
   const required = [
     "JWT_SECRET",
     "CORS_ORIGINS",
@@ -84,9 +99,7 @@ export function validateProductionEnvironment(): void {
     "PUBLIC_API_URL",
     "PUBLIC_WEB_URL",
     "PILOT_ADMIN_SECRET",
-    "TWILIO_ACCOUNT_SID",
-    "TWILIO_AUTH_TOKEN",
-    "TWILIO_SMS_FROM",
+    ...(investorStaging ? [] : ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_SMS_FROM"]),
     "RESEND_API_KEY",
     "RESEND_FROM_EMAIL",
     "R2_ACCOUNT_ID",
@@ -122,8 +135,12 @@ export function validateProductionEnvironment(): void {
   if (!/^age1[0-9a-z]+$/.test(process.env.BACKUP_AGE_RECIPIENT!)) {
     throw new Error("BACKUP_AGE_RECIPIENT must be an age X25519 recipient");
   }
-  if (!/^\+[1-9]\d{7,14}$/.test(process.env.TWILIO_SMS_FROM!)) {
-    throw new Error("TWILIO_SMS_FROM must be an E.164 phone number");
+  if (!investorStaging) {
+    if (!/^\+[1-9]\d{7,14}$/.test(process.env.TWILIO_SMS_FROM!)) {
+      throw new Error("TWILIO_SMS_FROM must be an E.164 phone number");
+    }
+  } else if (!process.env.WAKEEL_DEV_OTP_CODE?.trim()) {
+    throw new Error("WAKEEL_DEV_OTP_CODE must be set when INVESTOR_STAGING=true");
   }
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(process.env.RESEND_FROM_EMAIL!)) {
     throw new Error("RESEND_FROM_EMAIL must be a valid email address");
@@ -163,15 +180,17 @@ export function validateProductionEnvironment(): void {
   if (!envFlag("TRUST_PROXY_LOOPBACK")) {
     throw new Error("TRUST_PROXY_LOOPBACK must be enabled in production");
   }
-  const malwareProvider = process.env.MALWARE_SCAN_PROVIDER?.trim().toLowerCase();
-  if (!malwareProvider || !["clamav", "cloudmersive", "virustotal"].includes(malwareProvider)) {
-    throw new Error("MALWARE_SCAN_PROVIDER must be clamav, cloudmersive, or virustotal in production");
-  }
-  if (malwareProvider === "cloudmersive" && !process.env.CLOUDMERSIVE_API_KEY?.trim()) {
-    throw new Error("CLOUDMERSIVE_API_KEY must be set when MALWARE_SCAN_PROVIDER=cloudmersive");
-  }
-  if (malwareProvider === "virustotal" && !process.env.VIRUSTOTAL_API_KEY?.trim()) {
-    throw new Error("VIRUSTOTAL_API_KEY must be set when MALWARE_SCAN_PROVIDER=virustotal");
+  if (!investorStaging) {
+    const malwareProvider = process.env.MALWARE_SCAN_PROVIDER?.trim().toLowerCase();
+    if (!malwareProvider || !["clamav", "cloudmersive", "virustotal"].includes(malwareProvider)) {
+      throw new Error("MALWARE_SCAN_PROVIDER must be clamav, cloudmersive, or virustotal in production");
+    }
+    if (malwareProvider === "cloudmersive" && !process.env.CLOUDMERSIVE_API_KEY?.trim()) {
+      throw new Error("CLOUDMERSIVE_API_KEY must be set when MALWARE_SCAN_PROVIDER=cloudmersive");
+    }
+    if (malwareProvider === "virustotal" && !process.env.VIRUSTOTAL_API_KEY?.trim()) {
+      throw new Error("VIRUSTOTAL_API_KEY must be set when MALWARE_SCAN_PROVIDER=virustotal");
+    }
   }
   const ihcInterval = Number(process.env.IHC_SYNC_INTERVAL_MINUTES ?? 60);
   if (!Number.isInteger(ihcInterval) || ihcInterval < 5 || ihcInterval > 1440) {

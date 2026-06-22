@@ -1,6 +1,6 @@
 # LegalBahi — Complete Project Record
 
-> **Last updated:** June 2026  
+> **Last updated:** 22 June 2026  
 > **Monorepo:** `LEGALBAHI` (`legalbahi` npm workspace)  
 > **Product:** Invite-only legal practice platform for solo lawyers and their clients in Islamabad / Rawalpindi.
 
@@ -172,8 +172,21 @@ npm run verify
 - **Active matter cards** — `.client-case-card.active` / `.inactive` emerald styling in sidebar
 - **Responsive OTP digit row** — `.otp-digit-row` / `.otp-digit-input` scales on narrow viewports
 - **Login spacing** — reduced gap between phone field and Request OTP button
+- **Matters roster** — wider sidebar column, no horizontal scroll, ellipsis on long titles, fixed card overlap with filter tabs
+- **Login hero typography** — “Legal Bhai” brand name larger than “Lawyer Portal” tagline
+- **Login heading** — “Advocate Portal” renamed to “Lawyer Portal”
 
-### 4.6 Legacy demo API (optional)
+### 4.7 Performance & investor staging
+
+- **Lean matter roster** — `MatterRosterSummary` + `listMatterRoster()` for `GET /v1/matters` (SQLite + Postgres); avoids loading full matter graphs on list views
+- **Overview SQL counts** — `getOverviewReport()` uses Postgres `COUNT()` / `GROUP BY` instead of in-memory aggregation
+- **Migration `007_performance_indexes.sql`** — indexes for roster, hearings, documents, notifications
+- **Investor staging mode** (`INVESTOR_STAGING=true`) — real Postgres + R2 on VPS, fixed OTP `246810`, Twilio optional, malware scan skipped, `devCode` exposed for demo logins
+- **Postgres seed** — `seed-investor-postgres.ps1` + `apps/api/src/seed-investor-postgres.ts` copy SQLite demo snapshot into production DB
+- **Windows services** — API/worker run via `node.exe` directly (not `npm.cmd`); NSSM passes full production env including `UPTIME_SECRET`
+- **Production env** — secrets live only on VPS at `C:\LegalBahi\.env.production`; repo ships `.env.production.example` (no real keys)
+
+### 4.8 Legacy demo API (optional)
 
 When `ENABLE_DEMO_SURFACES=true`, the original prototype API (`/cases`, `/auth/demo/*`, IHC live sync demo) is exposed from `apps/api/src/app.ts`. **Disabled in production.**
 
@@ -641,17 +654,61 @@ Expo 54, React Native 0.81, `expo-secure-store`, `expo-file-system`, `expo-shari
 
 | Path | Purpose |
 |------|---------|
-| `infra/postgres/migrations/` | Versioned SQL schema (001–006+) |
-| `infra/windows/Caddyfile` | Reverse proxy TLS termination |
+| `infra/postgres/migrations/` | Versioned SQL schema (001–007) |
+| `infra/windows/Caddyfile` | Reverse proxy TLS (`64.235.61.6.sslip.io` → web, `api-64-235-61-6.sslip.io` → API) |
 | `infra/windows/build-web.ps1` | Production web build |
 | `infra/windows/migrate-postgres.ps1` | Run migrations on VPS |
+| `infra/windows/seed-investor-postgres.ps1` | Migrate + seed investor demo data into Postgres |
+| `infra/windows/start-postgres.ps1` | Register `LegalBahiPostgres` Windows service |
 | `infra/windows/backup-postgres.ps1` | Manual backup script |
-| `infra/windows/install-services.ps1` | Windows service installation |
+| `infra/windows/install-services.ps1` | NSSM services (API, worker, web); `node.exe` for API/worker |
+| `infra/windows/validate-production.ps1` | Pre-flight env validation (Twilio optional in investor staging) |
+| `infra/windows/push-remote-config.ps1` | Local wrapper → `vps-sync-config.mjs` |
 | `infra/windows/run-production-smoke.ps1` | Smoke test wrapper |
 | `infra/r2/lifecycle.json` | R2 object lifecycle rules |
-| `scripts/vps-sync-api.mjs` | Deploy API to VPS |
+| `.env.production.example` | Investor-staging template (copy to VPS only) |
 
-**Production stack:** Caddy → Next.js static/server + Fastify API on loopback; separate worker process; PostgreSQL; Cloudflare R2 for documents and backups.
+**Production stack:** Caddy → Next.js (`:3000`) + Fastify API (`:3001`) on loopback; separate worker process; PostgreSQL; Cloudflare R2 for documents and backups.
+
+**Investor staging VPS** (`64.235.61.6`):
+
+| URL | Service |
+|-----|---------|
+| https://64.235.61.6.sslip.io | Web |
+| https://api-64-235-61-6.sslip.io | API |
+
+Demo logins: lawyer `03001234567`, client `03005550001`, OTP `246810`.
+
+### VPS deploy scripts (from dev machine)
+
+Set `VPS_SSH_PASSWORD` (Administrator password). Optional: `VPS_HOST`, `VPS_ROOT`, `VPS_ENV_FILE` (path to local `.env.production` for upload).
+
+| Script | npm command | Purpose |
+|--------|-------------|---------|
+| `vps-sync-config.mjs` | `npm run vps:sync` | Upload Caddyfile, infra/windows, optional env; rebuild web; reinstall services |
+| `vps-sync-api.mjs` | `npm run vps:sync:api` | Upload API source, migrations, shared package |
+| `vps-remote-deploy.mjs` | `npm run vps:deploy:remote` | Remote migrate, seed, R2 migration, restart |
+| `vps-status.mjs` | `npm run vps:status` | Services, ports, deps, API stderr tail, local health |
+| `vps-fix-deps.mjs` | `npm run vps:fix-deps` | Stop services, `npm ci`, verify deps, restart |
+| `vps-restart-api.mjs` | `npm run vps:restart-api` | NSSM start API/worker + health check |
+| `vps-refresh-api-env.mjs` | `npm run vps:refresh-env` | Upload env + `install-services.ps1`; refresh NSSM env |
+| `vps-npm-ci.mjs` | — | Upload lockfiles and run remote `npm ci` |
+| `vps-check-postgres.mjs` | — | Postgres service + connectivity probe |
+| `vps-upload-start-postgres.mjs` | — | Upload and register Postgres service script |
+| `vps-verify-data.mjs` | — | Row counts for firms/matters/documents |
+| `vps-probe.mjs` | — | Quick public URL health probe |
+| `sync-product-uploads-to-r2.mjs` | `npm run sync:r2-uploads` | Upload local seed documents to R2 |
+| `migrate-seed-documents-to-r2.mjs` | `npm run migrate:seed-r2` | Migrate `seed:*` document keys from DB to R2 |
+
+**Typical deploy flow:**
+
+```powershell
+$env:VPS_SSH_PASSWORD = "<Administrator password>"
+npm run vps:sync:api
+npm run vps:deploy:remote
+# If node_modules broken on VPS:
+npm run vps:fix-deps
+```
 
 See [`Docs/DEPLOYMENT.md`](Docs/DEPLOYMENT.md) for full operator steps.
 
@@ -701,6 +758,9 @@ Copy from `.env.example`. Critical variables:
 | `OPENAI_API_KEY` | Whisper transcription |
 | `SENTRY_DSN` | Error reporting |
 | `UPTIME_SECRET` | Uptime endpoint auth |
+| `INVESTOR_STAGING` | Production-like demo VPS (mock OTP, no Twilio) |
+| `USE_POSTGRES_PRODUCT_STORE` | Use Postgres store instead of SQLite |
+| `WAKEEL_DEV_OTP_CODE` | Fixed OTP when `INVESTOR_STAGING=true` |
 | `CORS_ORIGINS`, `PUBLIC_WEB_URL`, `PUBLIC_API_URL` | Production URLs |
 
 Full list validated in `apps/api/src/lib/config.ts` → `validateProductionEnvironment()`.
@@ -755,6 +815,8 @@ apps/mobile/metro.config.js
 packages/shared/src/{index,product}.ts
 infra/postgres/migrations/*.sql
 infra/windows/*.ps1
+scripts/vps-*.mjs
+.env.production.example
 .github/workflows/*.yml
 ```
 

@@ -5,6 +5,7 @@ import type {
   AuditEvent,
   Hearing,
   Matter,
+  MatterRosterSummary,
   Message,
   MessageThread,
   ProductDocument,
@@ -18,6 +19,7 @@ import { decodeJson, encodeJson, nowIso } from "../utils.js";
 export interface SqliteStoreCore {
   db: DatabaseSync;
   listMatters(session: ProductSession): Matter[];
+  listMatterRoster(session: ProductSession): MatterRosterSummary[];
   listHearings(session: ProductSession, matterId: string): Hearing[];
   getMatter(session: ProductSession, matterId: string): MatterDetail | null;
   listDocuments(session: ProductSession, filters?: { matterId?: string }): ProductDocument[];

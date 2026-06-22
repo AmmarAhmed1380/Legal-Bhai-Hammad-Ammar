@@ -379,11 +379,7 @@ export default function HomePage() {
             <div className="brand-badge">
               Pakistani Advocate Network
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <h1 style={{ fontSize: "28px", fontWeight: 800, margin: 0, letterSpacing: "-0.03em", color: "#ffffff", fontFamily: '"Plus Jakarta Sans", sans-serif' }}>
-                Legal Bhai
-              </h1>
-            </div>
+            <h1 className="brand-hero-name">Legal Bhai</h1>
           </div>
 
           {/* Middle Value Proposition Section */}
@@ -464,7 +460,7 @@ export default function HomePage() {
           {/* Dynamic Welcome Heading */}
           <div style={{ marginBottom: 24, paddingLeft: 4 }}>
             <h2 style={{ fontSize: "24px", fontWeight: 800, margin: "0 0 6px 0", color: "var(--text-primary)", letterSpacing: "-0.02em" }}>
-              {activeTab === "lawyer" ? (registrationMode ? "Create Workspace" : "Advocate Portal") : "Client Access"}
+              {activeTab === "lawyer" ? (registrationMode ? "Create Workspace" : "Lawyer Portal") : "Client Access"}
             </h2>
             <p className="muted" style={{ fontSize: "13px", margin: 0, lineHeight: 1.4 }}>
               {activeTab === "lawyer" 

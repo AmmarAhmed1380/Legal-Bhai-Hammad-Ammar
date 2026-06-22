@@ -20,6 +20,8 @@ const uploadPaths = [
   "apps/api/src",
   "apps/api/package.json",
   "packages/shared",
+  "infra/postgres/migrations",
+  "infra/windows",
 ];
 
 const ssh = new NodeSSH();
@@ -41,6 +43,13 @@ async function runRemote(label, command) {
 console.log(`Connecting to ${username}@${host} ...`);
 await ssh.connect({ host, username, password, tryKeyboard: true });
 ssh.connection?.on("error", () => {});
+
+process.on("uncaughtException", (error) => {
+  if (error && typeof error === "object" && "code" in error && error.code === "ECONNRESET") {
+    return;
+  }
+  throw error;
+});
 
 for (const relativePath of uploadPaths) {
   const localPath = join(repoRoot, relativePath);

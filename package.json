@@ -27,7 +27,14 @@
     "verify": "npm run test:api && npm run typecheck:api && npm run build:web && npm run test:web:e2e && npm run typecheck:mobile && npm run test:mobile:flows && npm run test:deployment",
     "reset:demo": "npm --workspace @wakeel/api run reset:demo",
     "vps:sync": "node scripts/vps-sync-config.mjs",
-    "vps:sync:api": "node scripts/vps-sync-api.mjs"
+    "vps:sync:api": "node scripts/vps-sync-api.mjs",
+    "vps:deploy:remote": "node scripts/vps-remote-deploy.mjs",
+    "vps:status": "node scripts/vps-status.mjs",
+    "vps:fix-deps": "node scripts/vps-fix-deps.mjs",
+    "vps:restart-api": "node scripts/vps-restart-api.mjs",
+    "vps:refresh-env": "node scripts/vps-refresh-api-env.mjs",
+    "sync:r2-uploads": "node scripts/sync-product-uploads-to-r2.mjs",
+    "migrate:seed-r2": "node scripts/migrate-seed-documents-to-r2.mjs"
   },
   "overrides": {
     "postcss": "8.5.15",

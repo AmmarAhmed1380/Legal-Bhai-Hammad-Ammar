@@ -34,6 +34,7 @@ export async function productJsonRequest<T>(
     ...options,
     headers,
     cache: "no-store",
+    signal: options.signal,
   });
 
   if (!response.ok) {

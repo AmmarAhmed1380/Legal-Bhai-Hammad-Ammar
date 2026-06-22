@@ -13,7 +13,7 @@ import {
   type ProductSession,
 } from "@wakeel/shared";
 import { readBearerToken, signAppToken, verifyAppToken } from "../lib/auth.js";
-import { getJwtSecret, isProduction } from "../lib/config.js";
+import { getJwtSecret, isOtpMockMode, isProduction } from "../lib/config.js";
 import { isIsoDateOrDateTime } from "../lib/date-validation.js";
 import { sanitizePlainText } from "../lib/input-sanitizer.js";
 import { normalizePakistanPhone } from "../lib/validation.js";
@@ -155,6 +155,60 @@ export function requireStaffSession(
     return false;
   }
   return true;
+}
+
+const PUBLIC_ROUTE_PREFIXES = [
+  "/health",
+  "/auth/",
+  "/portal/",
+  "/v1/auth/",
+  "/v1/portal/",
+] as const;
+
+const STAFF_WORKSPACE_ROUTE_PREFIXES = [
+  "/v1/staff/",
+  "/v1/matters",
+  "/v1/firms",
+  "/v1/reports",
+  "/v1/search",
+  "/v1/court-sources",
+  "/v1/court-matches",
+  "/v1/time-entries",
+  "/v1/invoices",
+  "/v1/memberships",
+  "/v1/pilot/",
+  "/v1/upload/audio",
+  "/v1/calendar/conflicts",
+  "/v1/sessions",
+  "/sessions",
+  "/roles",
+  "/v1/roles",
+] as const;
+
+export function requiresStaffWorkspaceActor(pathname: string, method: string): boolean {
+  const path = pathname.split("?")[0] ?? pathname;
+  if (PUBLIC_ROUTE_PREFIXES.some((prefix) => path === prefix || path.startsWith(prefix))) {
+    return false;
+  }
+  if (path.startsWith("/v1/clients/me")) {
+    return false;
+  }
+
+  const dualUseRoutePrefixes = ["/v1/documents", "/v1/threads/"];
+  if (dualUseRoutePrefixes.some((prefix) => path.startsWith(prefix))) {
+    return false;
+  }
+
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
+    return false;
+  }
+
+  if (path === "/v1/clients" || path.startsWith("/v1/clients/")) {
+    return true;
+  }
+  return STAFF_WORKSPACE_ROUTE_PREFIXES.some(
+    (prefix) => path === prefix || path.startsWith(`${prefix}/`) || path.startsWith(prefix),
+  );
 }
 
 export function requireClientSession(
@@ -312,6 +366,26 @@ export function createProductRouteContext(app: FastifyInstance, store: ProductSt
   ] as const;
 
   function registerAuditHook(): void {
+    app.addHook("onRequest", async (request, reply) => {
+      if (!requiresStaffWorkspaceActor(request.url, request.method)) {
+        return;
+      }
+
+      const token = readBearerToken(request.headers.authorization);
+      if (!token) {
+        return;
+      }
+
+      const verified = verifyAppToken(token, getJwtSecret());
+      if (!verified) {
+        return;
+      }
+
+      if (verified.actorType !== "staff") {
+        reply.code(403).send({ error: "Forbidden" });
+      }
+    });
+
     app.addHook("onResponse", async (request, reply) => {
       if (!["POST", "PATCH", "PUT", "DELETE"].includes(request.method) || reply.statusCode >= 400) {
         return;
@@ -379,8 +453,8 @@ export function createProductRouteContext(app: FastifyInstance, store: ProductSt
     return issued;
   }
 
-  function isOtpMockMode(): boolean {
-    return process.env.NODE_ENV !== "production";
+  function isOtpMockModeActive(): boolean {
+    return isOtpMockMode();
   }
 
   async function resolveOtpSession(
@@ -441,7 +515,7 @@ export function createProductRouteContext(app: FastifyInstance, store: ProductSt
       }
     }
 
-    const isMockOtp = isOtpMockMode();
+    const isMockOtp = isOtpMockModeActive();
 
     const code = isMockOtp
       ? (process.env.WAKEEL_DEV_OTP_CODE ?? "246810")

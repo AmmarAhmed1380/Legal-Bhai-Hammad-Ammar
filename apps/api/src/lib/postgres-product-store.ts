@@ -14,6 +14,7 @@ import type {
   Invoice,
   Matter,
   MatterParty,
+  MatterRosterSummary,
   Message,
   MessageThread,
   PortalLink,
@@ -28,6 +29,7 @@ import type {
 } from "@wakeel/shared";
 import { Pool, types, type PoolClient, type QueryResultRow } from "pg";
 
+import { shouldExposeDevOtpCode } from "./config.js";
 import {
   getCourtSourceDefinition,
   normalizeCourtCaseNumber,
@@ -291,7 +293,7 @@ export class PostgresProductStore {
       "INSERT INTO otp_requests (id, actor_type, phone, code_hash, expires_at) VALUES ($1, $2, $3, $4, $5)",
       [randomUUID(), input.actorType, phone, hashValue(input.code), expiresAt],
     );
-    return { expiresAt, devCode: process.env.NODE_ENV === "production" ? null : input.code };
+    return { expiresAt, devCode: shouldExposeDevOtpCode() ? input.code : null };
   }
 
   private async consumeOtpRequest(actorType: "staff" | "client", phone: string, code: string): Promise<boolean> {
@@ -783,6 +785,18 @@ export class PostgresProductStore {
       [patch.role ?? null, patch.permissions ? JSON.stringify(patch.permissions) : null, patch.officeLabel ?? null, membershipId, session.firmId],
     );
     return result.rows[0] ? mapRow<FirmMembership>(result.rows[0]) : null;
+  }
+
+  async listMatterRoster(session: ProductSession): Promise<MatterRosterSummary[]> {
+    const access = session.actorType === "staff"
+      ? "m.firm_id = $1"
+      : "EXISTS (SELECT 1 FROM client_memberships cm WHERE cm.matter_id = m.id AND cm.client_account_id = $1)";
+    const result = await this.pool.query(
+      `SELECT m.id, m.court_id, m.raw_case_number, m.title, m.stage, m.status, m.next_hearing_at
+       FROM matters m WHERE ${access} ORDER BY m.next_hearing_at NULLS LAST, m.title`,
+      [session.actorType === "staff" ? session.firmId : session.actorId],
+    );
+    return mapRows<MatterRosterSummary>(result.rows);
   }
 
   async listMatters(session: ProductSession): Promise<Matter[]> {
@@ -1551,12 +1565,12 @@ export class PostgresProductStore {
     };
   }
 
-  async listPortalMattersForAccess(rawToken: string, portalLinkId: string): Promise<Matter[]> {
+  async listPortalMattersForAccess(rawToken: string, portalLinkId: string): Promise<MatterRosterSummary[]> {
     const access = await this.getPortalAccess(rawToken);
     if (!access || access.link.id !== portalLinkId) {
       return [];
     }
-    return this.listMatters(access.session);
+    return this.listMatterRoster(access.session);
   }
 
   async getPortalMatterForAccess(rawToken: string, portalLinkId: string, matterId: string): Promise<MatterDetail | null> {
@@ -2039,23 +2053,39 @@ export class PostgresProductStore {
     if (session.actorType !== "staff" || !session.firmId) {
       return null;
     }
-    const [matters, alerts, syncHealth] = await Promise.all([this.listMatters(session), this.listAlerts(session), this.listCourtSources()]);
-    const stageCounts = new Map<string, number>();
-    for (const matter of matters) {
-      stageCounts.set(matter.stage, (stageCounts.get(matter.stage) ?? 0) + 1);
-    }
-    const now = Date.now();
-    const boundary = now + 7 * 24 * 60 * 60 * 1000;
+    const firmId = session.firmId;
+    const [metricsResult, stageResult, unreadResult, syncHealth] = await Promise.all([
+      this.pool.query(
+        `SELECT
+          COUNT(*) FILTER (WHERE status = 'open')::int AS open_matters,
+          COUNT(*) FILTER (WHERE next_hearing_at > now())::int AS upcoming_hearings
+         FROM matters WHERE firm_id = $1`,
+        [firmId],
+      ),
+      this.pool.query(
+        `SELECT stage, COUNT(*)::int AS count FROM matters WHERE firm_id = $1 GROUP BY stage`,
+        [firmId],
+      ),
+      this.pool.query(
+        `SELECT COUNT(*)::int AS unread FROM alerts WHERE firm_id = $1 AND read_at IS NULL`,
+        [firmId],
+      ),
+      this.listCourtSources(),
+    ]);
+    const metricsRow = metricsResult.rows[0] as { open_matters: number; upcoming_hearings: number };
+    const unreadRow = unreadResult.rows[0] as { unread: number };
     return {
       metrics: {
-        openMatters: matters.filter((matter) => matter.status === "open").length,
-        upcomingHearings: matters.filter((matter) => matter.nextHearingAt && new Date(matter.nextHearingAt).getTime() > now).length,
-        unreadAlerts: alerts.filter((alert) => !alert.readAt).length,
+        openMatters: metricsRow.open_matters,
+        upcomingHearings: metricsRow.upcoming_hearings,
+        unreadAlerts: unreadRow.unread,
         outstandingInvoiceTotal: 0,
         overdueInvoiceTotal: 0,
         billableMinutes: 0,
       },
-      mattersByStage: [...stageCounts].map(([stage, count]) => ({ stage, count })).sort((left, right) => right.count - left.count),
+      mattersByStage: (stageResult.rows as Array<{ stage: string; count: number }>)
+        .map((row) => ({ stage: row.stage, count: row.count }))
+        .sort((left, right) => right.count - left.count),
       syncHealth,
     };
   }
