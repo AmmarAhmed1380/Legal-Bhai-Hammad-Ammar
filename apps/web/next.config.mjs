@@ -8,6 +8,7 @@ const monorepoRoot = path.resolve(__dirname, "../..");
 const nextConfig = {
   outputFileTracingRoot: monorepoRoot,
   transpilePackages: ["@wakeel/shared"],
+  turbopack: {},
   async rewrites() {
     return [
       { source: "/overview", destination: "/product/staff" },
