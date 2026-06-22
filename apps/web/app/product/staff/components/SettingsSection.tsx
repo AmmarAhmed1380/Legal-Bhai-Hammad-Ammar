@@ -1,4 +1,4 @@
-import { type Dispatch, type SetStateAction } from "react";
+import { type Dispatch, type SetStateAction, useState, type CSSProperties } from "react";
 import {
   type StaffProfile,
   type NotificationPreference,
@@ -23,7 +23,7 @@ interface SettingsSectionProps {
   setInviteRole: Dispatch<SetStateAction<"owner" | "lawyer" | "assistant" | "billing" | "co_owner">>;
   inviteOfficeLabel: string;
   setInviteOfficeLabel: Dispatch<SetStateAction<string>>;
-  handleSendInvite: () => void;
+  handleSendInvite: () => Promise<boolean>;
   handleUpdateMembership: (membershipId: string, role: string, officeLabel: string | null) => void;
 }
 
@@ -47,8 +47,43 @@ export default function SettingsSection({
   handleSendInvite,
   handleUpdateMembership,
 }: SettingsSectionProps) {
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
   const isOwnerOrCoOwner =
     profile.staffMembership.role === "owner" || profile.staffMembership.role === "co_owner";
+
+  const modalOverlayStyle: CSSProperties = {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(10, 37, 30, 0.4)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1000,
+    backdropFilter: "blur(8px)",
+  };
+
+  const modalContentStyle: CSSProperties = {
+    backgroundColor: "#ffffff",
+    borderRadius: "18px",
+    border: "1px solid var(--border)",
+    padding: "32px",
+    width: "90%",
+    maxWidth: "520px",
+    maxHeight: "85vh",
+    overflowY: "auto",
+    position: "relative",
+    boxShadow: "0 24px 80px rgba(26, 26, 25, 0.2)",
+  };
+
+  async function submitInvite() {
+    const sent = await handleSendInvite();
+    if (sent) {
+      setIsInviteOpen(false);
+    }
+  }
 
   return (
     <section>
@@ -152,9 +187,9 @@ export default function SettingsSection({
       ) : (
         <div className="grid">
           <div className="panel" style={{ width: "100%" }}>
-            <h2 style={{ marginTop: 0 }}>Workspace / Firm Details</h2>
+            <h2 style={{ marginTop: 0 }}>Workspace Details</h2>
             {profile.firm ? (
-              <div className="info-list" style={{ marginBottom: 20 }}>
+              <div className="info-list" style={{ marginBottom: 12 }}>
                 <div>
                   <strong>Firm Name:</strong> {profile.firm.name}
                 </div>
@@ -165,67 +200,30 @@ export default function SettingsSection({
                   <strong>Timezone:</strong> {profile.firm.timezone}
                 </div>
                 <div>
-                  <strong>Billing Plan:</strong> {profile.firm.billingPlan}
-                </div>
-                <div>
-                  <strong>Status:</strong> <span className="badge live">{profile.firm.status}</span>
+                  <strong>Status:</strong> <span className="badge live compact">{profile.firm.status}</span>
                 </div>
               </div>
             ) : (
               <div className="muted">No workspace details found.</div>
             )}
-
-            <h3 style={{ marginTop: 24, marginBottom: 12 }}>Invite New Member</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              <div className="field" style={{ margin: 0 }}>
-                <label>Phone Number (e.g. 03001234567)</label>
-                <input
-                  type="tel"
-                  value={invitePhone}
-                  onChange={(e) => setInvitePhone(e.target.value)}
-                  placeholder=""
-                />
-              </div>
-              <div className="field" style={{ margin: 0 }}>
-                <label>Email Address (Optional)</label>
-                <input
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder=""
-                />
-              </div>
-              <div className="field" style={{ margin: 0 }}>
-                <label>Role</label>
-                <select
-                  value={inviteRole}
-                  onChange={(e) => setInviteRole(e.target.value as any)}
-                  style={{ width: "100%" }}
-                >
-                  <option value="lawyer">Lawyer</option>
-                  <option value="assistant">Assistant</option>
-                  <option value="billing">Billing Officer</option>
-                  <option value="co_owner">Co-Owner</option>
-                  <option value="owner">Owner</option>
-                </select>
-              </div>
-              <div className="field" style={{ margin: 0 }}>
-                <label>Office Label (e.g. Islamabad HQ)</label>
-                <input
-                  type="text"
-                  value={inviteOfficeLabel}
-                  onChange={(e) => setInviteOfficeLabel(e.target.value)}
-                  placeholder=""
-                />
-              </div>
-              <button className="button" type="button" onClick={handleSendInvite} style={{ marginTop: 8 }}>
-                Send Invitation
-              </button>
-            </div>
           </div>
 
           <div className="panel" style={{ width: "100%" }}>
-            <h2 style={{ marginTop: 0 }}>Manage Employees / Staff</h2>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 16 }}>
+              <h2 style={{ margin: 0 }}>Manage Employees / Staff</h2>
+              <button
+                className="button"
+                type="button"
+                onClick={() => setIsInviteOpen(true)}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", fontSize: 13 }}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Invite New Member
+              </button>
+            </div>
             <p className="muted" style={{ fontSize: 13, marginBottom: 16 }}>
               Total Members: {teamMembers.length}
             </p>
@@ -337,6 +335,70 @@ export default function SettingsSection({
           </div>
         </div>
       )}
+
+      {isInviteOpen ? (
+        <div style={modalOverlayStyle} onClick={() => setIsInviteOpen(false)}>
+          <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+              <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>Invite New Member</h2>
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() => setIsInviteOpen(false)}
+                style={{ padding: "6px 10px", fontSize: 12 }}
+              >
+                Close
+              </button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div className="field" style={{ margin: 0 }}>
+                <label>Phone Number</label>
+                <input
+                  type="tel"
+                  value={invitePhone}
+                  onChange={(e) => setInvitePhone(e.target.value)}
+                  placeholder=""
+                />
+              </div>
+              <div className="field" style={{ margin: 0 }}>
+                <label>Email Address (Optional)</label>
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder=""
+                />
+              </div>
+              <div className="field" style={{ margin: 0 }}>
+                <label>Role</label>
+                <select
+                  value={inviteRole}
+                  onChange={(e) => setInviteRole(e.target.value as typeof inviteRole)}
+                  style={{ width: "100%" }}
+                >
+                  <option value="lawyer">Lawyer</option>
+                  <option value="assistant">Assistant</option>
+                  <option value="billing">Billing Officer</option>
+                  <option value="co_owner">Co-Owner</option>
+                  <option value="owner">Owner</option>
+                </select>
+              </div>
+              <div className="field" style={{ margin: 0 }}>
+                <label>Office Label (Optional)</label>
+                <input
+                  type="text"
+                  value={inviteOfficeLabel}
+                  onChange={(e) => setInviteOfficeLabel(e.target.value)}
+                  placeholder=""
+                />
+              </div>
+              <button className="button" type="button" onClick={() => void submitInvite()} style={{ marginTop: 8 }}>
+                Send Invitation
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

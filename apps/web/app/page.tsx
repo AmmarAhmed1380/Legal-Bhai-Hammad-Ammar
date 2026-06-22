@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   productJsonRequest,
@@ -376,7 +377,6 @@ export default function HomePage() {
           {/* Top Branding Section */}
           <div>
             <div className="brand-badge">
-              <span className="brand-badge-dot" />
               Pakistani Advocate Network
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
@@ -444,7 +444,9 @@ export default function HomePage() {
         {/* Bottom Trust Indicators */}
         <div className="brand-hero-footer">
           <span>Standardized for High & District Courts</span>
-          <span>End-to-End Encrypted Data Vault</span>
+          <Link href="/privacy" className="brand-hero-footer-link">
+            Data Protection &amp; Privacy Policy
+          </Link>
         </div>
       </section>
 

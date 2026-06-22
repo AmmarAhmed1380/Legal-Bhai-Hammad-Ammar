@@ -239,8 +239,15 @@ export default function MattersSection({
     return "badge live";
   };
 
-  return (
-    <section className="dashboard-grid" style={{ gridTemplateColumns: isSidebarOpen ? "380px minmax(0, 1fr)" : "1fr", gap: "24px" }}>
+  const renderMattersSidebar = (alignWithTabPanel: boolean) => (
+    <aside
+      className={`panel${alignWithTabPanel ? " matters-roster-panel" : ""}`}
+      style={{
+        animation: "fadeIn 0.2s ease",
+        boxSizing: "border-box",
+        ...(alignWithTabPanel ? { height: "100%", display: "flex", flexDirection: "column", minHeight: 0 } : {}),
+      }}
+    >
       {/* Sidebar toggle button (floating/collapsed) */}
       {!isSidebarOpen && (
         <button
@@ -287,7 +294,7 @@ export default function MattersSection({
       {/* Left Column: Active Matters Sidebar */}
       {isSidebarOpen && (
         <div style={{ position: "relative" }}>
-          <aside className="panel" style={{ animation: "fadeIn 0.2s ease", position: "sticky", top: "32px", height: "calc(100vh - 240px)", overflowY: "auto", boxSizing: "border-box" }}>
+          <aside className="panel" style={{ animation: "fadeIn 0.2s ease", boxSizing: "border-box" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
               <h2 style={{ marginTop: 0, marginBottom: 0, fontSize: "20px", fontWeight: 800 }}>Matters</h2>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -321,6 +328,26 @@ export default function MattersSection({
                   }}
                 >
                   Import
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsSidebarOpen(false)}
+                  title="Hide matters list"
+                  className="button-secondary"
+                  style={{
+                    padding: "6px 8px",
+                    fontSize: "12px",
+                    borderRadius: "8px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                    <line x1="9" y1="3" x2="9" y2="21" />
+                    <path d="M14 9l-3 3 3 3" />
+                  </svg>
                 </button>
               </div>
             </div>
@@ -487,47 +514,6 @@ export default function MattersSection({
                 })}
             </div>
           </aside>
-          <button
-            type="button"
-            onClick={() => setIsSidebarOpen(false)}
-            style={{
-              position: "absolute",
-              left: "100%",
-              top: "50%",
-              transform: "translateY(-50%)",
-              background: "var(--primary)",
-              color: "white",
-              border: "1px solid var(--primary-dark)",
-              borderLeft: "none",
-              cursor: "pointer",
-              padding: 0,
-              borderRadius: "0 8px 8px 0",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              boxShadow: "2px 0 10px rgba(15, 110, 86, 0.15)",
-              zIndex: 1000,
-              transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-              width: "20px",
-              height: "48px",
-              marginLeft: "0px"
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.width = "24px";
-              e.currentTarget.style.backgroundColor = "var(--primary-dark)";
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.width = "20px";
-              e.currentTarget.style.backgroundColor = "var(--primary)";
-            }}
-            title="Collapse Sidebar"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-              <line x1="9" y1="3" x2="9" y2="21" />
-              <path d="M15 15l-3-3 3-3" />
-            </svg>
-          </button>
         </div>
       )}
 
@@ -1384,8 +1370,8 @@ export default function MattersSection({
       {/* Reusable Dialog Modals */}
       {/* 1. Add Matter Modal */}
       {isAddOpen && (
-        <div style={modalOverlayStyle}>
-          <div style={modalContentStyle}>
+        <div style={modalOverlayStyle} onClick={() => setIsAddOpen(false)}>
+          <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
               <h2 style={{ marginTop: 0, marginBottom: 0, fontSize: "22px", fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>New Matter</h2>
               <button
@@ -1494,8 +1480,8 @@ export default function MattersSection({
 
       {/* 2. CSV Import Modal */}
       {isImportOpen && (
-        <div style={modalOverlayStyle}>
-          <div style={{ ...modalContentStyle, maxWidth: "600px" }}>
+        <div style={modalOverlayStyle} onClick={() => setIsImportOpen(false)}>
+          <div style={{ ...modalContentStyle, maxWidth: "600px" }} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <h2 style={{ marginTop: 0, marginBottom: 0, fontSize: "22px", fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>CSV Import</h2>
@@ -1644,8 +1630,8 @@ export default function MattersSection({
 
       {/* 3. Edit Matter Modal */}
       {isEditOpen && selectedMatter && (
-        <div style={modalOverlayStyle}>
-          <div style={modalContentStyle}>
+        <div style={modalOverlayStyle} onClick={() => setIsEditOpen(false)}>
+          <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
               <h2 style={{ marginTop: 0, marginBottom: 0, fontSize: "22px", fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>Edit Matter</h2>
               <button
@@ -1785,8 +1771,8 @@ export default function MattersSection({
 
       {/* 4. Add Party Modal */}
       {isAddPartyOpen && (
-        <div style={modalOverlayStyle}>
-          <div style={modalContentStyle}>
+        <div style={modalOverlayStyle} onClick={() => setIsAddPartyOpen(false)}>
+          <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
               <h2 style={{ marginTop: 0, marginBottom: 0, fontSize: "22px", fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>Add Party</h2>
               <button
@@ -1880,8 +1866,8 @@ export default function MattersSection({
 
       {/* 5. Capture Hearing Modal */}
       {isCaptureHearingOpen && (
-        <div style={modalOverlayStyle}>
-          <div style={modalContentStyle}>
+        <div style={modalOverlayStyle} onClick={() => setIsCaptureHearingOpen(false)}>
+          <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <h2 style={{ marginTop: 0, marginBottom: 0, fontSize: "22px", fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>Capture Hearing</h2>
               <button
@@ -2095,8 +2081,8 @@ export default function MattersSection({
 
       {/* 6. Document Upload Modal */}
       {isUploadDocOpen && (
-        <div style={modalOverlayStyle}>
-          <div style={modalContentStyle}>
+        <div style={modalOverlayStyle} onClick={() => setIsUploadDocOpen(false)}>
+          <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <h2 style={{ marginTop: 0, marginBottom: 0, fontSize: "22px", fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>Upload Private Document</h2>
               <button

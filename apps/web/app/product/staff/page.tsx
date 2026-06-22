@@ -350,7 +350,6 @@ export default function ProductStaffPage() {
   const router = useRouter();
   const activeSection = useMemo(() => resolveSection(pathname), [pathname]);
   const routedMatterId = useMemo(() => resolveMatterId(pathname), [pathname]);
-
   const [phone, setPhone] = useState<string>(STAFF_PHONES[0].phone);
   const [auth, setAuth] = useState<ProductAuthState | null>(null);
   const [authHydrated, setAuthHydrated] = useState(false);
@@ -394,20 +393,6 @@ export default function ProductStaffPage() {
   const [newClient, setNewClient] = useState({ displayName: "", phone: "", language: "en" });
   const [clientSearch, setClientSearch] = useState("");
   const [clientStatusFilter, setClientStatusFilter] = useState<"all" | "active" | "invited" | "archived">("all");
-  const [clientCsvImport, setClientCsvImport] = useState("");
-  const [clientCsvPreview, setClientCsvPreview] = useState<{
-    id: string;
-    status: string;
-    totalRows: number;
-    acceptedRows: number;
-    rejectedRows: number;
-    rows: Array<{
-      rowNumber: number;
-      state: "accepted" | "rejected";
-      error: string | null;
-      payload: { displayName: string; phone: string; language: string };
-    }>;
-  } | null>(null);
   const [matterClientId, setMatterClientId] = useState("");
   const [newParty, setNewParty] = useState<{ displayName: string; partyType: "petitioner" | "respondent" | "applicant" | "other" }>({
     displayName: "",
@@ -416,8 +401,6 @@ export default function ProductStaffPage() {
   const [partyNameDrafts, setPartyNameDrafts] = useState<Record<string, string>>({});
   const [documentUpload, setDocumentUpload] = useState({ title: "", type: "hearing_order", portalVisible: false });
   const [documentFile, setDocumentFile] = useState<File | null>(null);
-  const [vaultSearch, setVaultSearch] = useState("");
-  const [vaultSearchHits, setVaultSearchHits] = useState<SearchHit[]>([]);
   const [courtReviewMatterIds, setCourtReviewMatterIds] = useState<Record<string, string>>({});
   const [operationStatus, setOperationStatus] = useState<string | null>(null);
   const [matterSearch, setMatterSearch] = useState("");
@@ -437,6 +420,8 @@ export default function ProductStaffPage() {
 
   const authRef = useRef<ProductAuthState | null>(null);
   const activeMatterIdRef = useRef<string | null>(null);
+  const firstMatterId = matters[0]?.id ?? null;
+  const selectedMatterId = selectedMatter?.id ?? null;
 
   useEffect(() => {
     authRef.current = auth;
@@ -468,6 +453,21 @@ export default function ProductStaffPage() {
       void openMatter(routedMatterId, auth).catch(handleWorkspaceLoadError);
     }
   }, [auth, routedMatterId]);
+
+  useEffect(() => {
+    if (!auth || activeSection !== "matters" || routedMatterId || !firstMatterId) {
+      return;
+    }
+
+    if (selectedMatterId === firstMatterId) {
+      if (pathname !== `/matters/${firstMatterId}`) {
+        router.replace(`/matters/${firstMatterId}`);
+      }
+      return;
+    }
+
+    void openMatter(firstMatterId, auth).catch(handleWorkspaceLoadError);
+  }, [activeSection, auth, routedMatterId, firstMatterId, selectedMatterId, pathname]);
 
   useEffect(() => {
     if (!auth || activeSection !== "clients") {
@@ -581,9 +581,8 @@ export default function ProductStaffPage() {
       }
     }
 
-    const nextMatterId = routedMatterId ?? selectedMatter?.id ?? matterResponse.data.matters[0]?.id ?? null;
-    if (nextMatterId) {
-      await openMatter(nextMatterId, resolvedAuth);
+    if (routedMatterId) {
+      await openMatter(routedMatterId, resolvedAuth);
     }
   }
 
@@ -600,8 +599,8 @@ export default function ProductStaffPage() {
     }
   }
 
-  async function handleSendInvite() {
-    if (!profile?.firm || !auth) return;
+  async function handleSendInvite(): Promise<boolean> {
+    if (!profile?.firm || !auth) return false;
     setOperationStatus("Sending invitation...");
     try {
       const cleanPhone = invitePhone.replace(/\D/g, "");
@@ -623,8 +622,10 @@ export default function ProductStaffPage() {
       setOperationStatus("Invitation sent successfully!");
 
       await loadTeamMembers(profile.firm.id, auth.token);
+      return true;
     } catch (err: any) {
       setOperationStatus(err.message || "Failed to send invitation.");
+      return false;
     }
   }
 
@@ -1089,185 +1090,6 @@ export default function ProductStaffPage() {
     }
   }
 
-  function parseCsvRecords(csv: string): string[][] {
-    const records: string[][] = [];
-    let record: string[] = [];
-    let field = "";
-    let quoted = false;
-
-    for (let index = 0; index < csv.length; index += 1) {
-      const character = csv[index];
-      if (quoted) {
-        if (character === '"' && csv[index + 1] === '"') {
-          field += '"';
-          index += 1;
-        } else if (character === '"') {
-          quoted = false;
-        } else {
-          field += character;
-        }
-        continue;
-      }
-      if (character === '"') {
-        quoted = true;
-      } else if (character === ",") {
-        record.push(field.trim());
-        field = "";
-      } else if (character === "\n") {
-        record.push(field.trim());
-        records.push(record);
-        record = [];
-        field = "";
-      } else if (character !== "\r") {
-        field += character;
-      }
-    }
-    if (field.length > 0 || record.length > 0) {
-      record.push(field.trim());
-      records.push(record);
-    }
-    return records.filter((row) => row.some(Boolean));
-  }
-
-  async function previewClientCsvImport() {
-    if (!auth || !clientCsvImport.trim()) return;
-    const records = parseCsvRecords(clientCsvImport);
-    if (records.length === 0) {
-      setClientCsvPreview({
-        id: "local-preview",
-        status: "preview",
-        totalRows: 0,
-        acceptedRows: 0,
-        rejectedRows: 1,
-        rows: [{ rowNumber: 1, state: "rejected", error: "CSV is empty", payload: { displayName: "", phone: "", language: "en" } }],
-      });
-      return;
-    }
-
-    const [headerRow, ...rows] = records;
-    const headers = headerRow.map((h) => h.trim());
-    const required = ["displayName", "phone"];
-    const missing = required.filter((h) => !headers.includes(h));
-    if (missing.length > 0) {
-      setClientCsvPreview({
-        id: "local-preview",
-        status: "preview",
-        totalRows: 0,
-        acceptedRows: 0,
-        rejectedRows: 1,
-        rows: [{ rowNumber: 1, state: "rejected", error: `Missing columns: ${missing.join(", ")}`, payload: { displayName: "", phone: "", language: "en" } }],
-      });
-      return;
-    }
-
-    let accepted = 0;
-    let rejected = 0;
-    const parsedRows = rows.map((values, index) => {
-      const row = Object.fromEntries(headers.map((header, column) => [header, values[column] ?? ""]));
-      const errors: string[] = [];
-      const displayName = (row.displayName ?? "").trim();
-      const phone = (row.phone ?? "").trim();
-      const language = (row.language ?? "en").trim().toLowerCase() || "en";
-
-      if (!displayName) {
-        errors.push("displayName is required");
-      } else if (displayName.length > 200) {
-        errors.push("displayName must be under 200 characters");
-      }
-
-      const phoneRegex = /^\+?[0-9\s-]{7,22}$/;
-      if (!phone) {
-        errors.push("phone is required");
-      } else if (!phoneRegex.test(phone)) {
-        errors.push("phone must be a valid number (7-22 digits, optional +, spaces or dashes)");
-      }
-
-      if (language !== "en" && language !== "ur") {
-        errors.push("language must be either en (English) or ur (Urdu)");
-      }
-
-      const state = errors.length === 0 ? "accepted" : "rejected";
-      if (state === "accepted") accepted++;
-      else rejected++;
-
-      return {
-        rowNumber: index + 2,
-        state: state as "accepted" | "rejected",
-        error: errors.length > 0 ? errors.join("; ") : null,
-        payload: { displayName, phone, language },
-      };
-    });
-
-    setClientCsvPreview({
-      id: "local-preview",
-      status: "preview",
-      totalRows: parsedRows.length,
-      acceptedRows: accepted,
-      rejectedRows: rejected,
-      rows: parsedRows,
-    });
-    setOperationStatus(`Client CSV Validation ready: ${accepted} accepted; ${rejected} rejected.`);
-  }
-
-  async function confirmClientCsvImport() {
-    if (!auth || !clientCsvPreview || clientCsvPreview.status !== "preview") return;
-    setOperationStatus("Importing clients...");
-    let accepted = 0;
-    let rejected = 0;
-    const updatedRows = [...clientCsvPreview.rows];
-    let resolvedAuth = auth;
-
-    for (let i = 0; i < updatedRows.length; i++) {
-      const row = updatedRows[i];
-      if (row.state === "accepted") {
-        try {
-          const res = await authedRequest<{ client: any }>("/v1/clients", {
-            method: "POST",
-            body: JSON.stringify(row.payload),
-          }, resolvedAuth);
-          resolvedAuth = res.auth;
-          accepted++;
-        } catch (err: any) {
-          row.state = "rejected";
-          row.error = err.message || "Failed to create client";
-          rejected++;
-        }
-      }
-    }
-
-    setClientCsvPreview({
-      ...clientCsvPreview,
-      status: "confirmed",
-      acceptedRows: accepted,
-      rejectedRows: clientCsvPreview.rejectedRows + rejected,
-      rows: updatedRows,
-    });
-    setClientCsvImport("");
-    setOperationStatus(`Client CSV Import finished: ${accepted} successfully imported; ${rejected} failed.`);
-    await loadWorkspace(resolvedAuth);
-  }
-
-  function downloadRejectedClientRows() {
-    if (!clientCsvPreview) return;
-    const rejectedRows = clientCsvPreview.rows.filter((row) => row.state === "rejected");
-    const csv = [
-      "rowNumber,displayName,phone,language,error",
-      ...rejectedRows.map((row) => [
-        row.rowNumber,
-        JSON.stringify(row.payload.displayName),
-        JSON.stringify(row.payload.phone),
-        JSON.stringify(row.payload.language),
-        JSON.stringify(row.error ?? ""),
-      ].join(",")),
-    ].join("\n");
-    const url = window.URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "legalbahi-rejected-client-rows.csv";
-    link.click();
-    window.URL.revokeObjectURL(url);
-  }
-
   async function addParty() {
     if (!auth || !selectedMatter || !newParty.displayName.trim()) return;
     const response = await authedRequest(`/v1/matters/${selectedMatter.id}/parties`, {
@@ -1342,13 +1164,16 @@ export default function ProductStaffPage() {
     await loadWorkspace(response.auth);
   }
 
-  async function searchVault() {
-    if (!auth || !vaultSearch.trim()) {
-      setVaultSearchHits([]);
-      return;
+  async function searchVault(query: string): Promise<SearchHit[]> {
+    if (!auth || !query.trim()) {
+      return [];
     }
-    const response = await authedRequest<{ hits: SearchHit[] }>(`/v1/search?q=${encodeURIComponent(vaultSearch)}`, {}, auth);
-    setVaultSearchHits(response.data.hits.filter((hit) => hit.kind === "document"));
+    const response = await authedRequest<{ hits: SearchHit[] }>(
+      `/v1/search?q=${encodeURIComponent(query.trim())}`,
+      {},
+      auth,
+    );
+    return response.data.hits.filter((hit) => hit.kind === "document");
   }
 
   async function markAlertRead(alertId: string) {
@@ -1572,21 +1397,12 @@ export default function ProductStaffPage() {
           setClientSearch={setClientSearch}
           clientStatusFilter={clientStatusFilter}
           setClientStatusFilter={setClientStatusFilter}
-          clientCsvImport={clientCsvImport}
-          setClientCsvImport={setClientCsvImport}
-          previewClientCsvImport={previewClientCsvImport}
-          clientCsvPreview={clientCsvPreview}
-          confirmClientCsvImport={confirmClientCsvImport}
-          downloadRejectedClientRows={downloadRejectedClientRows}
         />
       )}
 
       {activeSection === "vault" && (
         <VaultSection
-          vaultSearch={vaultSearch}
-          setVaultSearch={setVaultSearch}
           searchVault={searchVault}
-          vaultSearchHits={vaultSearchHits}
           documents={documents}
           openDocument={openDocument}
           updateDocumentVisibility={updateDocumentVisibility}

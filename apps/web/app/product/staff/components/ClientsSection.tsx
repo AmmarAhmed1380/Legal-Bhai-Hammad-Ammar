@@ -24,29 +24,10 @@ interface ClientsSectionProps {
   openMatter: (matterId: string) => void;
   router: AppRouterInstance;
 
-  // Roster Search, Status Filtering, and CSV Import props
   clientSearch: string;
   setClientSearch: Dispatch<SetStateAction<string>>;
   clientStatusFilter: "all" | "active" | "invited" | "archived";
   setClientStatusFilter: Dispatch<SetStateAction<"all" | "active" | "invited" | "archived">>;
-  clientCsvImport: string;
-  setClientCsvImport: Dispatch<SetStateAction<string>>;
-  previewClientCsvImport: () => void;
-  clientCsvPreview: {
-    id: string;
-    status: string;
-    totalRows: number;
-    acceptedRows: number;
-    rejectedRows: number;
-    rows: Array<{
-      rowNumber: number;
-      state: "accepted" | "rejected";
-      error: string | null;
-      payload: { displayName: string; phone: string; language: string };
-    }>;
-  } | null;
-  confirmClientCsvImport: () => void;
-  downloadRejectedClientRows: () => void;
 }
 
 export default function ClientsSection({
@@ -69,17 +50,9 @@ export default function ClientsSection({
   setClientSearch,
   clientStatusFilter,
   setClientStatusFilter,
-  clientCsvImport,
-  setClientCsvImport,
-  previewClientCsvImport,
-  clientCsvPreview,
-  confirmClientCsvImport,
-  downloadRejectedClientRows,
 }: ClientsSectionProps) {
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const [isImportOpen, setIsImportOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
-  const [showImportHelp, setShowImportHelp] = useState(false);
 
   const modalOverlayStyle: CSSProperties = {
     position: "fixed",
@@ -118,21 +91,10 @@ export default function ClientsSection({
     display: "block",
   };
 
-  const downloadClientTemplate = () => {
-    const template = "displayName,phone,language\n\"Ahmed Zubair\",03005550001,en\n\"Sana Malik\",03007654321,ur\n";
-    const blob = new Blob([template], { type: "text/csv;charset=utf-8;" });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "legalbahi-clients-template.csv";
-    link.click();
-    window.URL.revokeObjectURL(url);
-  };
-
   return (
     <section className="dashboard-grid" style={{ gridTemplateColumns: "380px minmax(0, 1fr)", gap: "24px" }}>
       {/* Left Column: Clients Sidebar */}
-      <aside className="panel" style={{ animation: "fadeIn 0.2s ease", position: "sticky", top: "32px", height: "calc(100vh - 240px)", overflowY: "auto", boxSizing: "border-box" }}>
+      <aside className="panel" style={{ animation: "fadeIn 0.2s ease", boxSizing: "border-box" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <h2 style={{ marginTop: 0, marginBottom: 0, fontSize: "20px", fontWeight: 800 }}>Clients</h2>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -154,18 +116,6 @@ export default function ClientsSection({
                 <line x1="5" y1="12" x2="19" y2="12"></line>
               </svg>
               New
-            </button>
-            <button
-              className="button-secondary"
-              type="button"
-              onClick={() => setIsImportOpen(true)}
-              style={{
-                padding: "6px 12px",
-                fontSize: "12px",
-                borderRadius: "8px"
-              }}
-            >
-              Import
             </button>
           </div>
         </div>
@@ -585,8 +535,8 @@ export default function ClientsSection({
 
       {/* Add Client Modal */}
       {isAddOpen && (
-        <div style={modalOverlayStyle}>
-          <div style={modalContentStyle}>
+        <div style={modalOverlayStyle} onClick={() => setIsAddOpen(false)}>
+          <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
               <h2 style={{ marginTop: 0, marginBottom: 0, fontSize: "22px", fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>Add Client</h2>
               <button
@@ -633,7 +583,7 @@ export default function ClientsSection({
               <input
                 value={newClient.phone}
                 onChange={(event) => setNewClient({ ...newClient, phone: event.target.value })}
-                placeholder="e.g. 03001234567"
+                placeholder=""
               />
             </div>
             <div className="field">
@@ -671,8 +621,8 @@ export default function ClientsSection({
 
       {/* Edit Client Modal */}
       {isEditOpen && clientDetail && (
-        <div style={modalOverlayStyle}>
-          <div style={modalContentStyle}>
+        <div style={modalOverlayStyle} onClick={() => setIsEditOpen(false)}>
+          <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
               <h2 style={{ marginTop: 0, marginBottom: 0, fontSize: "22px", fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>Edit Client</h2>
               <button
@@ -776,157 +726,6 @@ export default function ClientsSection({
                 </button>
               ) : null}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* CSV Import Modal */}
-      {isImportOpen && (
-        <div style={modalOverlayStyle}>
-          <div style={{ ...modalContentStyle, maxWidth: "600px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <h2 style={{ marginTop: 0, marginBottom: 0, fontSize: "22px", fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>CSV Import</h2>
-                <button
-                  type="button"
-                  onClick={() => setShowImportHelp(!showImportHelp)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: "6px",
-                    borderRadius: "50%",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: showImportHelp ? "var(--primary)" : "var(--text-secondary)",
-                    backgroundColor: showImportHelp ? "rgba(15, 110, 86, 0.1)" : "transparent",
-                    transition: "all 0.2s ease"
-                  }}
-                  onMouseOver={(e) => {
-                    if (!showImportHelp) {
-                      e.currentTarget.style.backgroundColor = "rgba(0,0,0,0.05)";
-                      e.currentTarget.style.color = "var(--text-primary)";
-                    }
-                  }}
-                  onMouseOut={(e) => {
-                    if (!showImportHelp) {
-                      e.currentTarget.style.backgroundColor = "transparent";
-                      e.currentTarget.style.color = "var(--text-secondary)";
-                    }
-                  }}
-                  title="Show import instructions"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="12" y1="16" x2="12" y2="12"></line>
-                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                  </svg>
-                </button>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsImportOpen(false)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: "6px",
-                  borderRadius: "50%",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--text-secondary)",
-                  transition: "background-color 0.2s ease, color 0.2s ease"
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.backgroundColor = "rgba(0,0,0,0.05)";
-                  e.currentTarget.style.color = "var(--text-primary)";
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.backgroundColor = "transparent";
-                  e.currentTarget.style.color = "var(--text-secondary)";
-                }}
-                title="Close dialog"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-              </button>
-            </div>
-
-            {showImportHelp && (
-              <div className="case-card" style={{ padding: "16px", marginBottom: "16px", backgroundColor: "rgba(0,0,0,0.02)" }}>
-                <strong style={{ display: "block", marginBottom: "6px", fontSize: "14px" }}>
-                  How does CSV Import work?
-                </strong>
-                <ol style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", lineHeight: "1.4", color: "var(--text-secondary)", marginBottom: "12px" }}>
-                  <li>Download the client import spreadsheet template.</li>
-                  <li>Add your clients inside Excel or Google Sheets.</li>
-                  <li>Copy the CSV data and paste it into the textbox below.</li>
-                  <li>Click <strong>Validate Import</strong> to preview formatting issues, then confirm.</li>
-                </ol>
-                <button
-                  className="button-secondary"
-                  type="button"
-                  onClick={downloadClientTemplate}
-                  style={{ textAlign: "center", padding: "8px 16px", display: "block", fontSize: "13px", width: "100%", boxSizing: "border-box" }}
-                >
-                  Download CSV Template
-                </button>
-              </div>
-            )}
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <textarea
-                value={clientCsvImport}
-                onChange={(event) => setClientCsvImport(event.target.value)}
-                placeholder="Paste your CSV data rows here"
-                style={{ minHeight: 120, fontSize: "13px", padding: "12px", borderRadius: "12px", border: "1px solid var(--border)" }}
-              />
-              <button className="button-secondary" type="button" onClick={previewClientCsvImport} style={{ fontSize: "13px", padding: "10px 0" }}>
-                Validate Import
-              </button>
-            </div>
-            {clientCsvPreview ? (
-              <div className="case-card" style={{ marginTop: 16, padding: 16 }}>
-                <strong>
-                  {clientCsvPreview.acceptedRows} accepted
-                  <span className="bullet-separator">•</span>
-                  {clientCsvPreview.rejectedRows} rejected
-                </strong>
-                <div className="grid" style={{ marginTop: 12, maxHeight: "120px", overflowY: "auto" }}>
-                  {clientCsvPreview.rows.slice(0, 8).map((row) => (
-                    <div key={row.rowNumber} style={{ fontSize: "12px", marginBottom: 4 }}>
-                      Row {row.rowNumber}:{" "}
-                      <span className={`badge ${row.state === "rejected" ? "conflict" : "live"}`}>
-                        {row.state}
-                      </span>
-                      {row.error ? <div className="muted" style={{ display: "inline-block", marginLeft: 6 }}>{row.error}</div> : null}
-                    </div>
-                  ))}
-                </div>
-                <div className="actions" style={{ marginTop: 12, display: "flex", gap: 8 }}>
-                  {clientCsvPreview.status === "preview" && clientCsvPreview.acceptedRows > 0 ? (
-                    <button
-                      className="button"
-                      type="button"
-                      onClick={() => {
-                        confirmClientCsvImport();
-                        setIsImportOpen(false);
-                      }}
-                    >
-                      Confirm Import
-                    </button>
-                  ) : null}
-                  {clientCsvPreview.rejectedRows > 0 ? (
-                    <button className="button-secondary" type="button" onClick={downloadRejectedClientRows}>
-                      Download Rejected Rows
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
           </div>
         </div>
       )}

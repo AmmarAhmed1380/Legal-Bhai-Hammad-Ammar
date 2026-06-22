@@ -7,13 +7,12 @@ import {
   type MatterListItem,
   type StaffProfile,
 } from "../page";
-import { formatDateTime, formatCurrency, formatRole, courtLabel } from "./helpers";
+import { formatDateTime, formatRole, courtLabel } from "./helpers";
 
 interface OverviewSectionProps {
   stats: { matters: number; hearingsThisWeek: number; unreadAlerts: number };
   report: OverviewReport | null;
   calendar: CalendarItem[];
-  syncMessage: string | null;
   alerts: AlertRecord[];
   threads: ThreadSummary[];
   matters: MatterListItem[];
@@ -280,33 +279,24 @@ export default function OverviewSection({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
           gap: 12,
         }}
       >
-        <MetricCard label="Open Matters" value={metrics?.openMatters ?? openMatters.length} accent />
+        <MetricCard label="Open Matters" value={metrics?.openMatters ?? openMatters.length} />
         <MetricCard label="Upcoming Hearings" value={metrics?.upcomingHearings ?? calendar.length} />
         <MetricCard label="Unread Alerts" value={metrics?.unreadAlerts ?? unreadAlerts.length} />
-        <MetricCard
-          label="Outstanding"
-          value={metrics ? formatCurrency(metrics.outstandingInvoiceTotal) : "—"}
-          sub={metrics && metrics.overdueInvoiceTotal > 0 ? `${formatCurrency(metrics.overdueInvoiceTotal)} overdue` : undefined}
-        />
-        <MetricCard
-          label="Billable Time"
-          value={metrics ? `${Math.floor(metrics.billableMinutes / 60)}h ${metrics.billableMinutes % 60}m` : "—"}
-        />
       </div>
 
       {/* ── Two-Column Body ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "340px minmax(0,1fr)", gap: 16, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "340px minmax(0,1fr)", gap: 16, alignItems: "stretch" }}>
 
         {/* ── Left Column ── */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, minHeight: "100%" }}>
 
           {/* Profile Card */}
           {profile && (
-            <div className="panel" style={{ padding: 18 }}>
+            <div className="panel" style={{ padding: 18, flexShrink: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
                 <div
                   style={{
@@ -346,17 +336,13 @@ export default function OverviewSection({
                     <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>City</span>
                     <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)" }}>{profile.firm.primaryCity}</span>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Plan</span>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", textTransform: "capitalize" }}>{profile.firm.billingPlan}</span>
-                  </div>
                 </div>
               )}
             </div>
           )}
 
           {/* Upcoming Hearings */}
-          <div className="panel" style={{ padding: 18 }}>
+          <div className="panel overview-upcoming-panel" style={{ padding: 18, flex: 1, display: "flex", flexDirection: "column" }}>
             <SectionHeader
               title="Upcoming Hearings"
               action="Calendar"
@@ -365,7 +351,7 @@ export default function OverviewSection({
             {upcomingHearings.length === 0 ? (
               <EmptyState text="No upcoming hearings" />
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1 }}>
                 {upcomingHearings.map((item) => {
                   const daysLabel = relativeDays(item.listedAt);
                   const isToday = daysLabel === "Today";

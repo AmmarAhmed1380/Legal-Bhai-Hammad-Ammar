@@ -1,12 +1,9 @@
-import { type Dispatch, type SetStateAction, useState, type CSSProperties } from "react";
+import { type Dispatch, type SetStateAction, useEffect, useState, type CSSProperties } from "react";
 import { type DocumentRecord, type SearchHit, type MatterListItem } from "../page";
 import { formatMimeType, getDownloadFilename, toTitleCase } from "./helpers";
 
 interface VaultSectionProps {
-  vaultSearch: string;
-  setVaultSearch: Dispatch<SetStateAction<string>>;
-  searchVault: () => void;
-  vaultSearchHits: SearchHit[];
+  searchVault: (query: string) => Promise<SearchHit[]>;
   documents: DocumentRecord[];
   openDocument: (docId: string) => void;
   updateDocumentVisibility: (doc: DocumentRecord) => void;
@@ -28,10 +25,7 @@ interface VaultSectionProps {
 }
 
 export default function VaultSection({
-  vaultSearch,
-  setVaultSearch,
   searchVault,
-  vaultSearchHits,
   documents,
   openDocument,
   updateDocumentVisibility,
@@ -52,6 +46,47 @@ export default function VaultSection({
   const [docPortalVisible, setDocPortalVisible] = useState(false);
   const [docMatterId, setDocMatterId] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function runSearch() {
+      const trimmed = debouncedQuery.trim();
+      if (!trimmed) {
+        setSearchHits([]);
+        setIsSearching(false);
+        return;
+      }
+
+      setIsSearching(true);
+      try {
+        const hits = await searchVault(trimmed);
+        if (!cancelled) {
+          setSearchHits(hits);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsSearching(false);
+        }
+      }
+    }
+
+    void runSearch();
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedQuery, searchVault]);
 
   const modalOverlayStyle: CSSProperties = {
     position: "fixed",
@@ -90,6 +125,146 @@ export default function VaultSection({
     display: "block",
   };
 
+  const closeUploadModal = () => {
+    setIsUploadDocOpen(false);
+    setDocFile(null);
+    setDocTitle("");
+    setDocPortalVisible(false);
+    setDocMatterId("");
+  };
+
+  const vaultGridStyle: CSSProperties = {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(210px, 1fr))",
+    gap: "16px",
+  };
+
+  const searchResultDocuments = searchHits
+    .map((hit) => documents.find((document) => document.id === hit.id))
+    .filter((document): document is DocumentRecord => document !== undefined);
+
+  const renderDocumentCard = (document: DocumentRecord) => (
+    <div
+      key={document.id}
+      onClick={() => openDocument(document.id)}
+      style={{
+        cursor: "pointer",
+        display: "flex",
+        flexDirection: "column",
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: "10px",
+        overflow: "hidden",
+        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.02)",
+        transition: "transform 0.2s ease",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = "translateY(-2px)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = "none";
+      }}
+    >
+      <div
+        style={{
+          height: "70px",
+          background: "rgba(15, 110, 86, 0.04)",
+          borderBottom: "1px solid var(--border)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "var(--primary)",
+          position: "relative",
+        }}
+      >
+        {document.mimeType.toLowerCase() === "application/pdf" ? (
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+          </svg>
+        ) : (
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <circle cx="8.5" cy="8.5" r="1.5"></circle>
+            <polyline points="21 15 16 10 5 21"></polyline>
+          </svg>
+        )}
+        <span
+          className={`badge compact ${document.portalVisible ? "live" : "conflict"}`}
+          style={{
+            position: "absolute",
+            top: "6px",
+            right: "6px",
+            fontSize: "8px",
+            padding: "2px 6px 3px",
+            letterSpacing: "0.04em",
+          }}
+        >
+          {document.portalVisible ? "Shared" : "Internal"}
+        </span>
+      </div>
+      <div style={{ padding: "8px 10px 10px", display: "flex", flexDirection: "column", gap: "8px" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            minWidth: 0,
+          }}
+        >
+          <div
+            title={document.title}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              fontWeight: 700,
+              fontSize: "12px",
+              lineHeight: 1.25,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {document.title}
+          </div>
+          <span
+            style={{
+              flexShrink: 0,
+              fontSize: "10px",
+              color: "var(--text-secondary)",
+              background: "#f3f4f6",
+              padding: "2px 6px",
+              borderRadius: "10px",
+              whiteSpace: "nowrap",
+              maxWidth: "42%",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+            title={toTitleCase(document.type)}
+          >
+            {toTitleCase(document.type)}
+          </span>
+        </div>
+        <button
+          className="button-secondary"
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            void updateDocumentVisibility(document);
+          }}
+          style={{
+            fontSize: "10px",
+            padding: "4px 0",
+            width: "100%",
+            borderRadius: "6px",
+          }}
+        >
+          {document.portalVisible ? "Make Internal" : "Share Client"}
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <section>
       <div className="panel" style={{ width: "100%" }}>
@@ -119,10 +294,15 @@ export default function VaultSection({
         </div>
         <div className="field-row" style={{ marginBottom: 16 }}>
           <input
-            value={vaultSearch}
-            onChange={(event) => setVaultSearch(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") void searchVault();
+            value={searchQuery}
+            onChange={(event) => {
+              setSearchQuery(event.target.value);
+              if (event.target.value.trim()) {
+                setIsSearching(true);
+              } else {
+                setIsSearching(false);
+                setSearchHits([]);
+              }
             }}
             placeholder="Search document title or OCR text"
             style={{
@@ -133,124 +313,18 @@ export default function VaultSection({
               border: "1px solid var(--border)",
             }}
           />
-          <button className="button-secondary" type="button" onClick={searchVault}>
-            Search
-          </button>
         </div>
-        {vaultSearchHits.length > 0 ? (
-          <div className="panel" style={{ marginBottom: 18, background: "var(--primary-light)" }}>
-            <strong>Search Results</strong>
-            <div className="grid" style={{ marginTop: 10 }}>
-              {vaultSearchHits.map((hit) => (
-                <button
-                  key={hit.id}
-                  className="button-secondary"
-                  type="button"
-                  onClick={() => void openDocument(hit.id)}
-                >
-                  {hit.title}<span className="bullet-separator">•</span>{hit.subtitle}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : null}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
-            gap: "16px",
-          }}
-        >
-          {documents.map((document) => (
-            <div
-              key={document.id}
-              onClick={() => openDocument(document.id)}
-              style={{
-                cursor: "pointer",
-                display: "flex",
-                flexDirection: "column",
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: "10px",
-                overflow: "hidden",
-                minHeight: "150px",
-                boxShadow: "0 2px 6px rgba(0, 0, 0, 0.02)",
-                transition: "transform 0.2s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = "translateY(-2px)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = "none";
-              }}
-            >
-              <div
-                style={{
-                  height: "70px",
-                  background: "rgba(15, 110, 86, 0.04)",
-                  borderBottom: "1px solid var(--border)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "var(--primary)",
-                  position: "relative",
-                }}
-              >
-                {document.mimeType.toLowerCase() === "application/pdf" ? (
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                    <polyline points="14 2 14 8 20 8"></polyline>
-                  </svg>
-                ) : (
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                    <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                    <polyline points="21 15 16 10 5 21"></polyline>
-                  </svg>
-                )}
-                <span
-                  className={`badge ${document.portalVisible ? "live" : "conflict"}`}
-                  style={{
-                    position: "absolute",
-                    top: "6px",
-                    right: "6px",
-                    fontSize: "8px",
-                    padding: "2px 4px",
-                  }}
-                >
-                  {document.portalVisible ? "Shared" : "Internal"}
-                </span>
-              </div>
-              <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: "4px", flex: 1, justifyContent: "space-between" }}>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: "12px", wordBreak: "break-all", marginBottom: "4px" }}>
-                    {document.title}
-                  </div>
-                  <span style={{ fontSize: "10px", color: "var(--text-secondary)", background: "#f3f4f6", padding: "2px 6px", borderRadius: "10px" }}>
-                    {toTitleCase(document.type)}
-                  </span>
-                </div>
-                <button
-                  className="button-secondary"
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void updateDocumentVisibility(document);
-                  }}
-                  style={{
-                    fontSize: "10px",
-                    padding: "4px 0",
-                    width: "100%",
-                    marginTop: "6px",
-                    borderRadius: "6px",
-                  }}
-                >
-                  {document.portalVisible ? "Make Internal" : "Share Client"}
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+        {searchQuery.trim().length > 0 ? (
+          isSearching ? (
+            <p className="vault-search-loading" style={{ margin: "0 0 16px" }}>Searching vault registry...</p>
+          ) : searchResultDocuments.length === 0 ? (
+            <p style={{ margin: 0, fontSize: "13px", color: "var(--text-secondary)" }}>No matching documents found.</p>
+          ) : (
+            <div style={vaultGridStyle}>{searchResultDocuments.map(renderDocumentCard)}</div>
+          )
+        ) : (
+          <div style={vaultGridStyle}>{documents.map(renderDocumentCard)}</div>
+        )}
       </div>
 
       {/* Lightbox Document Viewer */}
@@ -542,17 +616,13 @@ export default function VaultSection({
       )}
       {/* Document Upload Modal */}
       {isUploadDocOpen && (
-        <div style={modalOverlayStyle}>
-          <div style={modalContentStyle}>
+        <div style={modalOverlayStyle} onClick={closeUploadModal}>
+          <div style={modalContentStyle} onClick={(e) => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <h2 style={{ marginTop: 0, marginBottom: 0, fontSize: "22px", fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>Upload Document to Vault</h2>
               <button
                 type="button"
-                onClick={() => {
-                  setIsUploadDocOpen(false);
-                  setDocFile(null);
-                  setDocTitle("");
-                }}
+                onClick={closeUploadModal}
                 style={{
                   background: "none",
                   border: "none",
@@ -709,11 +779,7 @@ export default function VaultSection({
                 className="button-secondary"
                 type="button"
                 disabled={isUploading}
-                onClick={() => {
-                  setIsUploadDocOpen(false);
-                  setDocFile(null);
-                  setDocTitle("");
-                }}
+                onClick={closeUploadModal}
                 style={{ flex: 1, padding: "14px" }}
               >
                 Cancel
@@ -727,11 +793,7 @@ export default function VaultSection({
                   setIsUploading(true);
                   try {
                     await uploadVaultDocument(docFile, docTitle, docType, docPortalVisible && !!docMatterId, docMatterId || null);
-                    setIsUploadDocOpen(false);
-                    setDocFile(null);
-                    setDocTitle("");
-                    setDocPortalVisible(false);
-                    setDocMatterId("");
+                    closeUploadModal();
                   } catch (err) {
                     console.error(err);
                   } finally {
