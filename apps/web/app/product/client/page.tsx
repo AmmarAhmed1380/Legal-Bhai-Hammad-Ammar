@@ -13,7 +13,7 @@ import {
   readStoredProductAuth,
   refreshProductAuth,
   writeStoredProductAuth,
-} from "../../../lib/product-api";
+} from "@/lib/product-api";
 
 export interface ClientProfile {
   actorType: "client";

@@ -7,7 +7,7 @@ import {
   productJsonRequest,
   readStoredProductAuth,
   writeStoredProductAuth,
-} from "../lib/product-api";
+} from "@/lib/product-api";
 
 const STAFF_STORAGE_KEY = "legalbahi-staff-auth";
 const CLIENT_STORAGE_KEY = "legalbahi-client-auth";

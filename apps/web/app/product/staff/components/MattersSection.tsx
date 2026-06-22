@@ -6,7 +6,7 @@ import {
   type ClientSummary,
   type MessageRecord,
 } from "../page";
-import { PRODUCT_API_BASE_URL } from "../../../../lib/product-api";
+import { PRODUCT_API_BASE_URL } from "@/lib/product-api";
 import { courtLabel, formatDateTime, formatMimeType, formatSourceType, toTitleCase } from "./helpers";
 import CustomSelect from "./CustomSelect";
 
