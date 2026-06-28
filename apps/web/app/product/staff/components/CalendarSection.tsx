@@ -163,21 +163,127 @@ export default function CalendarSection({
     display: "block",
   };
 
+  const reviewPanelHeaderStyle: CSSProperties = {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "12px",
+    marginBottom: "14px",
+  };
+
+  const reviewCardStyle = (tone: "conflict" | "review"): CSSProperties => ({
+    position: "relative",
+    overflow: "hidden",
+    padding: "16px",
+    borderRadius: "16px",
+    border: tone === "conflict" ? "1px solid rgba(216, 90, 48, 0.18)" : "1px solid rgba(15, 110, 86, 0.14)",
+    background:
+      tone === "conflict"
+        ? "linear-gradient(135deg, rgba(250, 236, 231, 0.95) 0%, rgba(255, 250, 247, 0.98) 100%)"
+        : "linear-gradient(135deg, rgba(225, 245, 238, 0.92) 0%, rgba(247, 252, 250, 0.98) 100%)",
+    boxShadow:
+      tone === "conflict"
+        ? "0 8px 24px rgba(216, 90, 48, 0.08)"
+        : "0 8px 24px rgba(15, 110, 86, 0.06)",
+  });
+
+  const reviewEyebrowStyle = (tone: "conflict" | "review"): CSSProperties => ({
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    padding: "4px 10px",
+    borderRadius: "999px",
+    fontSize: "10px",
+    fontWeight: 800,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: tone === "conflict" ? "var(--accent)" : "var(--primary-dark)",
+    background: tone === "conflict" ? "rgba(216, 90, 48, 0.12)" : "rgba(15, 110, 86, 0.10)",
+  });
+
+  const reviewMetaStyle: CSSProperties = {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "6px 10px",
+    alignItems: "center",
+    color: "var(--text-secondary)",
+    fontSize: "12px",
+    minWidth: 0,
+    overflowWrap: "anywhere",
+  };
+
+  const emptyStateStyle = (tone: "conflict" | "review"): CSSProperties => ({
+    display: "flex",
+    alignItems: "flex-start",
+    gap: "12px",
+    padding: "16px",
+    borderRadius: "16px",
+    border: tone === "conflict" ? "1px dashed rgba(216, 90, 48, 0.24)" : "1px dashed rgba(15, 110, 86, 0.22)",
+    background:
+      tone === "conflict"
+        ? "linear-gradient(135deg, rgba(250, 236, 231, 0.55) 0%, rgba(255, 250, 247, 0.88) 100%)"
+        : "linear-gradient(135deg, rgba(225, 245, 238, 0.5) 0%, rgba(247, 252, 250, 0.88) 100%)",
+  });
+
+  const emptyStateIconStyle = (tone: "conflict" | "review"): CSSProperties => ({
+    width: "36px",
+    height: "36px",
+    borderRadius: "12px",
+    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: tone === "conflict" ? "rgba(216, 90, 48, 0.12)" : "rgba(15, 110, 86, 0.12)",
+    color: tone === "conflict" ? "var(--accent)" : "var(--primary)",
+  });
+
   return (
-    <section className="calendar-detail-grid">
+    <section className="calendar-detail-grid staff-calendar-layout" style={{ minWidth: 0 }}>
       {/* Left Column: Possible Conflicts & Court Entries review */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      <div className="calendar-review-column" style={{ display: "flex", flexDirection: "column", gap: "24px", minWidth: 0 }}>
         {/* Possible Conflicts Panel */}
         <div className="panel">
-          <h2 style={{ marginTop: 0 }}>Possible Conflicts</h2>
+          <div style={reviewPanelHeaderStyle}>
+            <div>
+              <h2 style={{ marginTop: 0, marginBottom: 4 }}>Possible Conflicts</h2>
+              <div className="muted" style={{ fontSize: "12px" }}>Hearings that may overlap or need a manual check.</div>
+            </div>
+            <span style={reviewEyebrowStyle("conflict")}>{calendarConflicts.length} flagged</span>
+          </div>
           {calendarConflicts.length === 0 ? (
-            <div className="muted">No scheduling conflicts detected.</div>
+            <div style={emptyStateStyle("conflict")}>
+              <div style={emptyStateIconStyle("conflict")}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 9v4" />
+                  <path d="M12 17h.01" />
+                  <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+                </svg>
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 800, color: "var(--text-primary)", marginBottom: 4 }}>No scheduling conflicts</div>
+                <div className="muted" style={{ fontSize: "13px", overflowWrap: "anywhere" }}>
+                  Everything on the calendar appears to be aligned right now.
+                </div>
+              </div>
+            </div>
           ) : (
             <div className="grid">
               {calendarConflicts.map((item) => (
-                <div key={item.id} className="case-card" style={{ padding: 12, borderLeftColor: "var(--accent)" }}>
-                  <strong>{item.matter.rawCaseNumber}</strong>
-                  <div className="muted">{formatDateTime(item.listedAt)}</div>
+                <div key={item.id} style={reviewCardStyle("conflict")}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px", marginBottom: "10px" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={reviewEyebrowStyle("conflict")}>Possible overlap</div>
+                      <div style={{ marginTop: 8, fontSize: "15px", fontWeight: 800, color: "var(--text-primary)", overflowWrap: "anywhere" }}>
+                        {item.matter.rawCaseNumber}
+                      </div>
+                    </div>
+                    <span className="badge conflict" style={{ flexShrink: 0 }}>Review</span>
+                  </div>
+                  <div style={reviewMetaStyle}>
+                    <span>{formatDateTime(item.listedAt)}</span>
+                    <span className="bullet-separator">•</span>
+                    <span>{item.matter.title}</span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -186,29 +292,62 @@ export default function CalendarSection({
 
         {/* Court Entries Needing Review Panel */}
         <div className="panel">
-          <h2 style={{ marginTop: 0 }}>Court Entries Needing Review</h2>
+          <div style={reviewPanelHeaderStyle}>
+            <div>
+              <h2 style={{ marginTop: 0, marginBottom: 4 }}>Court Entries Needing Review</h2>
+              <div className="muted" style={{ fontSize: "12px" }}>Unmatched cause-list entries waiting for a matter match.</div>
+            </div>
+            <span style={reviewEyebrowStyle("review")}>{unmatchedCauseEntries.length} queued</span>
+          </div>
           {unmatchedCauseEntries.length === 0 ? (
-            <div className="muted">No unmatched court entries.</div>
+            <div style={emptyStateStyle("review")}>
+              <div style={emptyStateIconStyle("review")}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 12l2 2 4-4" />
+                  <path d="M5 7h14" />
+                  <path d="M5 12h2" />
+                  <path d="M5 17h2" />
+                  <path d="M17 17h2" />
+                  <path d="M17 12h2" />
+                </svg>
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 800, color: "var(--text-primary)", marginBottom: 4 }}>No court entries waiting for review</div>
+                <div className="muted" style={{ fontSize: "13px", overflowWrap: "anywhere" }}>
+                  New cause-list entries will appear here when they need a matter match.
+                </div>
+              </div>
+            </div>
           ) : (
             <>
-              <p className="muted" style={{ marginBottom: 8 }}>
+              <p className="muted" style={{ marginTop: 0, marginBottom: 12, fontSize: "13px" }}>
                 Link only after confirming the cause-list entry belongs to one of your matters.
               </p>
               <div className="grid">
                 {unmatchedCauseEntries.map((entry) => (
-                  <div key={entry.id} className="case-card" style={{ padding: 14, borderLeftColor: "var(--accent)" }}>
-                    <strong>{entry.rawCaseNumber}</strong>
-                    <div className="muted">
-                      {courtLabel(entry.courtId ?? "")}
-                      <span className="bullet-separator">•</span>
-                      {toTitleCase(entry.listType)}
-                      <span className="bullet-separator">•</span>
-                      {entry.listDate}
-                      <span className="bullet-separator">•</span>
-                      {entry.courtroom ?? "Courtroom TBC"}
+                  <div key={entry.id} style={reviewCardStyle("review")}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px", marginBottom: "10px" }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={reviewEyebrowStyle("review")}>Needs linking</div>
+                        <div style={{ marginTop: 8, fontSize: "15px", fontWeight: 800, color: "var(--text-primary)", overflowWrap: "anywhere" }}>
+                          {entry.rawCaseNumber}
+                        </div>
+                      </div>
+                      <span className="badge live" style={{ flexShrink: 0 }}>Court Entry</span>
                     </div>
-                    <div className="field" style={{ marginTop: 12 }}>
-                      <label>Confirmed workspace matter</label>
+                    <div style={reviewMetaStyle}>
+                      <span>{courtLabel(entry.courtId ?? "")}</span>
+                      <span className="bullet-separator">•</span>
+                      <span>{toTitleCase(entry.listType)}</span>
+                      <span className="bullet-separator">•</span>
+                      <span>{entry.listDate}</span>
+                      <span className="bullet-separator">•</span>
+                      <span>{entry.courtroom ?? "Courtroom TBC"}</span>
+                    </div>
+                    <div className="field" style={{ marginTop: 14 }}>
+                      <label style={{ fontSize: "11px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-secondary)" }}>
+                        Confirmed workspace matter
+                      </label>
                       <select
                         value={courtReviewMatterIds[entry.id] ?? ""}
                         onChange={(event) =>
@@ -218,9 +357,7 @@ export default function CalendarSection({
                         <option value="">Select a matter</option>
                         {matters.map((matter) => (
                           <option key={matter.id} value={matter.id}>
-                            {matter.rawCaseNumber}
-                            <span className="bullet-separator">•</span>
-                            {matter.title}
+                            {matter.rawCaseNumber} - {matter.title}
                           </option>
                         ))}
                       </select>
@@ -230,6 +367,7 @@ export default function CalendarSection({
                       type="button"
                       disabled={!courtReviewMatterIds[entry.id]}
                       onClick={() => void linkUnmatchedCauseEntry(entry.id)}
+                      style={{ width: "100%", marginTop: 2 }}
                     >
                       Confirm And Link
                     </button>
@@ -242,10 +380,10 @@ export default function CalendarSection({
       </div>
 
       {/* Right Column: Monthly Calendar Panel */}
-      <div className="panel">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-          <h2 style={{ margin: 0 }}>Monthly Calendar</h2>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+      <div className="panel calendar-month-panel" style={{ minWidth: 0 }}>
+        <div className="calendar-month-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+          <h2 className="calendar-month-title" style={{ margin: 0 }}>Monthly Calendar</h2>
+          <div className="calendar-month-controls" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <button 
               className="button-secondary" 
               style={{ 
@@ -291,9 +429,9 @@ export default function CalendarSection({
         </div>
 
         {/* Calendar Monthly Grid View */}
-        <div style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden", backgroundColor: "white", boxShadow: "0 4px 20px rgba(0, 0, 0, 0.015)" }}>
+        <div className="calendar-grid-shell" style={{ border: "1px solid var(--border)", borderRadius: "12px", overflow: "hidden", backgroundColor: "white", boxShadow: "0 4px 20px rgba(0, 0, 0, 0.015)" }}>
           {/* Weekday labels header */}
-          <div style={{
+          <div className="calendar-weekdays" style={{
             display: "grid",
             gridTemplateColumns: "repeat(7, 1fr)",
             borderBottom: "1px solid var(--border)",
@@ -314,7 +452,7 @@ export default function CalendarSection({
           </div>
 
           {/* Monthly day grid cells */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>
+          <div className="calendar-day-grid" style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>
             {cells.map((cell, idx) => {
               const cellHearings = getHearingsForDate(cell.dateString);
               const isToday = cell.dateString === todayStr;
@@ -434,7 +572,7 @@ export default function CalendarSection({
               </button>
             </div>
             
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginBottom: "28px" }}>
+          <div className="calendar-modal-body" style={{ display: "flex", flexDirection: "column", gap: "16px", marginBottom: "28px" }}>
               <div className="field">
                 <label style={labelStyle}>Case Number</label>
                 <div style={{ fontSize: "15px", fontWeight: 700, color: "var(--text-primary)" }}>{activeHearing.matter.rawCaseNumber}</div>
@@ -447,7 +585,7 @@ export default function CalendarSection({
                 <label style={labelStyle}>Listed At</label>
                 <div style={{ fontSize: "14px", color: "var(--text-secondary)" }}>{formatDateTime(activeHearing.listedAt)}</div>
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+              <div className="calendar-modal-two-col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
                 <div className="field">
                   <label style={labelStyle}>Courtroom</label>
                   <div style={{ fontSize: "14px", color: "var(--text-secondary)" }}>{activeHearing.courtroom ?? "TBC"}</div>
@@ -463,7 +601,7 @@ export default function CalendarSection({
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: "10px" }}>
+            <div className="calendar-modal-actions" style={{ display: "flex", gap: "10px" }}>
               <button
                 className="button-secondary"
                 type="button"

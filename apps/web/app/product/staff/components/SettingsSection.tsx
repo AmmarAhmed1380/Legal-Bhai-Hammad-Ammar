@@ -88,7 +88,7 @@ export default function SettingsSection({
   return (
     <section>
       {isOwnerOrCoOwner && (
-        <div style={{ display: "flex", gap: 12, marginBottom: 24 }}>
+        <div className="settings-tabs" style={{ display: "flex", gap: 12, marginBottom: 24, minWidth: 0 }}>
           <button
             type="button"
             className={settingsTab === "profile" ? "button" : "button-secondary"}
@@ -109,7 +109,7 @@ export default function SettingsSection({
       )}
 
       {settingsTab === "profile" || !isOwnerOrCoOwner ? (
-        <div className="grid">
+        <div className="grid settings-profile-grid">
           <div className="panel" style={{ width: "100%" }}>
             <h2 style={{ marginTop: 0 }}>Profile And Session Settings</h2>
             <div className="info-list">
@@ -185,7 +185,7 @@ export default function SettingsSection({
           </div>
         </div>
       ) : (
-        <div className="grid">
+        <div className="grid settings-workspace-grid">
           <div className="panel" style={{ width: "100%" }}>
             <h2 style={{ marginTop: 0 }}>Workspace Details</h2>
             {profile.firm ? (
@@ -209,7 +209,7 @@ export default function SettingsSection({
           </div>
 
           <div className="panel" style={{ width: "100%" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 16 }}>
+            <div className="settings-members-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 16 }}>
               <h2 style={{ margin: 0 }}>Manage Employees / Staff</h2>
               <button
                 className="button"
@@ -227,7 +227,7 @@ export default function SettingsSection({
             <p className="muted" style={{ fontSize: 13, marginBottom: 16 }}>
               Total Members: {teamMembers.length}
             </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <div className="settings-members-list" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
               {teamMembers.map((member) => (
                 <div
                   key={member.id}

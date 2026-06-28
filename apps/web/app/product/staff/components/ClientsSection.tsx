@@ -92,12 +92,12 @@ export default function ClientsSection({
   };
 
   return (
-    <section className="dashboard-grid" style={{ gridTemplateColumns: "380px minmax(0, 1fr)", gap: "24px" }}>
+    <section className="dashboard-grid clients-layout" style={{ gridTemplateColumns: "380px minmax(0, 1fr)", gap: "24px", minWidth: 0 }}>
       {/* Left Column: Clients Sidebar */}
-      <aside className="panel" style={{ animation: "fadeIn 0.2s ease", boxSizing: "border-box" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+      <aside className="panel clients-sidebar-panel" style={{ animation: "fadeIn 0.2s ease", boxSizing: "border-box", minWidth: 0 }}>
+        <div className="clients-sidebar-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <h2 style={{ marginTop: 0, marginBottom: 0, fontSize: "20px", fontWeight: 800 }}>Clients</h2>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div className="clients-sidebar-actions" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <button
               className="button"
               type="button"
@@ -130,7 +130,7 @@ export default function ClientsSection({
           />
         </div>
 
-        <div style={{
+        <div className="clients-status-filter" style={{
           display: "flex",
           alignItems: "center",
           gap: "4px",
@@ -169,7 +169,7 @@ export default function ClientsSection({
           })}
         </div>
 
-        <div className="case-list" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+        <div className="case-list clients-list" style={{ display: "flex", flexDirection: "column", gap: "12px", minWidth: 0 }}>
           {clients
             .filter((client) => {
               const matchesSearch =
@@ -252,12 +252,12 @@ export default function ClientsSection({
       </aside>
 
       {/* Right Column: Client details and workspace */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+      <div className="clients-detail-column" style={{ display: "flex", flexDirection: "column", gap: "20px", minWidth: 0 }}>
         {clientDetail ? (
           <section style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
             {/* Header Details Panel */}
             <div
-              className="panel"
+              className="clients-detail-header panel"
               style={{
                 padding: "24px",
                 borderLeft: "6px solid var(--primary)",
@@ -270,17 +270,17 @@ export default function ClientsSection({
                 overflow: "hidden"
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "16px", flexWrap: "wrap" }}>
-                <div>
+              <div className="clients-detail-header-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "16px", flexWrap: "wrap" }}>
+                <div className="clients-detail-copy">
                   <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-                    <h2 style={{ margin: 0, fontSize: "22px", fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: "10px" }}>
+                    <h2 className="clients-detail-title" style={{ margin: 0, fontSize: "22px", fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: "10px" }}>
                       {clientDetail.client.displayName}
                       <span className={`badge ${clientDetail.client.status === "active" ? "live" : "conflict"}`} style={{ fontSize: "11px", padding: "4px 10px" }}>
                         {clientDetail.client.status.toUpperCase()}
                       </span>
                     </h2>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px", marginTop: "12px" }}>
+                  <div className="clients-detail-actions" style={{ display: "flex", alignItems: "center", gap: "12px", marginTop: "12px" }}>
                     <button
                       className="button-secondary"
                       type="button"
@@ -349,7 +349,7 @@ export default function ClientsSection({
                 margin: "4px 0"
               }} />
 
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "24px", fontSize: "13px", color: "var(--text-secondary)" }}>
+              <div className="clients-detail-meta" style={{ display: "flex", flexWrap: "wrap", gap: "24px", fontSize: "13px", color: "var(--text-secondary)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2.5" style={{ opacity: 0.85 }}>
                     <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 11.24z" />
@@ -386,7 +386,7 @@ export default function ClientsSection({
             </div>
 
             {/* Notification reminder consent */}
-            <div className="panel" style={{ padding: "24px" }}>
+            <div className="panel clients-consent-panel" style={{ padding: "24px" }}>
               <h3 style={{ marginTop: 0, marginBottom: 8, fontSize: "16px", fontWeight: 700 }}>Client Reminder Consent</h3>
               <p className="muted" style={{ marginBottom: 16, fontSize: "13px" }}>Enable SMS only after the client has agreed to hearing reminders.</p>
               {clientNotificationPreference ? (
@@ -420,8 +420,8 @@ export default function ClientsSection({
             </div>
 
             {/* Split Grid for Matters and Threads */}
-            <div className="equal-detail-grid">
-              <div className="panel" style={{ padding: "24px" }}>
+            <div className="equal-detail-grid clients-linked-grid">
+              <div className="panel clients-linked-matters-panel" style={{ padding: "24px" }}>
                 <h2 style={{ marginTop: 0, fontSize: "18px", fontWeight: 700, color: "var(--text-primary)" }}>Shared Matters</h2>
                 <div className="grid" style={{ gap: "12px" }}>
                   {clientDetail.matters.length === 0 ? (
@@ -472,7 +472,7 @@ export default function ClientsSection({
                 </div>
               </div>
 
-              <div className="panel" style={{ padding: "24px" }}>
+              <div className="panel clients-threads-panel" style={{ padding: "24px" }}>
                 <h2 style={{ marginTop: 0, fontSize: "18px", fontWeight: 700, color: "var(--text-primary)" }}>Threads</h2>
                 <div className="grid" style={{ gap: "12px" }}>
                   {clientDetail.threadSummaries.length === 0 ? (
@@ -525,7 +525,7 @@ export default function ClientsSection({
             </div>
           </section>
         ) : (
-          <section className="panel" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "400px" }}>
+          <section className="panel clients-empty-state" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "400px" }}>
             <div className="muted" style={{ textAlign: "center", fontSize: "16px", fontWeight: 500 }}>
               Select a client from the list to view details.
             </div>

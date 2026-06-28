@@ -136,14 +136,16 @@ function MetricCard({
         padding: "14px 18px",
         display: "flex",
         flexDirection: "column",
-        gap: 4,
+        justifyContent: "space-between",
+        gap: 8,
         minWidth: 0,
+        minHeight: 76,
       }}
     >
-      <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+      <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em", lineHeight: 1.2 }}>
         {label}
       </span>
-      <span style={{ fontSize: 22, fontWeight: 800, color: accent ? "var(--primary-dark)" : "var(--text-primary)", lineHeight: 1 }}>
+      <span style={{ fontSize: 22, fontWeight: 800, color: accent ? "var(--primary-dark)" : "var(--text-primary)", lineHeight: 1, alignSelf: "flex-end", textAlign: "right" }}>
         {value}
       </span>
       {sub && (
@@ -153,9 +155,9 @@ function MetricCard({
   );
 }
 
-function SectionHeader({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
+function SectionHeader({ title, action, onAction }: { title: React.ReactNode; action?: string; onAction?: () => void }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+    <div className="overview-section-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
       <h2 style={{ margin: 0, fontSize: 15, fontWeight: 800 }}>{title}</h2>
       {action && (
         <button
@@ -206,6 +208,7 @@ function MatterLink({
     <button
       type="button"
       onClick={() => { router.push("/matters"); openMatter(matter.id); }}
+      className="overview-matter-link"
       style={{
         display: "block",
         width: "100%",
@@ -273,10 +276,11 @@ export default function OverviewSection({
   const metrics = report?.metrics;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div className="overview-layout" style={{ display: "flex", flexDirection: "column", gap: 20, minWidth: 0 }}>
 
       {/* ── Top Metric Bar ── */}
       <div
+        className="overview-metrics-grid"
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
@@ -289,14 +293,14 @@ export default function OverviewSection({
       </div>
 
       {/* ── Two-Column Body ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "340px minmax(0,1fr)", gap: 16, alignItems: "stretch" }}>
+      <div className="overview-body-grid" style={{ display: "grid", gridTemplateColumns: "340px minmax(0,1fr)", gap: 16, alignItems: "stretch", minWidth: 0 }}>
 
         {/* ── Left Column ── */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16, minHeight: "100%" }}>
+        <div className="overview-side-column" style={{ display: "flex", flexDirection: "column", gap: 16, minHeight: "100%", minWidth: 0 }}>
 
           {/* Profile Card */}
           {profile && (
-            <div className="panel" style={{ padding: 18, flexShrink: 0 }}>
+            <div className="panel overview-profile-panel" style={{ padding: 18, flexShrink: 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
                 <div
                   style={{
@@ -342,6 +346,12 @@ export default function OverviewSection({
           )}
 
           {/* Upcoming Hearings */}
+          <div className="overview-mobile-metrics-grid" style={{ display: "none" }}>
+            <MetricCard label="Open Matters" value={metrics?.openMatters ?? openMatters.length} />
+            <MetricCard label="Upcoming Hearings" value={metrics?.upcomingHearings ?? calendar.length} />
+            <MetricCard label="Unread Alerts" value={metrics?.unreadAlerts ?? unreadAlerts.length} />
+          </div>
+
           <div className="panel overview-upcoming-panel" style={{ padding: 18, flex: 1, display: "flex", flexDirection: "column" }}>
             <SectionHeader
               title="Upcoming Hearings"
@@ -405,12 +415,40 @@ export default function OverviewSection({
         </div>
 
         {/* ── Right Column ── */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="overview-main-column" style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
 
           {/* Priority Alerts */}
-          <div className="panel" style={{ padding: 18 }}>
+          <div className="panel overview-alerts-panel" style={{ padding: 18 }}>
             <SectionHeader
-              title={`Alerts${unreadAlerts.length > 0 ? ` · ${unreadAlerts.length} unread` : ""}`}
+              title={
+                unreadAlerts.length > 0 ? (
+                  <>
+                    Alerts{" "}
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                        marginLeft: 8,
+                        padding: "3px 8px",
+                        borderRadius: 999,
+                        fontSize: 11,
+                        fontWeight: 800,
+                        letterSpacing: "0.06em",
+                        textTransform: "uppercase",
+                        color: "#b42318",
+                        background: "#fef3f2",
+                        border: "1px solid #fecdca",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {unreadAlerts.length} Unread
+                    </span>
+                  </>
+                ) : (
+                  "Alerts"
+                )
+              }
               action="All Alerts"
               onAction={() => router.push("/alerts")}
             />
@@ -484,7 +522,7 @@ export default function OverviewSection({
           </div>
 
           {/* Recent Client Messages */}
-          <div className="panel" style={{ padding: 18 }}>
+          <div className="panel overview-recent-panel" style={{ padding: 18 }}>
             <SectionHeader title="Recent Client Messages" action="Matters" onAction={() => router.push("/matters")} />
             {recentThreads.length === 0 ? (
               <EmptyState text="No recent messages" />

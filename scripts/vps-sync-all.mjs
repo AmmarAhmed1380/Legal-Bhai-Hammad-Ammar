@@ -32,7 +32,6 @@ const cleanPaths = [
   `${vpsRootWin}\\apps\\web\\client`,
   `${vpsRootWin}\\apps\\web\\product`,
   `${vpsRootWin}\\apps\\web\\app.zip`,
-  `${vpsRootWin}\\apps\\web\\.next`,
 ];
 
 const syncPaths = [
@@ -86,13 +85,7 @@ for (const p of cleanPaths) {
   console.log(`Cleaned: ${p}`);
 }
 
-// 2. Stop running services temporarily before npm ci to prevent locked file errors
-const nssm = `${vpsRootWin}\\tools\\nssm.exe`;
-await runRemote("Stopping API service", `${nssm} stop LegalBahiApi`, { allowFail: true });
-await runRemote("Stopping Worker service", `${nssm} stop LegalBahiWorker`, { allowFail: true });
-await runRemote("Stopping Web service", `${nssm} stop LegalBahiWeb`, { allowFail: true });
-
-// 3. Sync source directories
+// 2. Sync source directories while the existing services keep serving traffic
 for (const relativePath of syncPaths) {
   const localPath = join(repoRoot, relativePath);
   if (!existsSync(localPath)) {
@@ -115,16 +108,27 @@ for (const relativePath of syncPaths) {
   await ssh.putFile(localPath, remotePath);
 }
 
-// 4. Run clean dependency install
+// 3. Run clean dependency install
 await runRemote(
   "Running npm install on the VPS",
   `${powershell} -NoProfile -Command "Set-Location '${vpsRootWin}'; npm install --no-audit"`
 );
 
-// 5. Rebuild the frontend Web bundle
+// 4. Rebuild the frontend Web bundle
 await runRemote(
   "Rebuilding production web bundle on the VPS",
   `${powershell} -NoProfile -ExecutionPolicy Bypass -File ${vpsRootWin}\\infra\\windows\\build-web.ps1 -Root ${vpsRootWin} -EnvironmentFile ${vpsRootWin}\\.env.production`
+);
+
+// 5. Refresh services only after the new bundle is ready
+await runRemote(
+  "Installing/configuring NSSM services",
+  `${powershell} -NoProfile -ExecutionPolicy Bypass -File ${vpsRootWin}\\infra\\windows\\install-services.ps1 -Root ${vpsRootWin} -EnvironmentFile ${vpsRootWin}\\.env.production`
+);
+
+await runRemote(
+  "Restarting Caddy",
+  `${powershell} -NoProfile -ExecutionPolicy Bypass -Command "Restart-Service caddy -Force"`
 );
 
 ssh.dispose();

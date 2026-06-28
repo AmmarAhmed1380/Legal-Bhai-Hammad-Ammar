@@ -108,9 +108,9 @@ export default function AlertsSection({ alerts, markAlertRead, matters, openMatt
   ];
 
   return (
-    <section className="grid" style={{ gridTemplateColumns: "1fr" }}>
-      <div className="panel" style={{ width: "100%" }}>
-        <div style={{
+    <section className="grid alerts-layout" style={{ gridTemplateColumns: "1fr" }}>
+      <div className="panel alerts-panel" style={{ width: "100%" }}>
+        <div className="alerts-header" style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
@@ -120,18 +120,23 @@ export default function AlertsSection({ alerts, markAlertRead, matters, openMatt
           flexWrap: "wrap",
           gap: "16px"
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <h2 style={{ margin: 0 }}>Alerts Inbox</h2>
+          <div className="alerts-title-row" style={{ display: "flex", alignItems: "center", gap: "12px", flex: 1, minWidth: 0 }}>
+            <h2 style={{ margin: 0, whiteSpace: "nowrap" }}>Alerts Inbox</h2>
             {unreadCount > 0 && (
-              <span className="badge conflict" style={{ fontSize: "12px", padding: "4px 10px" }}>
-                {unreadCount} Unread
-              </span>
+              <button
+                className="button-secondary alerts-mark-read"
+                type="button"
+                onClick={() => alerts.filter((a) => !a.readAt).forEach((a) => markAlertRead(a.id))}
+                style={{ padding: "8px 16px", fontSize: "13px", borderRadius: "10px", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0, marginLeft: "auto" }}
+              >
+                Mark All as Read
+              </button>
             )}
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+          <div className="alerts-actions-row" style={{ display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap", width: "100%" }}>
             {/* Filters */}
-            <div style={{ display: "flex", gap: "4px", background: "rgba(0,0,0,0.03)", padding: "4px", borderRadius: "10px", border: "1px solid var(--border)" }}>
+            <div className="alerts-filter-group" style={{ display: "flex", gap: "4px", background: "rgba(0,0,0,0.03)", padding: "4px", borderRadius: "10px", border: "1px solid var(--border)", flexWrap: "nowrap", overflowX: "auto", width: "100%" }}>
               {([
                 { id: "all" as const, label: "All", count: null, color: null },
                 { id: "unread" as const, label: "Unread", count: unreadCount, color: null },
@@ -181,18 +186,6 @@ export default function AlertsSection({ alerts, markAlertRead, matters, openMatt
                 );
               })}
             </div>
-
-            {/* Bulk Action */}
-            {unreadCount > 0 && (
-              <button
-                className="button-secondary"
-                type="button"
-                onClick={() => alerts.filter((a) => !a.readAt).forEach((a) => markAlertRead(a.id))}
-                style={{ padding: "8px 16px", fontSize: "13px", borderRadius: "10px", cursor: "pointer" }}
-              >
-                Mark All as Read
-              </button>
-            )}
           </div>
         </div>
 
@@ -233,8 +226,8 @@ export default function AlertsSection({ alerts, markAlertRead, matters, openMatt
                     gap: "6px"
                   }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", width: "100%" }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+                  <div className="alerts-card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px", width: "100%" }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0, flex: 1 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <ImportanceBadge type={alert.type} />
                         <span className="muted" style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-tertiary)" }}>
@@ -242,11 +235,16 @@ export default function AlertsSection({ alerts, markAlertRead, matters, openMatt
                         </span>
                       </div>
                       <strong style={{ fontSize: "15px", fontWeight: 700, color: "var(--text-primary)", lineHeight: "1.3" }}>
-                        {alert.title.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")}
+                        {alert.title.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")}
                       </strong>
                     </div>
                     {!alert.readAt && (
-                      <button className="button-secondary" type="button" onClick={() => markAlertRead(alert.id)} style={{ padding: "6px 12px", fontSize: "12px", flexShrink: 0 }}>
+                      <button
+                        className="button-secondary alerts-card-mark-read"
+                        type="button"
+                        onClick={() => markAlertRead(alert.id)}
+                        style={{ padding: "6px 12px", fontSize: "12px", flexShrink: 0, whiteSpace: "nowrap" }}
+                      >
                         Mark Read
                       </button>
                     )}

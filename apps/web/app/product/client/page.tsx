@@ -796,7 +796,7 @@ function ProductClientWorkspace() {
             zIndex: 10000,
             padding: "20px"
           }} onClick={() => setIsUploadModalOpen(false)}>
-            <div style={{
+            <div className="upload-modal-card" style={{
               backgroundColor: "var(--surface)",
               borderRadius: "18px",
               border: "1px solid var(--border)",
@@ -968,8 +968,8 @@ function ProductClientWorkspace() {
             <MatterTimelineHeader matter={selectedMatter} />
 
             {/* Matter Sub-Navigation */}
-            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", width: "100%", marginBottom: "16px", paddingTop: "4px" }}>
-              <div style={{
+            <div className="client-subtab-shell" style={{ display: "flex", justifyContent: "center", alignItems: "center", width: "100%", marginBottom: "16px", paddingTop: "4px" }}>
+              <div className="client-subtab-bar" style={{
                 display: "flex",
                 alignItems: "center",
                 gap: "6px",

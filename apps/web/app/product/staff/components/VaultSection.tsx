@@ -144,9 +144,12 @@ export default function VaultSection({
     .filter((document): document is DocumentRecord => document !== undefined);
 
   const renderDocumentCard = (document: DocumentRecord) => (
-    <div
+    <button
       key={document.id}
       onClick={() => openDocument(document.id)}
+      aria-label={`Open ${document.title}`}
+      className="vault-document-card"
+      type="button"
       style={{
         cursor: "pointer",
         display: "flex",
@@ -157,6 +160,11 @@ export default function VaultSection({
         overflow: "hidden",
         boxShadow: "0 2px 6px rgba(0, 0, 0, 0.02)",
         transition: "transform 0.2s ease",
+        padding: 0,
+        textAlign: "left",
+        width: "100%",
+        appearance: "none",
+        WebkitAppearance: "none",
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.transform = "translateY(-2px)";
@@ -262,7 +270,7 @@ export default function VaultSection({
           {document.portalVisible ? "Make Internal" : "Share Client"}
         </button>
       </div>
-    </div>
+    </button>
   );
 
   return (
@@ -271,7 +279,7 @@ export default function VaultSection({
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <h2 style={{ marginTop: 0, marginBottom: 0 }}>Document Vault</h2>
           <button
-            className="button"
+            className="button vault-upload-button"
             type="button"
             onClick={() => setIsUploadDocOpen(true)}
             style={{
