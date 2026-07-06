@@ -43,7 +43,19 @@
     "ws": "^8.17.0",
     "js-yaml": "^4.1.2",
     "react": "19.2.7",
-    "react-dom": "19.2.7"
+    "react-dom": "19.2.7",
+    "@wakeel/mobile": {
+      "react": "19.1.0"
+    },
+    "expo": {
+      "react": "19.1.0"
+    },
+    "react-native": {
+      "react": "19.1.0"
+    },
+    "react-native-webview": {
+      "react": "19.1.0"
+    }
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",

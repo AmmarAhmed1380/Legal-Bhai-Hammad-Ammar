@@ -7,6 +7,7 @@ const WEB_APP_URL = "https://64.235.61.6.sslip.io/";
 
 export default function App() {
   const [isLoading, setIsLoading] = useState(true);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [hasError, setHasError] = useState(false);
 
   const injectedJavaScript = useMemo(
@@ -49,13 +50,17 @@ export default function App() {
           setHasError(false);
           setIsLoading(true);
         }}
-        onLoadEnd={() => setIsLoading(false)}
+        onLoadEnd={() => {
+          setIsLoading(false);
+          setIsInitialLoad(false);
+        }}
         onError={() => {
           setHasError(true);
           setIsLoading(false);
+          setIsInitialLoad(false);
         }}
       />
-      {isLoading ? (
+      {isInitialLoad && isLoading ? (
         <View style={styles.loadingOverlay} pointerEvents="none">
           <ActivityIndicator size="large" color="#0f6e56" />
         </View>

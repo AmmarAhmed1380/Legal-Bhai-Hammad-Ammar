@@ -51,3 +51,7 @@ backups
 # VPS Credentials
 VPS Login.txt
 VPS login.txt
+
+# Mobile Native Builds
+apps/mobile/android
+apps/mobile/ios

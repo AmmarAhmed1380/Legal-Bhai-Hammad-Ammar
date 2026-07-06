@@ -42,7 +42,7 @@ const pinnedPackageEntries = Object.fromEntries(
 );
 
 if (isMonorepo) {
-  config.watchFolders = [monorepoRoot, vendorRoot];
+  config.watchFolders = [...config.watchFolders, monorepoRoot, vendorRoot];
   config.resolver.nodeModulesPaths = [
     vendorNodeModules,
     path.resolve(projectRoot, "node_modules"),
