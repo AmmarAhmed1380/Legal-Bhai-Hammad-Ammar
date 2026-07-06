@@ -1,94 +1,127 @@
-# LegalBahi Handoff & Completion Report
+# LegalBahi Project Status & Technical Handoff Report
 
-This document outlines the final state of the LegalBahi project, detailing how each requirement requested in `Docs/HAMMAD_FINAL_HANDOFF.md` was addressed, implemented, and verified.
+LegalBahi is a multi-surface practice management platform designed for lawyers practicing in Pakistan (with primary focus on the Islamabad High Court, Lahore High Court Rawalpindi Bench, and Rawalpindi District & Sessions Courts). 
 
----
-
-## 1. Handoff Completion Checklist
-
-Below is the structured checklist of all verification, configuration, and build requirements requested by the senior developer, explaining how they were implemented and how to run or test them.
-
-### Phase 1: Stabilize, Clean, and Verify
-
-| Task | Status | Implementation Details | How to Use / Test |
-| :--- | :--- | :--- | :--- |
-| **Verify Local Cleanliness** | **Completed** | Ran local verification scripts to check code quality. Resolves standard TypeScript, ESLint, and Next.js/Fastify compilation guidelines. | Run `npm run verify` and `npm run lint` from the monorepo root. |
-| **Resolve Expo Doctor Diagnostics** | **Completed** | Fixed Metro monorepo watch paths by appending to `config.watchFolders` in [metro.config.js](file:///c:/Users/ammar/OneDrive/Documents/Legal%20Bhai/Legal%20Bhai%20Code/LEGALBAHI/apps/mobile/metro.config.js). Pruned obsolete devDependencies from [package.json](file:///c:/Users/ammar/OneDrive/Documents/Legal%20Bhai/Legal%20Bhai%20Code/LEGALBAHI/apps/mobile/package.json). | Run `npx expo-doctor` in `apps/mobile/`. Output returns `18/18 checks passed. No issues detected!`. |
-| **Fix Dependency Vulnerabilities & Audit** | **Completed** | Removed legacy local `eas-cli` and `@types/react-native` which were conflicting with modern React Native 0.81. This successfully pruned **270 sub-packages** from the project's dependency tree, cleaning up the audit namespace. | Run `npm audit --omit=dev` from the workspace root to verify package safety. |
-| **Prove PostgreSQL Test Path** | **Completed** | Configured Fastify API test environment to switch between SQLite for local mock testing and PostgreSQL for cloud database verification. | Run `TEST_DATABASE_URL=postgresql://<user>:<password>@localhost:5432/legalbahi npm run test:api` to run integration tests against a Postgres instance. |
-| **Secure .env Variables** | **Completed** | Maintained `.env` and `VPS Login.txt` security. They are successfully ignored by git tracking to prevent accidental API key leaks. Template variables are documented in `.env.example` and `.env.production.example`. | Inspect [Docs/.env.example](file:///c:/Users/ammar/OneDrive/Documents/Legal%20Bhai/Legal%20Bhai%20Code/LEGALBAHI/Docs/.env.example) and [Docs/.env.production.example](file:///c:/Users/ammar/OneDrive/Documents/Legal%20Bhai/Legal%20Bhai%20Code/LEGALBAHI/Docs/.env.production.example). |
+This report provides a comprehensive directory of the product's features across all surfaces (Lawyer Web Dashboard, Client Portal, Mobile App, and Backend Worker), explaining **what they do**, **how they work**, and their **expected results**.
 
 ---
 
-### Phase 2: Staging Operations & Hosting
+## 1. Lawyer Web Dashboard
 
-| Task | Status | Implementation Details | How to Use / Test |
-| :--- | :--- | :--- | :--- |
-| **Staging Environment Setup** | **Completed** | Deployed application to investor staging on the Windows VPS (`64.235.61.6.sslip.io`) with separate service runners managed by PM2. | Access the live dashboard at `https://64.235.61.6.sslip.io/`. |
-| **PM2 Process Monitoring** | **Completed** | PM2 config set up via [ecosystem.config.js](file:///c:/Users/ammar/OneDrive/Documents/Legal%20Bhai/Legal%20Bhai%20Code/LEGALBAHI/ecosystem.config.js) to manage the API server (`apps/api`), web dashboard (`apps/web`), and background database worker (`worker.ts`). | Check service status on VPS using `pm2 status` or `pm2 logs`. |
-| **Caddy HTTPS Proxying** | **Completed** | Structured automatic SSL proxy settings using Caddy to handle SSL validation, routing client-portal link directories, and loopback forwarding to the local backend. | View Caddy rules in `infra/caddy/Caddyfile`. |
+The web dashboard is the main working interface for lawyers and administrative staff.
+
+### 1.1 Passwordless OTP Authentication
+* **Description**: Secure, credential-less authentication for staff members.
+* **How it Works**: The lawyer enters their registered phone number. The API creates a short-lived, 6-digit OTP code, stores its hash in the database, and schedules a dispatch. When the code is entered, the server issues a signed JSON Web Token (JWT) and a secure HTTP-only refresh token.
+* **Expected Result**: On inputting the correct code, the user is authenticated and redirected to `/overview`. In development mode, entering the mock code `246810` yields a successful login.
+
+### 1.2 Interactive Overview Dashboard (`/overview`)
+* **Description**: A morning briefing center summarizing case activity, court schedules, and critical actions.
+* **How it Works**: Aggregates calendar records, match requests, and notifications dynamically using Fastify database views.
+* **Expected Result**: Displays today's scheduled hearings, upcoming dates for the week, active client threads needing attention, and warnings about unmatched online cause list entries.
+
+### 1.3 Case & Matter Management
+* **Description**: CRUD interface to record and organize case portfolios.
+* **How it Works**: Persists cases in the `matters` database table. Normalizes Pakistani case number patterns (e.g., *W.P. 1234/2026*). Includes fields for case title, court, case type, current stage, and status (active, closed, archived).
+* **Expected Result**: Lawyers can search, filter, update, or archive cases. Storing a case generates a clean record visible to linked team members.
+
+### 1.4 Next-Date Diary & Hearing Logs
+* **Description**: Historical timeline log of case hearings and outcome descriptions.
+* **How it Works**: Whenever a hearing concludes, the lawyer records the outcome, notes, and the next scheduled date, which updates the matter's primary schedule.
+* **Expected Result**: Updates the diary history. The next scheduled hearing date is automatically added to the interactive calendar.
+
+### 1.5 Smart Calendar View
+* **Description**: Monthly and weekly grid views of practice commitments.
+* **How it Works**: Renders calendar layouts populated from the `hearings` data table, combining manual lawyer-entered dates and verified cause-list synchronization schedules.
+* **Expected Result**: Provides a clean view of all scheduled court commitments. Double-clicking a calendar event displays the case summary.
+
+### 1.6 Hearing Conflict Warning Engine
+* **Description**: Automated conflict scanner detecting scheduling clashes across courts.
+* **How it Works**: Scans the database for hearings scheduled for the same lawyer on the same date and time slot across different courts or benches.
+* **Expected Result**: Displays a high-visibility warning banner in both the Matter Details page and the main Calendar if a lawyer is scheduled to be in two places at once.
+
+### 1.7 Secure Document Vault
+* **Description**: Storage folder for case briefs, power of attorney documents, and evidence files.
+* **How it Works**: Uploads files to Cloudflare R2 bucket. Access is private by default. Supports a "Client Portal Visibility" boolean toggle. Downloads are generated using pre-signed, temporary URLs that expire after 15 minutes.
+* **Expected Result**: Files are safely stored and only accessible to verified workspace members, unless explicitly toggled as visible to the client.
+
+### 1.8 Client Directory & Consent Logs
+* **Description**: Database of client contacts and communication preferences.
+* **How it Works**: Stores client phone numbers, email addresses, and reminder preferences (SMS/Email). Records client SMS reminder consent in compliance with telecommunication guidelines.
+* **Expected Result**: Generates client profiles that can be linked to multiple matters.
+
+### 1.9 Cause List Matching & Manual Review
+* **Description**: Control center to review automated online court scrapers against local cases.
+* **How it Works**: Compares case titles and numbers scraped from official court lists (like the Islamabad High Court cause list) with the lawyer's database. If the match confidence is low, it queues the item in the review center.
+* **Expected Result**: The lawyer can manually match scraped entries to local matters. Once matched, the next hearing date is synced to the calendar.
 
 ---
 
-### Phase 3: Connected Provider Integrations
+## 2. Client Portal
 
-| Task | Status | Implementation Details | How to Use / Test |
-| :--- | :--- | :--- | :--- |
-| **Cloudflare R2 File Storage** | **Completed** | Set up R2 bucket bindings inside the API document store system ([product-api.ts](file:///c:/Users/ammar/OneDrive/Documents/Legal%20Bhai/Legal%20Bhai%20Code/LEGALBAHI/apps/api/src/lib/product-api.ts)), utilizing signed URLs to secure legal document uploads. | Upload a hearing image/PDF via the web dashboard; download URLs are signed and expire after a preset duration. |
-| **Twilio SMS Notifications** | **Completed** | Setup the SMS notification worker in `apps/api/src/worker.ts`. Currently restricted to your **developer verification number** due to Twilio trial limitations. | In `.env`, verify `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_SMS_FROM` are set. When ready for takeoff, swap these with your paid credentials to enable broadcasting to all client carriers. |
-| **Resend Email Service** | **Completed** | Linked verified transactional email notifications in the backend API to handle user onboarding and case reports. | Toggle the notification options in user settings to trigger transactional emails. |
+A secure, standalone web application that allows clients to track their case updates without having access to the lawyer's database.
 
----
+### 2.1 Protected Portal Routing (`/c/[token]`)
+* **Description**: Standalone route generated for clients.
+* **How it Works**: The lawyer generates a unique portal link containing a cryptographic token linked to a specific client and matter.
+* **Expected Result**: Navigating to the URL redirects the client to an OTP security page.
 
-### Phase 4: Android App Delivery
+### 2.2 Portal OTP Authentication
+* **Description**: Access verification for the client.
+* **How it Works**: Requests verification by sending an OTP to the linked client's phone number. On verification, it returns a scoped token allowing view access for that specific matter.
+* **Expected Result**: Validates that only the actual client can view their case details.
 
-| Task | Status | Implementation Details | How to Use / Test |
-| :--- | :--- | :--- | :--- |
-| **Resolve Build Resource Assets** | **Completed** | Corrected asset paths in [app.json](file:///c:/Users/ammar/OneDrive/Documents/Legal%20Bhai/Legal%20Bhai%20Code/LEGALBAHI/apps/mobile/app.json) to reference existing high-resolution icon png files. | Run `npx expo prebuild` to verify assets resolve successfully. |
-| **Continuous Native Generation (CNG)** | **Completed** | Untracked the stale `apps/mobile/android` folder from Git and placed it in `.gitignore`. This forces the EAS build server to run a clean prebuild during cloud compile, preventing stale resource errors. | Checked files in using `git rm -r --cached apps/mobile/android`. |
-| **Android Startup Crash Fix** | **Completed** | Pinned Android compile/target SDK versions to **SDK 35 (Android 15)** via `expo-build-properties` inside `app.json`. This prevents native permission crashes that occur on experimental SDK 36. | Download and install the APK on an Android device: **[EAS Build APK v5](https://expo.dev/accounts/ammar_ahmed/projects/legalbahi/builds/4c91a9f7-60ab-427e-b504-828fd647e624)**. |
-| **Infinite Post-Login Spinner Fix** | **Completed** | Restriced the native loading overlay in [App.tsx](file:///c:/Users/ammar/OneDrive/Documents/Legal%20Bhai/Legal%20Bhai%20Code/LEGALBAHI/apps/mobile/App.tsx) using the `isInitialLoad` state. The loader displays only on initial app boot. Subsequent dynamic routes are handled natively by Next.js's router UI. | Open the app, authenticate via OTP, and log in. The loader will not lock on screen after redirection. |
-
----
-
-## 2. Web Application Functionality & Responsive Layouts
-
-The LegalBahi Web App acts as the primary practice directory for lawyers and administrative staff, as well as a client portal.
-
-### Core Web Features
-* **Lawyer OTP Sign-in**: Secure passwordless logging using local mock OTP (`246810`) during staging/testing, easily upgrading to live Twilio SMS codes.
-* **Matter Management**: Complete dashboard to create, view, edit, and archive case logs. Contains full Pakistan court templates (e.g. Islamabad High Court format validations).
-* **Hearing outcome tracking**: Allows attorneys to log hearing orders, notes, attach case documents, and set upcoming court dates manually.
-* **Smart Calendar & Conflict Engine**: Scans hearing schedules and flags conflicts (same date/time) across courts.
-* **Document Vault**: Upload PDFs, JPGs, or case files. Safe private-by-default isolation with portal-sharing visibility controls.
-* **Secure Client Portal**: Gated links scoped to individual clients and cases. Demands OTP login and shows only the files shared by the lawyer.
-
-### Responsive Multi-Surface Viewports
-* **Laptops/Desktops**: Full sidebar navigation, high-density table rows, side-by-side split panels for quick document lookup and matter audits.
-* **Mobile Browsers**: Touchscreen navigation bar, responsive columns, and simplified case summary layouts.
+### 2.3 Scoped Case Visibility
+* **Description**: The restricted view visible to the authenticated client.
+* **How it Works**: Filters database requests so the client can query only their linked matter.
+* **Expected Result**: The client sees their current case stage, next hearing date, lawyer-written outcome updates, and files that have been marked as client-visible. The client cannot see internal lawyer notes or other cases.
 
 ---
 
-## 3. Testing and Verification Reference Commands
+## 3. Android Mobile Application
 
-To verify or test components locally, navigate to the respective directory and execute the following:
+A native React Native client that provides portable diary access for lawyers on the move.
 
-```bash
-# Verify overall repository code quality
-npm run verify
+### 3.1 Persistent Offline Sessions
+* **Description**: Keeps the lawyer logged in securely on their device.
+* **How it Works**: Saves JWT tokens in Android's secure keystore (`expo-secure-store`).
+* **Expected Result**: The app opens directly to the matter dashboard without requiring OTP logins on every launch.
 
-# Verify ESLint guidelines
-npm run lint
+### 3.2 Handheld Matter Directory
+* **Description**: Mobile-optimized case listings.
+* **How it Works**: Queries `/api/product/matters` and displays list layouts.
+* **Expected Result**: Allows lawyers to search cases and view hearing histories directly from their phones inside the courtroom.
 
-# Run Fastify API integration test suite
-npm run test:api
+### 3.3 Quick Hearing Outcomes Entry
+* **Description**: Fast logging of courtroom updates.
+* **How it Works**: Provides simple forms to update hearing outcomes and schedule next-dates.
+* **Expected Result**: Updates the server database in real time, alerting the office staff.
 
-# Run local testing with mock data (Web App)
-npm run brother:test
+### 3.4 Camera Document Capture
+* **Description**: Instant upload of physical court orders or documents.
+* **How it Works**: Uses the device camera to take photos of documents and uploads them to the R2 vault via the API.
+* **Expected Result**: Uploaded document images are saved to the case vault and available to view on the web dashboard.
 
-# Run local testing with mock data (Mobile App Metro)
-npm run brother:test:mobile
+---
 
-# Reset/Clean local SQLite database mock entries
-npm run brother:test:reset
-```
+## 4. Backend API & Worker System
+
+The Fastify backend and database-backed worker queue.
+
+### 4.1 Background Worker Queue
+* **Description**: Database-backed scheduler running asynchronous tasks.
+* **How it Works**: Scans the `jobs` database table for due tasks (e.g., daily agendas, client reminders).
+* **Expected Result**: Processes notifications and updates without blocking the web or mobile user interface.
+
+### 4.2 Automated Client Reminders
+* **Description**: Auto-dispatched SMS alerts to clients.
+* **How it Works**: Runs 24 hours before a scheduled hearing to verify client consent and dispatch the template message.
+* **Expected Result**: Clients receive an SMS update regarding their hearing time and courtroom.
+
+### 4.3 Transactional SMS & Email Drivers
+* **Description**: Direct integrations with Twilio and Resend.
+* **How it Works**: Twilio API sends SMS messages. Resend API sends emails.
+* **Expected Result**: Delivers notifications to external users. 
+
+> [!NOTE]
+> **Twilio Staging Sandbox**: Currently configured to send SMS alerts to verified developer test numbers due to Twilio trial limitations. Switching to production SMS broadcasting simply requires entering paid credentials in the `.env` configuration file on launch.
