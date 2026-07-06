@@ -133,25 +133,25 @@ The Fastify backend and database-backed worker queue.
 This section lists the specific actions, requirements, and tasks requested in the original handoff guide (`Docs/HAMMAD_FINAL_HANDOFF.md`) and documents their resolution status.
 
 ### 5.1 Project Verification & Security Diagnostics
-* **Senior's Requirement**: Fix package audit warnings (`npm audit --omit=dev`), specifically regarding vulnerabilities in `@babel/core` and `ws`.
+* **Requirement**: Fix package audit warnings (`npm audit --omit=dev`), specifically regarding vulnerabilities in `@babel/core` and `ws`.
 * **Resolution**: Obsolete development tools (`eas-cli` and `@types/react-native`) were pruned from the local workspace settings. The dependency tree was synchronized, resulting in a clean and safe build audit.
 * **Verification**: Run `npm audit --omit=dev` from the workspace root directory.
 
-* **Senior's Requirement**: Resolve Expo Doctor verification errors (including monorepo Metro configurations and mismatched library definitions).
+* **Requirement**: Resolve Expo Doctor verification errors (including monorepo Metro configurations and mismatched library definitions).
 * **Resolution**: The monorepo workspaces and vendor nodes were mapped to append directly to the default `watchFolders` array in `metro.config.js`. Redundant native modules were removed, achieving a clean diagnosis status.
 * **Verification**: Run `npx expo-doctor` in `apps/mobile/`. Renders `18/18 checks passed. No issues detected!`.
 
 ### 5.2 Database & Environmental Safety
-* **Senior's Requirement**: Validate database migrations and verify testing pipelines under PostgreSQL.
+* **Requirement**: Validate database migrations and verify testing pipelines under PostgreSQL.
 * **Resolution**: The API is configured to toggle between SQLite (local development mocks) and PostgreSQL (production). Staging database environments are isolated, and the test runner executes successfully when connecting to a remote instance.
 * **Verification**: Run `TEST_DATABASE_URL=postgresql://<user>:<password>@localhost:5432/legalbahi npm run test:api`.
 
-* **Senior's Requirement**: Secure deployment secrets and credentials from public Git directories.
+* **Requirement**: Secure deployment secrets and credentials from public Git directories.
 * **Resolution**: Ignored all `.env` config environments and host credentials (`VPS Login.txt`) globally in `.gitignore`. Clean environment templates are preserved in `.env.example` and `.env.production.example`.
 * **Verification**: Run `git ls-files .env` to confirm no live configurations are tracked.
 
 ### 5.3 Mobile App Deployment
-* **Senior's Requirement**: Build an Android installed build (APK) and verify that it launches and connects successfully without immediate crashes.
+* **Requirement**: Build an Android installed build (APK) and verify that it launches and connects successfully without immediate crashes.
 * **Resolution**: 
   1. Set up Continuous Native Generation (CNG) to automatically compile native directories on the cloud from the config settings in `app.json`.
   2. Fixed compile-time splash and icon path resolution conflicts.
