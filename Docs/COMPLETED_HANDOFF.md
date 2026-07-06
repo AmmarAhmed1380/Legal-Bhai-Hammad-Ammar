@@ -125,3 +125,37 @@ The Fastify backend and database-backed worker queue.
 
 > [!NOTE]
 > **Twilio Staging Sandbox**: Currently configured to send SMS alerts to verified developer test numbers due to Twilio trial limitations. Switching to production SMS broadcasting simply requires entering paid credentials in the `.env` configuration file on launch.
+
+---
+
+## 5. Handoff Resolution & Status Checklist
+
+This section lists the specific actions, requirements, and tasks requested in the original handoff guide (`Docs/HAMMAD_FINAL_HANDOFF.md`) and documents their resolution status.
+
+### 5.1 Project Verification & Security Diagnostics
+* **Senior's Requirement**: Fix package audit warnings (`npm audit --omit=dev`), specifically regarding vulnerabilities in `@babel/core` and `ws`.
+* **Resolution**: Obsolete development tools (`eas-cli` and `@types/react-native`) were pruned from the local workspace settings. The dependency tree was synchronized, resulting in a clean and safe build audit.
+* **Verification**: Run `npm audit --omit=dev` from the workspace root directory.
+
+* **Senior's Requirement**: Resolve Expo Doctor verification errors (including monorepo Metro configurations and mismatched library definitions).
+* **Resolution**: The monorepo workspaces and vendor nodes were mapped to append directly to the default `watchFolders` array in `metro.config.js`. Redundant native modules were removed, achieving a clean diagnosis status.
+* **Verification**: Run `npx expo-doctor` in `apps/mobile/`. Renders `18/18 checks passed. No issues detected!`.
+
+### 5.2 Database & Environmental Safety
+* **Senior's Requirement**: Validate database migrations and verify testing pipelines under PostgreSQL.
+* **Resolution**: The API is configured to toggle between SQLite (local development mocks) and PostgreSQL (production). Staging database environments are isolated, and the test runner executes successfully when connecting to a remote instance.
+* **Verification**: Run `TEST_DATABASE_URL=postgresql://<user>:<password>@localhost:5432/legalbahi npm run test:api`.
+
+* **Senior's Requirement**: Secure deployment secrets and credentials from public Git directories.
+* **Resolution**: Ignored all `.env` config environments and host credentials (`VPS Login.txt`) globally in `.gitignore`. Clean environment templates are preserved in `.env.example` and `.env.production.example`.
+* **Verification**: Run `git ls-files .env` to confirm no live configurations are tracked.
+
+### 5.3 Mobile App Deployment
+* **Senior's Requirement**: Build an Android installed build (APK) and verify that it launches and connects successfully without immediate crashes.
+* **Resolution**: 
+  1. Set up Continuous Native Generation (CNG) to automatically compile native directories on the cloud from the config settings in `app.json`.
+  2. Fixed compile-time splash and icon path resolution conflicts.
+  3. Locked target and compile SDK versions to **Android SDK 35 (Android 15)** using `expo-build-properties` to resolve native platform crash behaviors.
+  4. Configured the loading overlay in `App.tsx` using `isInitialLoad` to display only on app boot, stopping infinite spinner page locks on client-side routing.
+* **Verification**: Install and run the compiled Android bundle: **[EAS Build APK (Version 5)](https://expo.dev/accounts/ammar_ahmed/projects/legalbahi/builds/4c91a9f7-60ab-427e-b504-828fd647e624)**.
+
